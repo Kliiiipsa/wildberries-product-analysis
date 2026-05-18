@@ -6,7 +6,8 @@ import { assemblePrompt } from '@/lib/data-assembler';
 import { analyzeWithGroqStream } from '@/lib/groq-client';
 import type { AnalysisData, StreamEvent } from '@/types';
 
-export const maxDuration = 120;
+export const runtime = 'edge';
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   const { article } = await req.json();
