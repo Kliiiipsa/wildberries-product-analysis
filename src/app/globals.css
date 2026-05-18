@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+    --card: 224 71% 6%;
+    --card-foreground: 213 31% 91%;
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+    --primary: 210 100% 56%;
+    --primary-foreground: 222.2 47.4% 1.2%;
+    --secondary: 222.2 47.4% 11.2%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 223 47% 11%;
+    --muted-foreground: 215.4 16.3% 56.9%;
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --ring: 216 34% 17%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ── Markdown ──────────────────────────────────────────────── */
+.markdown { @apply text-slate-300 leading-relaxed; }
+
+.markdown h1 { @apply text-2xl font-bold mb-4 mt-8 text-white; }
+
+.markdown h2 {
+  @apply text-lg font-bold mb-3 mt-8 text-white px-3 py-2 rounded-lg;
+  background: linear-gradient(90deg, hsl(216 34% 14%), transparent);
+  border-left: 3px solid hsl(var(--primary));
+}
+
+.markdown h3 { @apply text-base font-semibold mb-2 mt-5 text-blue-300; }
+
+.markdown h4 { @apply text-sm font-semibold mb-1 mt-3 text-slate-400; }
+
+/* Абзацы */
+.markdown p { @apply mb-3 leading-relaxed; }
+
+.markdown p > strong:only-child,
+.markdown p > strong:first-child {
+  @apply text-white text-base;
+}
+
+/* Параграф-заголовок — когда вся строка жирная (секции **1. Вердикт** и т.д.) */
+.markdown p:has(> strong:only-child) {
+  @apply mt-8 mb-2 px-3 py-2 rounded-lg text-white font-semibold;
+  background: linear-gradient(90deg, hsl(216 34% 14%), transparent);
+  border-left: 3px solid hsl(var(--primary));
+}
+
+.markdown strong { @apply font-semibold text-white; }
+.markdown em { @apply italic text-slate-400; }
+
+.markdown ul { @apply list-none mb-4 space-y-1.5 pl-1; }
+.markdown ul li { @apply leading-relaxed pl-5 relative; }
+.markdown ul li::before {
+  content: '›';
+  @apply absolute left-0 text-blue-400 font-bold text-base;
+}
+
+.markdown ol { @apply list-decimal list-inside mb-4 space-y-2; }
+.markdown ol li { @apply leading-relaxed text-slate-300 pl-1; }
+
+.markdown code {
+  @apply bg-slate-800 text-emerald-300 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+.markdown pre {
+  @apply bg-slate-900 border border-slate-700/50 p-4 rounded-xl mb-4 overflow-x-auto;
+}
+.markdown pre code { @apply bg-transparent p-0 text-slate-300; }
+
+.markdown blockquote {
+  @apply border-l-2 border-blue-500/50 pl-4 py-2 mb-4 text-slate-400 italic text-sm rounded-r-lg;
+  background: linear-gradient(90deg, hsl(216 34% 12% / 0.7), transparent);
+}
+
+/* Горизонтальная линия как чёткий разделитель между блоками */
+.markdown hr {
+  @apply my-8 border-0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(216 34% 25%), transparent);
+}
+
+.markdown table {
+  @apply w-full border-collapse mb-5 text-sm overflow-hidden rounded-xl;
+  border: 1px solid hsl(216 34% 18%);
+}
+.markdown thead {
+  background: linear-gradient(90deg, hsl(216 34% 16%), hsl(216 34% 13%));
+}
+.markdown th {
+  @apply px-4 py-3 text-left text-xs font-semibold text-slate-200 uppercase tracking-wider;
+  border-bottom: 1px solid hsl(216 34% 22%);
+}
+.markdown td {
+  @apply px-4 py-2.5 text-slate-300;
+  border-bottom: 1px solid hsl(216 34% 13%);
+}
+.markdown tbody tr:nth-child(even) { background: hsl(216 34% 10% / 0.4); }
+.markdown tbody tr:hover { @apply bg-blue-500/5 transition-colors; }
+.markdown tbody tr:last-child td { @apply border-b-0; }
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* ── Streaming cursor ──────────────────────────────────────── */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.cursor::after {
+  content: '▋';
+  display: inline-block;
+  animation: blink 1s infinite;
+  color: hsl(var(--primary));
+  margin-left: 2px;
+  font-size: 0.8em;
+}
+
+/* ── Gradient text ─────────────────────────────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

@@ -1,0 +1,60 @@
+{"lvl":"info","msg":"no configuration paths supplied","t":"2026-05-18T18:45:02.0118114+03:00"}
+{"lvl":"info","msg":"using configuration at default config path","path":"C:\\Users\\Кирилл\\AppData\\Local\\ngrok\\ngrok.yml","t":"2026-05-18T18:45:02.0245874+03:00"}
+{"err":"\u003cnil\u003e","lvl":"info","msg":"open config file","path":"C:\\Users\\Кирилл\\AppData\\Local\\ngrok\\ngrok.yml","t":"2026-05-18T18:45:02.0251094+03:00"}
+{"enabled":false,"lvl":"info","msg":"FIPS 140 mode","t":"2026-05-18T18:45:02.0256197+03:00"}
+{"addr":"127.0.0.1:4040","allow_hosts":null,"lvl":"info","msg":"starting web service","obj":"web","t":"2026-05-18T18:45:02.0347551+03:00"}
+{"lvl":"info","msg":"client session established","obj":"tunnels.session","t":"2026-05-18T18:45:03.3103584+03:00"}
+{"lvl":"info","msg":"tunnel session started","obj":"tunnels.session","t":"2026-05-18T18:45:03.3108598+03:00"}
+{"addr":"http://localhost:3000","lvl":"info","msg":"started tunnel","name":"command_line","obj":"tunnels","t":"2026-05-18T18:45:03.7830792+03:00","url":"https://uneradicative-marc-partway.ngrok-free.dev"}
+{"id":"93c4f693fbb6","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.0328395+03:00"}
+{"id":"d270b846c69a","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.2447453+03:00"}
+{"id":"88367da72f98","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.2622947+03:00"}
+{"id":"ec602a898ba0","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.2622947+03:00"}
+{"id":"be060222c11b","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.2622947+03:00"}
+{"id":"9b77c2b56150","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.2649823+03:00"}
+{"id":"a8352a06abdc","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:26.2649823+03:00"}
+{"id":"516266782048","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:35.9738807+03:00"}
+{"id":"f3fe1be59b88","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51442","t":"2026-05-18T18:45:52.3832484+03:00"}
+{"id":"042d619c1df9","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.5651085+03:00"}
+{"id":"ca50bcd38202","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.7664728+03:00"}
+{"id":"f6d3a8cd719d","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.7664728+03:00"}
+{"id":"005a7a489231","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.784446+03:00"}
+{"id":"c41b625e9924","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.784446+03:00"}
+{"id":"c0f31c1f5229","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.7854605+03:00"}
+{"id":"0895374baff2","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:48516","t":"2026-05-18T18:47:30.7854605+03:00"}
+{"id":"1f7f12075ec8","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.5926691+03:00"}
+{"id":"2083897b8e1a","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.7846179+03:00"}
+{"id":"7d6da636d954","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.8027601+03:00"}
+{"id":"b97573550767","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.8027601+03:00"}
+{"id":"d95b6f5ebe49","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.8037799+03:00"}
+{"id":"f317027a81a2","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.8037799+03:00"}
+{"id":"447e73e8ecea","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:32996","t":"2026-05-18T18:48:16.8037799+03:00"}
+{"id":"c712864512a1","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:39.9970122+03:00"}
+{"id":"0f276e94d5b5","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:40.2322405+03:00"}
+{"id":"7da8f3c21f28","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:40.4393781+03:00"}
+{"id":"3b3de092e1f6","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:40.4435323+03:00"}
+{"id":"48af5a309bc1","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:40.4542995+03:00"}
+{"id":"440f8c45b06b","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:40.4636128+03:00"}
+{"id":"93cbc87ba216","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:50:40.4677334+03:00"}
+{"id":"ebad74bdfc72","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:51:02.7889213+03:00"}
+{"id":"3f6226b5e78a","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:47268","t":"2026-05-18T18:51:37.2091459+03:00"}
+{"id":"43bcc7533f77","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:36964","t":"2026-05-18T19:00:03.9671517+03:00"}
+{"id":"46224041dd88","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"[2a02:ae00:3013:a00::43]:36964","t":"2026-05-18T19:00:44.5406089+03:00"}
+{"err":"read EOF from remote peer","id":"4e79a4bc5b25","lvl":"eror","msg":"session closed, starting reconnect loop","obj":"csess","t":"2026-05-18T19:20:05.0009767+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:06.6485516+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:07.4919396+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:08.8431228+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:11.1793557+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:15.51887+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:23.8771262+03:00"}
+{"clientid":"d1cb89ce35887519c717425f73fe8dc5","id":"2d8679c774a1","lvl":"eror","msg":"heartbeat timeout, terminating session","obj":"csess","t":"2026-05-18T19:20:28.4316092+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:20:40.2166818+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:21:12.8850508+03:00"}
+{"err":"failed to send authentication request: failed to fetch CRL. errors encountered: timed out fetching CRL","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:21:53.0543347+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:22:27.6554233+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:22:57.9893841+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:23:30.1728074+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:24:00.5239625+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T19:24:30.8895896+03:00"}
+{"lvl":"info","msg":"received stop request","obj":"app","stopReq":{},"t":"2026-05-18T19:25:00.3487021+03:00"}
+{"err":"\u003cnil\u003e","lvl":"info","msg":"session closing","obj":"tunnels.session","t":"2026-05-18T19:25:00.3487021+03:00"}

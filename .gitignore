@@ -1,0 +1,23 @@
+# env files
+.env
+.env.local
+.env.*.local
+.env.production
+
+# build output
+.next/
+out/
+
+# dependencies
+node_modules/
+
+# claude code session data
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*

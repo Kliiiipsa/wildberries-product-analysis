@@ -1,0 +1,18 @@
+{"lvl":"info","msg":"no configuration paths supplied","t":"2026-05-18T20:47:16.1909852+03:00"}
+{"lvl":"info","msg":"using configuration at default config path","path":"C:\\Users\\Кирилл\\AppData\\Local\\ngrok\\ngrok.yml","t":"2026-05-18T20:47:16.203614+03:00"}
+{"err":"\u003cnil\u003e","lvl":"info","msg":"open config file","path":"C:\\Users\\Кирилл\\AppData\\Local\\ngrok\\ngrok.yml","t":"2026-05-18T20:47:16.2084564+03:00"}
+{"enabled":false,"lvl":"info","msg":"FIPS 140 mode","t":"2026-05-18T20:47:16.2084564+03:00"}
+{"addr":"127.0.0.1:4040","allow_hosts":null,"lvl":"info","msg":"starting web service","obj":"web","t":"2026-05-18T20:47:16.2180928+03:00"}
+{"lvl":"info","msg":"client session established","obj":"tunnels.session","t":"2026-05-18T20:47:17.303174+03:00"}
+{"lvl":"info","msg":"tunnel session started","obj":"tunnels.session","t":"2026-05-18T20:47:17.3036784+03:00"}
+{"addr":"http://localhost:3000","lvl":"info","msg":"started tunnel","name":"command_line","obj":"tunnels","t":"2026-05-18T20:47:17.8675248+03:00","url":"https://uneradicative-marc-partway.ngrok-free.dev"}
+{"id":"a6b94804f698","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"84.32.99.88:51378","t":"2026-05-18T20:47:34.4021732+03:00"}
+{"err":"read EOF from remote peer","id":"1465d9efa185","lvl":"eror","msg":"session closed, starting reconnect loop","obj":"csess","t":"2026-05-18T21:02:23.3159458+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T21:02:25.7254847+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T21:02:26.5665735+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T21:02:27.9040673+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T21:02:30.237808+03:00"}
+{"err":"authentication failed: We do not allow agents to connect to ngrok from your IP address (5.166.125.101).\r\n\r\nERR_NGROK_9040\r\n","lvl":"eror","msg":"failed to reconnect session","obj":"tunnels.session","t":"2026-05-18T21:02:34.5786701+03:00"}
+{"clientid":"b71e67a7fe62057449ec0ed1b4fb55ea","id":"235d2570f9d6","lvl":"eror","msg":"heartbeat timeout, terminating session","obj":"csess","t":"2026-05-18T21:02:42.3153438+03:00"}
+{"lvl":"info","msg":"client session established","obj":"tunnels.session","t":"2026-05-18T21:02:53.2300814+03:00"}
+{"lvl":"info","msg":"tunnel session started","obj":"tunnels.session","t":"2026-05-18T21:02:53.2305872+03:00"}
