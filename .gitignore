@@ -21,3 +21,18 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# build artifacts
+tsconfig.tsbuildinfo
+
+# tunnel tools (временные файлы от настройки туннелей)
+ngrok.exe
+ngrok.zip
+cloudflared.exe
+deploy.zip
+main1
+*.txt
+!README.txt
+
+# temp session files
+start-dev.ps1

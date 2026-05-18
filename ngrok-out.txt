@@ -1,9 +1,0 @@
-{"lvl":"info","msg":"no configuration paths supplied","t":"2026-05-18T18:34:22.3389213+03:00"}
-{"lvl":"info","msg":"using configuration at default config path","path":"C:\\Users\\Кирилл\\AppData\\Local\\ngrok\\ngrok.yml","t":"2026-05-18T18:34:22.3557571+03:00"}
-{"err":"\u003cnil\u003e","lvl":"info","msg":"open config file","path":"C:\\Users\\Кирилл\\AppData\\Local\\ngrok\\ngrok.yml","t":"2026-05-18T18:34:22.3562843+03:00"}
-{"enabled":false,"lvl":"info","msg":"FIPS 140 mode","t":"2026-05-18T18:34:22.3570657+03:00"}
-{"addr":"127.0.0.1:4040","allow_hosts":null,"lvl":"info","msg":"starting web service","obj":"web","t":"2026-05-18T18:34:22.3666701+03:00"}
-{"lvl":"info","msg":"client session established","obj":"tunnels.session","t":"2026-05-18T18:34:23.6278652+03:00"}
-{"lvl":"info","msg":"tunnel session started","obj":"tunnels.session","t":"2026-05-18T18:34:23.6278652+03:00"}
-{"addr":"http://localhost:3000","lvl":"info","msg":"started tunnel","name":"command_line","obj":"tunnels","t":"2026-05-18T18:34:24.1407777+03:00","url":"https://uneradicative-marc-partway.ngrok-free.dev"}
-{"id":"74ee645c0450","l":"[::1]:3000","lvl":"info","msg":"join connections","obj":"join","r":"149.154.161.217:43866","t":"2026-05-18T18:34:42.3937918+03:00"}
