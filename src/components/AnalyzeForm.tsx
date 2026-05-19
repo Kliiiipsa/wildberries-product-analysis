@@ -151,7 +151,8 @@ export function AnalyzeForm() {
   if (mode === 'dashboard') {
     return (
       <div className="w-full">
-        {dashboardPhase === 'loading' && (
+        {/* First load: no data yet */}
+        {!dashboardData && dashboardPhase === 'loading' && (
           <div className="w-full max-w-xl mx-auto mt-14">
             <div className="flex items-center gap-3 mb-5">
               <Loader2 className="h-5 w-5 animate-spin text-blue-400 shrink-0" />
@@ -160,7 +161,7 @@ export function AnalyzeForm() {
           </div>
         )}
 
-        {dashboardPhase === 'error' && (
+        {!dashboardData && dashboardPhase === 'error' && (
           <div className="w-full max-w-lg mx-auto mt-14">
             <div className="flex items-start gap-2.5 rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400 mb-4">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -177,7 +178,8 @@ export function AnalyzeForm() {
           </div>
         )}
 
-        {dashboardPhase === 'loaded' && dashboardData && (
+        {/* Data available — keep showing even while refreshing */}
+        {dashboardData && (
           <DashboardPanel
             data={dashboardData}
             onBack={() => setMode('analysis')}
