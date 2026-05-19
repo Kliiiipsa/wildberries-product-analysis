@@ -29,6 +29,8 @@ export function AnalyzeForm() {
   const [dashboardPhase, setDashboardPhase] = useState<DashboardPhase>('idle');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardError, setDashboardError] = useState('');
+  const [dashboardProgress, setDashboardProgress] = useState(0);
+  const [dashboardStep, setDashboardStep] = useState('');
 
   // ── Core analysis function ──
   const startAnalysis = useCallback(async (trimmed: string) => {
@@ -123,6 +125,8 @@ export function AnalyzeForm() {
     setMode('dashboard');
     setDashboardPhase('loading');
     setDashboardError('');
+    setDashboardProgress(0);
+    setDashboardStep('');
 
     try {
       const res = await fetch('/api/dashboard', force ? { cache: 'no-store' } : {});
@@ -130,9 +134,40 @@ export function AnalyzeForm() {
         const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         throw new Error(json.error || `HTTP ${res.status}`);
       }
-      const data: DashboardData = await res.json();
-      setDashboardData(data);
-      setDashboardPhase('loaded');
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+            if (event.type === 'progress') {
+              setDashboardProgress(event.percent);
+              setDashboardStep(event.step);
+            } else if (event.type === 'done') {
+              setDashboardProgress(100);
+              setDashboardData(event.data as DashboardData);
+              setDashboardPhase('loaded');
+            } else if (event.type === 'error') {
+              setDashboardError(event.error);
+              setDashboardPhase('error');
+            }
+          } catch { /* skip malformed JSON */ }
+        }
+      }
     } catch (err) {
       setDashboardError(String(err));
       setDashboardPhase('error');
@@ -153,10 +188,18 @@ export function AnalyzeForm() {
       <div className="w-full">
         {/* First load: no data yet */}
         {!dashboardData && dashboardPhase === 'loading' && (
-          <div className="w-full max-w-xl mx-auto mt-14">
-            <div className="flex items-center gap-3 mb-5">
-              <Loader2 className="h-5 w-5 animate-spin text-blue-400 shrink-0" />
-              <span className="text-base text-slate-300">Загружаю товары менеджера...</span>
+          <div className="w-full max-w-sm mx-auto mt-20">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm text-slate-300 truncate pr-3">
+                {dashboardStep || 'Инициализация...'}
+              </span>
+              <span className="text-xs font-mono text-blue-400 shrink-0">{dashboardProgress}%</span>
+            </div>
+            <div className="h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
+                style={{ width: `${dashboardProgress}%` }}
+              />
             </div>
           </div>
         )}
