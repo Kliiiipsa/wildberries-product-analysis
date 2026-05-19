@@ -193,9 +193,9 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
     addToCartCount: number; views: number;
   }>();
 
+  // Strategy 1: Sales Funnel API — gives views + addToCart + orders + buyouts
   for (let i = 0; i < nmIds.length; i += 100) {
     if (i > 0) await delay(250);
-
     const batch = nmIds.slice(i, i + 100);
     try {
       const res = await wbFetch(
@@ -213,7 +213,8 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
 
       for (const prod of products) {
         const prodR = prod as Record<string, unknown>;
-        const nmId = Number(prodR.nmID ?? prodR.id ?? 0);
+        // WB API returns nmID (uppercase D) or nmId (lowercase d) depending on version
+        const nmId = Number(prodR.nmID ?? prodR.nmId ?? prodR.id ?? 0);
         if (!nmId) continue;
 
         const selected = ((prodR.statistic as Record<string, unknown>)?.selected ?? prodR) as Record<string, unknown>;
@@ -244,6 +245,38 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
       }
     } catch { continue; }
   }
+
+  // Strategy 2: Orders API fallback — used when funnel API returns nothing
+  // Fetches all seller orders once and counts per nmId
+  if (map.size === 0) {
+    try {
+      const res = await wbFetch(
+        `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${from}T00:00:00`,
+        { headers: { Authorization: token } },
+        20000
+      );
+      if (res.ok) {
+        const orders: Record<string, unknown>[] = await res.json();
+        const nmIdSet = new Set(nmIds);
+        const fromDate = new Date(`${from}T00:00:00`);
+        const toDate = new Date(`${to}T23:59:59`);
+        const byNm = new Map<number, number>();
+
+        for (const order of orders) {
+          const nmId = Number(order.nmId ?? order.nmID ?? 0);
+          if (!nmIdSet.has(nmId)) continue;
+          const d = new Date(String(order.date ?? order.lastChangeDate ?? ''));
+          if (d < fromDate || d > toDate) continue;
+          byNm.set(nmId, (byNm.get(nmId) ?? 0) + 1);
+        }
+
+        for (const [nmId, ordersCount] of byNm) {
+          map.set(nmId, { ordersCount, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 });
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
   return map;
 }
 

@@ -142,127 +142,131 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
         ))}
       </div>
 
-      {/* ── Table ── */}
-      <div className="rounded-2xl border border-slate-700/60 bg-slate-900/60 overflow-hidden backdrop-blur">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px]">
-            <thead className="border-b border-slate-700/60 bg-slate-800/40">
-              <tr>
-                <Th label="Товар" {...thProps} />
-                <Th label="Артикул" {...thProps} />
-                <Th label="Цена" col="priceSale" {...thProps} />
-                <Th label="Остаток" col="totalStock" {...thProps} />
-                <Th label="Выкуп 7д" col="buyoutPercent" {...thProps} />
-                <Th label="Заказы 7д" col="ordersCount" {...thProps} />
-                <Th label="Корзины 7д" col="addToCartCount" {...thProps} />
-                <Th label="Запас" {...thProps} />
-                <th className="px-3 py-2.5 w-20" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {sorted.map((p) => {
-                const weeklyBuyouts = p.ordersCount > 0 && p.buyoutPercent > 0
-                  ? p.ordersCount * (p.buyoutPercent / 100)
-                  : 0;
-                const stockWeeks = weeklyBuyouts > 0 ? Math.round(p.totalStock / weeklyBuyouts) : null;
-
-                return (
-                  <tr key={p.article} className="hover:bg-slate-800/25 transition-colors group">
-                    {/* Product */}
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <img
-                          src={p.photoUrl || getWBImageUrl(p.article)}
-                          alt=""
-                          className="h-10 w-10 rounded-lg object-cover bg-slate-800 shrink-0"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                        <div className="min-w-0">
-                          <div
-                            className="text-sm text-white font-medium truncate max-w-[190px] group-hover:text-blue-300 transition-colors"
-                            title={p.name}
-                          >
-                            {p.name || '—'}
-                          </div>
-                          <div className="text-xs text-slate-500 truncate max-w-[190px]">{p.brand}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Article */}
-                    <td className="px-3 py-3">
-                      <span className="text-xs font-mono text-slate-400">{p.article}</span>
-                    </td>
-
-                    {/* Price */}
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      <span className="text-sm font-semibold text-white">{formatRub(p.priceSale)}</span>
-                      {p.salePercent > 0 && (
-                        <span className="ml-1.5 text-xs font-medium text-rose-400">−{p.salePercent}%</span>
-                      )}
-                    </td>
-
-                    {/* Stock */}
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex text-xs font-medium px-1.5 py-0.5 rounded border ${stockBadge(p.totalStock)}`}>
-                        {p.totalStock.toLocaleString('ru-RU')} шт
-                      </span>
-                    </td>
-
-                    {/* Buyout % */}
-                    <td className="px-3 py-3">
-                      <span className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
-                        {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
-                      </span>
-                    </td>
-
-                    {/* Orders */}
-                    <td className="px-3 py-3">
-                      <span className="text-sm text-white tabular-nums">
-                        {p.ordersCount > 0 ? p.ordersCount : <span className="text-slate-600">—</span>}
-                      </span>
-                    </td>
-
-                    {/* Cart */}
-                    <td className="px-3 py-3">
-                      <span className="text-sm text-slate-400 tabular-nums">
-                        {p.addToCartCount > 0 ? p.addToCartCount : <span className="text-slate-600">—</span>}
-                      </span>
-                    </td>
-
-                    {/* Stock weeks */}
-                    <td className="px-3 py-3">
-                      {stockWeeks !== null ? (
-                        <span className={`text-xs font-medium ${stockWeeksClass(stockWeeks)}`}>
-                          ~{stockWeeks} нед
-                        </span>
-                      ) : (
-                        <span className="text-slate-700 text-xs">—</span>
-                      )}
-                    </td>
-
-                    {/* Analyze button */}
-                    <td className="px-3 py-3">
-                      <button
-                        onClick={() => onAnalyze(p.article)}
-                        className="flex items-center gap-1 text-xs text-slate-600 hover:text-blue-400 transition-colors whitespace-nowrap group-hover:text-slate-400"
-                      >
-                        <BarChart2 className="h-3.5 w-3.5 shrink-0" />
-                        Анализ
-                      </button>
-                    </td>
+      {/* ── Table — breaks out to full viewport width ── */}
+      <div style={{ width: '100vw', position: 'relative', left: '50%', transform: 'translateX(-50%)' }}>
+        <div className="px-3 sm:px-6">
+          <div className="max-w-screen-2xl mx-auto rounded-2xl border border-slate-700/60 bg-slate-900/60 overflow-hidden backdrop-blur">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[960px]">
+                <thead className="border-b border-slate-700/60 bg-slate-800/40">
+                  <tr>
+                    <Th label="Товар" {...thProps} />
+                    <Th label="Артикул" {...thProps} />
+                    <Th label="Цена" col="priceSale" {...thProps} />
+                    <Th label="Остаток" col="totalStock" {...thProps} />
+                    <Th label="Выкуп 7д" col="buyoutPercent" {...thProps} />
+                    <Th label="Заказы 7д" col="ordersCount" {...thProps} />
+                    <Th label="Корзины 7д" col="addToCartCount" {...thProps} />
+                    <Th label="Запас" {...thProps} />
+                    <th className="px-3 py-2.5 w-20" />
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {sorted.map((p) => {
+                    const weeklyBuyouts = p.ordersCount > 0 && p.buyoutPercent > 0
+                      ? p.ordersCount * (p.buyoutPercent / 100)
+                      : 0;
+                    const stockWeeks = weeklyBuyouts > 0 ? Math.round(p.totalStock / weeklyBuyouts) : null;
 
-        {sorted.length === 0 && (
-          <div className="text-center text-slate-600 py-14 text-sm">
-            Нет товаров с ярлыком &quot;{data.sellerLabel}&quot;
+                    return (
+                      <tr key={p.article} className="hover:bg-slate-800/25 transition-colors group">
+                        {/* Product */}
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <img
+                              src={p.photoUrl || getWBImageUrl(p.article)}
+                              alt=""
+                              className="h-10 w-10 rounded-lg object-cover bg-slate-800 shrink-0"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                            <div className="min-w-0">
+                              <div
+                                className="text-sm text-white font-medium truncate max-w-[220px] group-hover:text-blue-300 transition-colors"
+                                title={p.name}
+                              >
+                                {p.name || '—'}
+                              </div>
+                              <div className="text-xs text-slate-500 truncate max-w-[220px]">{p.brand}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Article */}
+                        <td className="px-3 py-3">
+                          <span className="text-xs font-mono text-slate-400">{p.article}</span>
+                        </td>
+
+                        {/* Price */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <span className="text-sm font-semibold text-white">{formatRub(p.priceSale)}</span>
+                          {p.salePercent > 0 && (
+                            <span className="ml-1.5 text-xs font-medium text-rose-400">−{p.salePercent}%</span>
+                          )}
+                        </td>
+
+                        {/* Stock */}
+                        <td className="px-3 py-3">
+                          <span className={`inline-flex text-xs font-medium px-1.5 py-0.5 rounded border ${stockBadge(p.totalStock)}`}>
+                            {p.totalStock.toLocaleString('ru-RU')} шт
+                          </span>
+                        </td>
+
+                        {/* Buyout % */}
+                        <td className="px-3 py-3">
+                          <span className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
+                            {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
+                          </span>
+                        </td>
+
+                        {/* Orders */}
+                        <td className="px-3 py-3">
+                          <span className="text-sm text-white tabular-nums">
+                            {p.ordersCount > 0 ? p.ordersCount : <span className="text-slate-600">—</span>}
+                          </span>
+                        </td>
+
+                        {/* Cart */}
+                        <td className="px-3 py-3">
+                          <span className="text-sm text-slate-400 tabular-nums">
+                            {p.addToCartCount > 0 ? p.addToCartCount : <span className="text-slate-600">—</span>}
+                          </span>
+                        </td>
+
+                        {/* Stock weeks */}
+                        <td className="px-3 py-3">
+                          {stockWeeks !== null ? (
+                            <span className={`text-xs font-medium ${stockWeeksClass(stockWeeks)}`}>
+                              ~{stockWeeks} нед
+                            </span>
+                          ) : (
+                            <span className="text-slate-700 text-xs">—</span>
+                          )}
+                        </td>
+
+                        {/* Analyze button */}
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => onAnalyze(p.article)}
+                            className="flex items-center gap-1 text-xs text-slate-600 hover:text-blue-400 transition-colors whitespace-nowrap group-hover:text-slate-400"
+                          >
+                            <BarChart2 className="h-3.5 w-3.5 shrink-0" />
+                            Анализ
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {sorted.length === 0 && (
+              <div className="text-center text-slate-600 py-14 text-sm">
+                Нет товаров с ярлыком &quot;{data.sellerLabel}&quot;
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
