@@ -54,19 +54,16 @@ export async function GET(_req: NextRequest) {
       }, { status: 404 });
     }
 
-    // Step 2: Fetch all cards, filter client-side by tag.
-    // The tagIDs filter in the cards/list API is unreliable — fetching all
-    // and checking card.tags[] is the only guaranteed approach.
+    // Step 2: Get cards with tagIDs filter + offset-based pagination
     const allCards: Record<string, unknown>[] = [];
-    let cursor: { updatedAt?: string; nmID?: number } | null = null;
 
-    for (let page = 0; page < 20; page++) {
-      if (page > 0) await delay(200);
+    for (let offset = 0; offset < 2000; offset += 100) {
+      if (offset > 0) await delay(200);
 
       const body: Record<string, unknown> = {
         settings: {
-          cursor: { limit: 100, ...(cursor ?? {}) },
-          filter: { withPhoto: -1 },
+          cursor: { limit: 100, offset },
+          filter: { tagIDs: [tag.id], withPhoto: -1 },
         },
       };
 
@@ -79,17 +76,9 @@ export async function GET(_req: NextRequest) {
       if (!cardsRes.ok) break;
       const cardsJson = await cardsRes.json();
       const cards: Record<string, unknown>[] = cardsJson?.cards ?? [];
+      allCards.push(...cards);
 
-      for (const card of cards) {
-        const cardTags = Array.isArray(card.tags)
-          ? (card.tags as Array<{ id: number }>)
-          : [];
-        if (cardTags.some((t) => t.id === tag.id)) allCards.push(card);
-      }
-
-      const newCursor = cardsJson?.cursor as { updatedAt?: string; nmID?: number } | null;
-      if (!newCursor || cards.length < 100) break;
-      cursor = { updatedAt: newCursor.updatedAt, nmID: newCursor.nmID };
+      if (cards.length < 100) break;
     }
 
     if (allCards.length === 0) {
