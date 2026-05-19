@@ -98,29 +98,21 @@ export async function GET(_req: NextRequest) {
 
     const nmIds = allCards.map((c) => Number(c.nmID));
 
-    // Yesterday
-    const yd = new Date();
-    yd.setDate(yd.getDate() - 1);
-    const yesterday = yd.toISOString().split('T')[0];
-
-    // Step 3: prices + stats(30d) + stocks + stats(yesterday) in parallel
-    const [pricesResult, statsResult, stocksResult, statsYestResult] = await Promise.allSettled([
+    // Step 3: prices + stats(30d) + stocks in parallel
+    const [pricesResult, statsResult, stocksResult] = await Promise.allSettled([
       fetchAllPrices(token),
       fetchBatchStats(nmIds, token, from, to),
       fetchBatchStocks(nmIds, token),
-      fetchNMReport(nmIds, token, yesterday, yesterday),
     ]);
 
     const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map<number, { priceSale: number; priceBasic: number; salePercent: number }>();
     const statsMap = statsResult.status === 'fulfilled' ? statsResult.value : new Map<number, StatEntry>();
     const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
-    const statsYestMap = statsYestResult.status === 'fulfilled' ? statsYestResult.value : new Map<number, StatEntry>();
 
     const products: DashboardProduct[] = allCards.map((card) => {
       const nmId = Number(card.nmID);
       const prices = pricesMap.get(nmId);
       const stats = statsMap.get(nmId);
-      const statsYest = statsYestMap.get(nmId);
       const stock = stocksMap.get(nmId) ?? 0;
 
       const photos = Array.isArray(card.photos) ? card.photos as Record<string, string>[] : [];
@@ -140,9 +132,9 @@ export async function GET(_req: NextRequest) {
         buyoutPercent: stats?.buyoutPercent ?? 0,
         addToCartCount: stats?.addToCartCount ?? 0,
         views: stats?.views ?? 0,
-        ordersYesterday: statsYest?.ordersCount ?? 0,
-        addToCartYesterday: statsYest?.addToCartCount ?? 0,
-        buyoutPercentYesterday: statsYest?.buyoutPercent ?? 0,
+        ordersYesterday: 0,
+        addToCartYesterday: 0,
+        buyoutPercentYesterday: 0,
       };
     });
 
@@ -185,7 +177,7 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
             timezone: 'Europe/Moscow',
           }),
         },
-        15000
+        5000
       );
 
       if (!res.ok) break;
@@ -237,9 +229,9 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
   const map = new Map<number, StatEntry>();
 
   // Strategy 2: individual funnel calls (proven to work for single nmId in wildberries.ts)
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 12;
   for (let i = 0; i < nmIds.length; i += CONCURRENCY) {
-    if (i > 0) await delay(150);
+    if (i > 0) await delay(100);
     const batch = nmIds.slice(i, i + CONCURRENCY);
 
     await Promise.all(batch.map(async (nmId) => {
@@ -256,7 +248,7 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
               offset: 0,
             }),
           },
-          8000
+          5000
         );
         if (!res.ok) return;
         const json = await res.json();
