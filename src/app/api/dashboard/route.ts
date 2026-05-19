@@ -9,6 +9,24 @@ export const maxDuration = 30;
 // ns2026 → Кирилл (configured via SELLER_LABEL env var)
 const SELLER_LABEL = process.env.SELLER_LABEL || 'Кирилл';
 
+// ── Rate-limit helpers ────────────────────────────────────────────────────────
+
+function delay(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+// Wraps fetch: on HTTP 429 waits 5 s and retries once.
+// Sharing a WB_API_TOKEN with the /analyze route means the dashboard
+// must stay gentle to avoid starving simultaneous analysis requests.
+async function wbFetch(url: string, opts: RequestInit, timeoutMs = 10000): Promise<Response> {
+  const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) });
+  if (res.status === 429) {
+    await delay(5000);
+    return fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) });
+  }
+  return res;
+}
+
 export async function GET(_req: NextRequest) {
   const token = process.env.WB_API_TOKEN || '';
   if (!token) {
@@ -17,10 +35,9 @@ export async function GET(_req: NextRequest) {
 
   try {
     // Step 1: Get all WB tags → find the tag matching SELLER_LABEL
-    const tagsRes = await fetch('https://content-api.wildberries.ru/content/v2/tags', {
+    const tagsRes = await wbFetch('https://content-api.wildberries.ru/content/v2/tags', {
       headers: { Authorization: token },
-      signal: AbortSignal.timeout(8000),
-    });
+    }, 8000);
 
     if (!tagsRes.ok) {
       return NextResponse.json({ error: `Tags API: HTTP ${tagsRes.status}` }, { status: 500 });
@@ -42,6 +59,8 @@ export async function GET(_req: NextRequest) {
     let cursor: { updatedAt?: string; nmID?: number } | null = null;
 
     for (let page = 0; page < 20; page++) {
+      if (page > 0) await delay(200);
+
       const body: Record<string, unknown> = {
         settings: {
           cursor: { limit: 100, ...(cursor ?? {}) },
@@ -49,11 +68,10 @@ export async function GET(_req: NextRequest) {
         },
       };
 
-      const cardsRes = await fetch('https://content-api.wildberries.ru/content/v2/get/cards/list', {
+      const cardsRes = await wbFetch('https://content-api.wildberries.ru/content/v2/get/cards/list', {
         method: 'POST',
         headers: { Authorization: token, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(10000),
       });
 
       if (!cardsRes.ok) break;
@@ -140,9 +158,10 @@ async function fetchAllPrices(token: string) {
   const BASE = 'https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter';
 
   for (let offset = 0; offset < 10000; offset += 1000) {
-    const res = await fetch(`${BASE}?limit=1000&offset=${offset}`, {
+    if (offset > 0) await delay(200);
+
+    const res = await wbFetch(`${BASE}?limit=1000&offset=${offset}`, {
       headers: { Authorization: token },
-      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) break;
     const json = await res.json();
@@ -178,16 +197,18 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
   }>();
 
   for (let i = 0; i < nmIds.length; i += 100) {
+    if (i > 0) await delay(250);
+
     const batch = nmIds.slice(i, i + 100);
     try {
-      const res = await fetch(
+      const res = await wbFetch(
         'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',
         {
           method: 'POST',
           headers: { Authorization: token, 'Content-Type': 'application/json' },
           body: JSON.stringify({ selectedPeriod: { start: from, end: to }, nmIds: batch, limit: 100, offset: 0 }),
-          signal: AbortSignal.timeout(15000),
-        }
+        },
+        15000
       );
       if (!res.ok) continue;
       const json = await res.json();
@@ -234,16 +255,18 @@ async function fetchBatchStocks(nmIds: number[], token: string) {
   const bearerToken = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 
   for (let i = 0; i < nmIds.length; i += 100) {
+    if (i > 0) await delay(250);
+
     const batch = nmIds.slice(i, i + 100);
     try {
-      const res = await fetch(
+      const res = await wbFetch(
         'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses',
         {
           method: 'POST',
           headers: { Authorization: bearerToken, 'Content-Type': 'application/json' },
           body: JSON.stringify({ nmIds: batch, limit: 10000, offset: 0 }),
-          signal: AbortSignal.timeout(15000),
-        }
+        },
+        15000
       );
       if (!res.ok) continue;
       const json = await res.json();
