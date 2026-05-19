@@ -38,12 +38,10 @@ function stockWeeksClass(weeks: number) {
   return 'text-slate-400';
 }
 
-function formatPeriodDate(iso: string) {
-  const months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
-  const parts = iso.split('-');
-  const m = parseInt(parts[1], 10);
-  const d = parseInt(parts[2], 10);
-  return `${d} ${months[m - 1]}`;
+function formatPeriodTime(isoDatetime: string) {
+  // "2026-05-19 15:00:00" → "15:00"
+  const timePart = isoDatetime.split(' ')[1];
+  return timePart ? timePart.substring(0, 5) : '';
 }
 
 function SortIcon({ col, active, dir }: { col: SortKey; active: boolean; dir: SortDir }) {
@@ -102,9 +100,8 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
 
   const thProps = { sortKey, sortDir, onSort: handleSort };
 
-  const periodLabel = data.periodFrom
-    ? `сегодня ${formatPeriodDate(data.periodFrom)}`
-    : 'сегодня';
+  const endTime = formatPeriodTime(data.periodTo);
+  const periodLabel = endTime ? `сегодня 00:00–${endTime} МСК` : 'сегодня';
 
   return (
     <div className="w-full mt-6">

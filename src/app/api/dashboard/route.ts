@@ -27,6 +27,27 @@ async function wbFetch(url: string, opts: RequestInit, timeoutMs = 10000): Promi
   return res;
 }
 
+// Форматирует Date (UTC-поля = МСК время) → "YYYY-MM-DD HH:00:00"
+function fmtMsk(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:00:00`;
+}
+
+function parseStatEntry(p: Record<string, unknown> | undefined): StatEntry {
+  if (!p) return { ordersCount: 0, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 };
+  const ordersCount = Number(p.ordersCount ?? 0);
+  const buyoutsCount = Number(p.buyoutsCount ?? 0);
+  const conv = p.conversions as Record<string, unknown> | undefined;
+  const buyoutsPercent = Number(conv?.buyoutsPercent ?? 0);
+  return {
+    ordersCount,
+    buyoutsCount,
+    buyoutPercent: buyoutsPercent > 0 ? buyoutsPercent : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0),
+    addToCartCount: Number(p.addToCartCount ?? 0),
+    views: Number(p.openCardCount ?? 0),
+  };
+}
+
 export async function GET(_req: NextRequest) {
   const token = process.env.WB_API_TOKEN || '';
   if (!token) {
@@ -34,7 +55,7 @@ export async function GET(_req: NextRequest) {
   }
 
   try {
-    // Step 1: Get all WB tags → find the tag matching SELLER_LABEL
+    // Step 1: ярлыки
     const tagsRes = await wbFetch('https://content-api.wildberries.ru/content/v2/tags', {
       headers: { Authorization: token },
     }, 8000);
@@ -50,70 +71,83 @@ export async function GET(_req: NextRequest) {
     if (!tag) {
       const available = tags.map((t) => `"${t.name}"`).join(', ');
       return NextResponse.json({
-        error: `Ярлык "${SELLER_LABEL}" не найден в WB кабинете. Доступные ярлыки: ${available || 'нет'}`,
+        error: `Ярлык "${SELLER_LABEL}" не найден в WB кабинете. Доступные: ${available || 'нет'}`,
       }, { status: 404 });
     }
 
-    // Step 2: Get cards with tagIDs filter + offset-based pagination
+    // Step 2: карточки с пагинацией
     const allCards: Record<string, unknown>[] = [];
 
     for (let offset = 0; offset < 2000; offset += 100) {
       if (offset > 0) await delay(200);
 
-      const body: Record<string, unknown> = {
-        settings: {
-          cursor: { limit: 100, offset },
-          filter: { tagIDs: [tag.id], withPhoto: -1 },
-        },
-      };
-
       const cardsRes = await wbFetch('https://content-api.wildberries.ru/content/v2/get/cards/list', {
         method: 'POST',
         headers: { Authorization: token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          settings: {
+            cursor: { limit: 100, offset },
+            filter: { tagIDs: [tag.id], withPhoto: -1 },
+          },
+        }),
       });
 
       if (!cardsRes.ok) break;
-      const cardsJson = await cardsRes.json();
-      const cards: Record<string, unknown>[] = cardsJson?.cards ?? [];
+      const cards: Record<string, unknown>[] = (await cardsRes.json())?.cards ?? [];
       allCards.push(...cards);
-
       if (cards.length < 100) break;
     }
 
-    // Сегодня и вчера (московское время UTC+3)
-    const nowMsk = new Date(Date.now() + 3 * 60 * 60 * 1000);
-    const today = nowMsk.toISOString().split('T')[0];
-    const ydMsk = new Date(nowMsk);
-    ydMsk.setDate(ydMsk.getDate() - 1);
-    const yesterday = ydMsk.toISOString().split('T')[0];
+    // Московское время (UTC+3)
+    // Данные обновляются раз в час → end = текущий полный час МСК
+    const MSK = 3 * 60 * 60 * 1000;
+    const nowMsk = new Date(Date.now() + MSK);
+
+    const beginMsk = new Date(nowMsk.getTime());
+    beginMsk.setUTCHours(0, 0, 0, 0); // 00:00 МСК сегодня
+
+    const endMsk = new Date(nowMsk.getTime());
+    endMsk.setUTCMinutes(0, 0, 0); // текущий полный час
+    if (endMsk <= beginMsk) endMsk.setUTCHours(1, 0, 0, 0); // минимум 01:00
+
+    const beginStr = fmtMsk(beginMsk); // "2026-05-19 00:00:00"
+    const endStr = fmtMsk(endMsk);     // "2026-05-19 15:00:00"
 
     if (allCards.length === 0) {
-      const data: DashboardData = {
-        products: [],
-        sellerLabel: SELLER_LABEL,
-        tagId: tag.id,
+      return NextResponse.json({
+        products: [], sellerLabel: SELLER_LABEL, tagId: tag.id,
         fetchedAt: new Date().toLocaleString('ru-RU'),
-        periodFrom: today,
-        periodTo: today,
-      };
-      return NextResponse.json(data);
+        periodFrom: beginStr, periodTo: endStr,
+      } as DashboardData);
     }
 
     const nmIds = allCards.map((c) => Number(c.nmID));
 
-    // Step 3: prices + stats(сегодня) + stocks + stats(вчера) в параллель
-    const [pricesResult, statsResult, stocksResult, statsYestResult] = await Promise.allSettled([
+    // Step 3: цены + статистика (с previousPeriod за вчера) + остатки — параллельно
+    const [pricesResult, nmDualResult, stocksResult] = await Promise.allSettled([
       fetchAllPrices(token),
-      fetchBatchStats(nmIds, token, today, today),
+      fetchNMReportDual(nmIds, token, beginStr, endStr),
       fetchBatchStocks(nmIds, token),
-      fetchNMReport(nmIds, token, yesterday, yesterday),
     ]);
 
     const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map<number, { priceSale: number; priceBasic: number; salePercent: number }>();
-    const statsMap = statsResult.status === 'fulfilled' ? statsResult.value : new Map<number, StatEntry>();
+    const nmDualMap = nmDualResult.status === 'fulfilled' ? nmDualResult.value : new Map<number, { selected: StatEntry; previous: StatEntry }>();
     const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
-    const statsYestMap = statsYestResult.status === 'fulfilled' ? statsYestResult.value : new Map<number, StatEntry>();
+
+    // Извлекаем today и yesterday из одного ответа NM Report
+    let statsMap = new Map<number, StatEntry>();
+    let statsYestMap = new Map<number, StatEntry>();
+
+    if (nmDualMap.size > 0) {
+      for (const [nmId, dual] of nmDualMap) {
+        statsMap.set(nmId, dual.selected);
+        statsYestMap.set(nmId, dual.previous);
+      }
+    } else {
+      // Резерв: индивидуальные вызовы воронки (сегодня, без данных за вчера)
+      const todayDate = beginStr.split(' ')[0];
+      statsMap = await fetchStatsFallback(nmIds, token, todayDate);
+    }
 
     const products: DashboardProduct[] = allCards.map((card) => {
       const nmId = Number(card.nmID);
@@ -145,17 +179,13 @@ export async function GET(_req: NextRequest) {
       };
     });
 
-    const data: DashboardData = {
-      products,
-      sellerLabel: SELLER_LABEL,
-      tagId: tag.id,
+    return NextResponse.json({
+      products, sellerLabel: SELLER_LABEL, tagId: tag.id,
       fetchedAt: new Date().toLocaleString('ru-RU'),
-      periodFrom: today,
-      periodTo: today,
-    };
-
-    return NextResponse.json(data, {
-      headers: { 'Cache-Control': 'private, max-age=1500' },
+      periodFrom: beginStr,
+      periodTo: endStr,
+    } as DashboardData, {
+      headers: { 'Cache-Control': 'private, max-age=1800' },
     });
 
   } catch (err) {
@@ -163,10 +193,10 @@ export async function GET(_req: NextRequest) {
   }
 }
 
-// ── NM Report v2: batch stats endpoint designed for multiple nmIDs ─────────────
+// ── NM Report v2: один запрос → сегодня (selectedPeriod) + вчера (previousPeriod) ──
 
-async function fetchNMReport(nmIds: number[], token: string, from: string, to: string) {
-  const map = new Map<number, StatEntry>();
+async function fetchNMReportDual(nmIds: number[], token: string, begin: string, end: string) {
+  const map = new Map<number, { selected: StatEntry; previous: StatEntry }>();
 
   for (let page = 1; page <= 20; page++) {
     if (page > 1) await delay(300);
@@ -179,12 +209,13 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
           headers: { Authorization: token, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nmIds,
-            period: { begin: from, end: to },
+            period: { begin, end },
+            timezone: 'Europe/Moscow',
             page,
             limit: 100,
           }),
         },
-        5000
+        8000
       );
 
       if (!res.ok) break;
@@ -196,27 +227,10 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
       for (const card of cards) {
         const nmId = Number(card.nmID);
         if (!nmId) continue;
-
-        const selected = (
-          (card.statistics as Record<string, unknown>)?.selectedPeriod
-        ) as Record<string, unknown> | undefined;
-
-        if (!selected) continue;
-
-        const ordersCount = Number(selected.ordersCount ?? 0);
-        const buyoutsCount = Number(selected.buyoutsCount ?? 0);
-        const conversions = selected.conversions as Record<string, unknown> | undefined;
-        const buyoutsPercent = Number(conversions?.buyoutsPercent ?? 0);
-        const buyoutPercent = buyoutsPercent > 0
-          ? buyoutsPercent
-          : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0);
-
+        const stats = card.statistics as Record<string, unknown> | undefined;
         map.set(nmId, {
-          ordersCount,
-          buyoutsCount,
-          buyoutPercent,
-          addToCartCount: Number(selected.addToCartCount ?? 0),
-          views: Number(selected.openCardCount ?? 0),
+          selected: parseStatEntry(stats?.selectedPeriod as Record<string, unknown> | undefined),
+          previous: parseStatEntry(stats?.previousPeriod as Record<string, unknown> | undefined),
         });
       }
 
@@ -227,34 +241,22 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
   return map;
 }
 
-// ── Batch stats: NM Report → individual funnel → orders API ──────────────────
+// ── Резервный вариант: индивидуальные вызовы воронки → orders API ──
 
-async function fetchBatchStats(nmIds: number[], token: string, from: string, to: string) {
-  // Strategy 1: NM Report v2 (batch endpoint, fastest path)
-  const nmMap = await fetchNMReport(nmIds, token, from, to);
-  if (nmMap.size > 0) return nmMap;
-
+async function fetchStatsFallback(nmIds: number[], token: string, dateStr: string) {
   const map = new Map<number, StatEntry>();
-
-  // Strategy 2: individual funnel calls (proven to work for single nmId in wildberries.ts)
   const CONCURRENCY = 12;
+
   for (let i = 0; i < nmIds.length; i += CONCURRENCY) {
     if (i > 0) await delay(100);
-    const batch = nmIds.slice(i, i + CONCURRENCY);
-
-    await Promise.all(batch.map(async (nmId) => {
+    await Promise.all(nmIds.slice(i, i + CONCURRENCY).map(async (nmId) => {
       try {
         const res = await wbFetch(
           'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',
           {
             method: 'POST',
             headers: { Authorization: token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              selectedPeriod: { start: from, end: to },
-              nmIds: [nmId],
-              limit: 10,
-              offset: 0,
-            }),
+            body: JSON.stringify({ selectedPeriod: { start: dateStr, end: dateStr }, nmIds: [nmId], limit: 10, offset: 0 }),
           },
           5000
         );
@@ -263,9 +265,7 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
         const prod = json?.data?.products?.[0] as Record<string, unknown> | undefined;
         if (!prod) return;
 
-        const selected = (
-          (prod.statistic as Record<string, unknown>)?.selected ?? prod
-        ) as Record<string, unknown>;
+        const selected = ((prod.statistic as Record<string, unknown>)?.selected ?? prod) as Record<string, unknown>;
         const metrics = (selected.metrics as Record<string, unknown>) ?? selected;
         const convObj = selected.conversions as Record<string, unknown> | null | undefined;
 
@@ -281,12 +281,10 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
         const buyoutPct = Number(convObj?.buyoutPercent ?? convObj?.buyoutsPercent ?? 0);
         const rawBuyouts = g('buyoutCount', 'buyoutsCount');
         const buyoutsCount = rawBuyouts > 0 ? rawBuyouts : (buyoutPct > 0 ? Math.round(ordersCount * buyoutPct / 100) : 0);
-        const buyoutPercent = buyoutPct > 0 ? buyoutPct : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0);
 
         map.set(nmId, {
-          ordersCount,
-          buyoutsCount,
-          buyoutPercent,
+          ordersCount, buyoutsCount,
+          buyoutPercent: buyoutPct > 0 ? buyoutPct : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0),
           addToCartCount: g('cartCount', 'addToCartCount'),
           views: g('views', 'viewsCount'),
         });
@@ -296,18 +294,18 @@ async function fetchBatchStats(nmIds: number[], token: string, from: string, to:
 
   if (map.size > 0) return map;
 
-  // Strategy 3: orders API (counts only, no buyout/cart data)
+  // orders API как последний резерв
   try {
     const res = await wbFetch(
-      `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${from}T00:00:00`,
+      `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${dateStr}T00:00:00`,
       { headers: { Authorization: token } },
-      20000
+      15000
     );
     if (res.ok) {
       const orders: Record<string, unknown>[] = await res.json();
       const nmIdSet = new Set(nmIds);
-      const fromDate = new Date(`${from}T00:00:00`);
-      const toDate = new Date(`${to}T23:59:59`);
+      const fromDate = new Date(`${dateStr}T00:00:00`);
+      const toDate = new Date(`${dateStr}T23:59:59`);
       const byNm = new Map<number, number>();
 
       for (const order of orders) {
