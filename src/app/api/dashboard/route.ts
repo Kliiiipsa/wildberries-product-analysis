@@ -27,6 +27,11 @@ async function wbFetch(url: string, opts: RequestInit, timeoutMs = 10000): Promi
   return res;
 }
 
+// seller-analytics-api требует Bearer-префикс
+function bearer(token: string) {
+  return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+}
+
 // Форматирует Date (UTC-поля = МСК время) → "YYYY-MM-DD HH:00:00"
 function fmtMsk(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
@@ -211,7 +216,7 @@ async function fetchNMReportDual(nmIds: number[], token: string, begin: string, 
         'https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail',
         {
           method: 'POST',
-          headers: { Authorization: token, 'Content-Type': 'application/json' },
+          headers: { Authorization: bearer(token), 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nmIds,
             period: { begin, end },
@@ -260,7 +265,7 @@ async function fetchStatsFallback(nmIds: number[], token: string, dateStr: strin
           'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',
           {
             method: 'POST',
-            headers: { Authorization: token, 'Content-Type': 'application/json' },
+            headers: { Authorization: bearer(token), 'Content-Type': 'application/json' },
             body: JSON.stringify({ selectedPeriod: { start: dateStr, end: dateStr }, nmIds: [nmId], limit: 10, offset: 0 }),
           },
           5000
@@ -369,7 +374,7 @@ async function fetchAllPrices(token: string) {
 
 async function fetchBatchStocks(nmIds: number[], token: string) {
   const map = new Map<number, number>();
-  const bearerToken = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  const bearerToken = bearer(token);
 
   for (let i = 0; i < nmIds.length; i += 100) {
     if (i > 0) await delay(250);
