@@ -15,7 +15,7 @@ interface DashboardPanelProps {
   isRefreshing?: boolean;
 }
 
-type SortKey = 'name' | 'priceSale' | 'totalStock' | 'buyoutPercent' | 'ordersCount' | 'addToCartCount';
+type SortKey = 'name' | 'priceSale' | 'totalStock' | 'buyoutPercent' | 'ordersCount';
 type SortDir = 'asc' | 'desc';
 
 function stockBadge(stock: number) {
@@ -163,9 +163,8 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                     <Th label="Артикул" {...thProps} />
                     <Th label="Цена" col="priceSale" {...thProps} />
                     <Th label="Остаток" col="totalStock" {...thProps} />
-                    <Th label="Конверсия" col="buyoutPercent" {...thProps} />
+                    <Th label="Выкуп 30 дн" col="buyoutPercent" {...thProps} />
                     <Th label="Заказы сегодня" col="ordersCount" {...thProps} />
-                    <Th label="Корзины сегодня" col="addToCartCount" {...thProps} />
                     <Th label="Запас" {...thProps} />
                     <th className="px-3 py-2.5 w-20" />
                   </tr>
@@ -245,20 +244,6 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                             {p.hasYesterdayData && (
                               <div className="text-xs text-slate-600 mt-0.5">
                                 {p.ordersYesterday > 0 ? `${p.ordersYesterday} вчера` : '— вчера'}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Cart */}
-                        <td className="px-3 py-3">
-                          <div className="tabular-nums">
-                            <div className="text-sm text-slate-400">
-                              {p.addToCartCount > 0 ? p.addToCartCount : <span className="text-slate-600">—</span>}
-                            </div>
-                            {p.hasYesterdayData && (
-                              <div className="text-xs text-slate-600 mt-0.5">
-                                {p.addToCartYesterday > 0 ? `${p.addToCartYesterday} вчера` : '— вчера'}
                               </div>
                             )}
                           </div>
