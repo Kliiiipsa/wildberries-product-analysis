@@ -38,6 +38,14 @@ function stockWeeksClass(weeks: number) {
   return 'text-slate-400';
 }
 
+function formatPeriodDate(iso: string) {
+  const months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  const parts = iso.split('-');
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  return `${d} ${months[m - 1]}`;
+}
+
 function SortIcon({ col, active, dir }: { col: SortKey; active: boolean; dir: SortDir }) {
   if (!active) return <ChevronsUpDown className="h-3 w-3 text-slate-700 ml-0.5 shrink-0" />;
   return dir === 'asc'
@@ -94,6 +102,10 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
 
   const thProps = { sortKey, sortDir, onSort: handleSort };
 
+  const periodLabel = data.periodFrom && data.periodTo
+    ? `${formatPeriodDate(data.periodFrom)} – ${formatPeriodDate(data.periodTo)}`
+    : '30 дней';
+
   return (
     <div className="w-full mt-6">
       {/* ── Header ── */}
@@ -112,7 +124,7 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
           <span className="text-slate-500 text-sm">— {data.sellerLabel}</span>
         </div>
         <div className="flex items-center gap-4 ml-auto text-sm text-slate-500">
-          <span className="hidden sm:inline text-xs">обновлено {data.fetchedAt}</span>
+          <span className="hidden sm:inline text-xs">{periodLabel} · обновлено {data.fetchedAt}</span>
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
@@ -128,7 +140,7 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
       <div className="flex flex-wrap gap-2.5 mb-5">
         {[
           { label: 'Товаров', value: String(data.products.length) },
-          { label: 'Заказов / 7д', value: String(totalOrders) },
+          { label: 'Заказов / 30д', value: String(totalOrders) },
           { label: 'Остаток', value: `${totalStock.toLocaleString('ru-RU')} шт` },
           { label: 'Ср. выкуп', value: avgBuyout > 0 ? `${avgBuyout.toFixed(1)}%` : '—' },
         ].map(({ label, value }) => (
@@ -154,18 +166,20 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                     <Th label="Артикул" {...thProps} />
                     <Th label="Цена" col="priceSale" {...thProps} />
                     <Th label="Остаток" col="totalStock" {...thProps} />
-                    <Th label="Выкуп 7д" col="buyoutPercent" {...thProps} />
-                    <Th label="Заказы 7д" col="ordersCount" {...thProps} />
-                    <Th label="Корзины 7д" col="addToCartCount" {...thProps} />
+                    <Th label="Выкуп 30д" col="buyoutPercent" {...thProps} />
+                    <Th label="Заказы 30д" col="ordersCount" {...thProps} />
+                    <Th label="Корзины 30д" col="addToCartCount" {...thProps} />
                     <Th label="Запас" {...thProps} />
                     <th className="px-3 py-2.5 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {sorted.map((p) => {
-                    const weeklyBuyouts = p.ordersCount > 0 && p.buyoutPercent > 0
+                    // Stock weeks based on 30-day buyout rate converted to weekly
+                    const buyoutsIn30d = p.ordersCount > 0 && p.buyoutPercent > 0
                       ? p.ordersCount * (p.buyoutPercent / 100)
                       : 0;
+                    const weeklyBuyouts = buyoutsIn30d * 7 / 30;
                     const stockWeeks = weeklyBuyouts > 0 ? Math.round(p.totalStock / weeklyBuyouts) : null;
 
                     return (
@@ -213,23 +227,40 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
 
                         {/* Buyout % */}
                         <td className="px-3 py-3">
-                          <span className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
-                            {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
-                          </span>
+                          <div>
+                            <div className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
+                              {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
+                            </div>
+                            {p.buyoutPercentYesterday > 0 && (
+                              <div className="text-xs text-slate-600 mt-0.5">
+                                {p.buyoutPercentYesterday.toFixed(1)}% вчера
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         {/* Orders */}
                         <td className="px-3 py-3">
-                          <span className="text-sm text-white tabular-nums">
-                            {p.ordersCount > 0 ? p.ordersCount : <span className="text-slate-600">—</span>}
-                          </span>
+                          <div className="tabular-nums">
+                            <div className="text-sm text-white">
+                              {p.ordersCount > 0 ? p.ordersCount : <span className="text-slate-600">—</span>}
+                            </div>
+                            {p.ordersYesterday > 0 && (
+                              <div className="text-xs text-slate-600 mt-0.5">{p.ordersYesterday} вчера</div>
+                            )}
+                          </div>
                         </td>
 
                         {/* Cart */}
                         <td className="px-3 py-3">
-                          <span className="text-sm text-slate-400 tabular-nums">
-                            {p.addToCartCount > 0 ? p.addToCartCount : <span className="text-slate-600">—</span>}
-                          </span>
+                          <div className="tabular-nums">
+                            <div className="text-sm text-slate-400">
+                              {p.addToCartCount > 0 ? p.addToCartCount : <span className="text-slate-600">—</span>}
+                            </div>
+                            {p.addToCartYesterday > 0 && (
+                              <div className="text-xs text-slate-600 mt-0.5">{p.addToCartYesterday} вчера</div>
+                            )}
+                          </div>
                         </td>
 
                         {/* Stock weeks */}

@@ -175,6 +175,9 @@ export interface DashboardProduct {
   buyoutPercent: number;
   addToCartCount: number;
   views: number;
+  ordersYesterday: number;
+  addToCartYesterday: number;
+  buyoutPercentYesterday: number;
 }
 
 export interface DashboardData {
@@ -182,4 +185,6 @@ export interface DashboardData {
   sellerLabel: string;
   tagId: number;
   fetchedAt: string;
+  periodFrom: string;
+  periodTo: string;
 }

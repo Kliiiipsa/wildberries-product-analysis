@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLast7Days } from '@/lib/utils';
+import { getLast30Days } from '@/lib/utils';
 import type { DashboardProduct, DashboardData } from '@/types';
 
 export const runtime = 'edge';
 export const maxDuration = 30;
 
-// Mapping: session password → WB label name
-// ns2026 → Кирилл (configured via SELLER_LABEL env var)
 const SELLER_LABEL = process.env.SELLER_LABEL || 'Кирилл';
 
-// ── Rate-limit helpers ────────────────────────────────────────────────────────
+type StatEntry = {
+  ordersCount: number;
+  buyoutsCount: number;
+  buyoutPercent: number;
+  addToCartCount: number;
+  views: number;
+};
 
 function delay(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
-// Wraps fetch: on HTTP 429 waits 5 s and retries once.
-// Sharing a WB_API_TOKEN with the /analyze route means the dashboard
-// must stay gentle to avoid starving simultaneous analysis requests.
 async function wbFetch(url: string, opts: RequestInit, timeoutMs = 10000): Promise<Response> {
   const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs) });
   if (res.status === 429) {
@@ -81,38 +82,46 @@ export async function GET(_req: NextRequest) {
       if (cards.length < 100) break;
     }
 
+    const { from, to } = getLast30Days();
+
     if (allCards.length === 0) {
       const data: DashboardData = {
         products: [],
         sellerLabel: SELLER_LABEL,
         tagId: tag.id,
         fetchedAt: new Date().toLocaleString('ru-RU'),
+        periodFrom: from,
+        periodTo: to,
       };
       return NextResponse.json(data);
     }
 
     const nmIds = allCards.map((c) => Number(c.nmID));
-    const { from, to } = getLast7Days();
 
-    // Step 3: Fetch prices + stats + stocks in parallel
-    const [pricesResult, statsResult, stocksResult] = await Promise.allSettled([
+    // Yesterday
+    const yd = new Date();
+    yd.setDate(yd.getDate() - 1);
+    const yesterday = yd.toISOString().split('T')[0];
+
+    // Step 3: prices + stats(30d) + stocks + stats(yesterday) in parallel
+    const [pricesResult, statsResult, stocksResult, statsYestResult] = await Promise.allSettled([
       fetchAllPrices(token),
       fetchBatchStats(nmIds, token, from, to),
       fetchBatchStocks(nmIds, token),
+      fetchNMReport(nmIds, token, yesterday, yesterday),
     ]);
 
-    const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map();
-    const statsMap = statsResult.status === 'fulfilled' ? statsResult.value : new Map();
-    const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map();
+    const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map<number, { priceSale: number; priceBasic: number; salePercent: number }>();
+    const statsMap = statsResult.status === 'fulfilled' ? statsResult.value : new Map<number, StatEntry>();
+    const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
+    const statsYestMap = statsYestResult.status === 'fulfilled' ? statsYestResult.value : new Map<number, StatEntry>();
 
     const products: DashboardProduct[] = allCards.map((card) => {
       const nmId = Number(card.nmID);
-      const prices = pricesMap.get(nmId) as { priceSale: number; priceBasic: number; salePercent: number } | undefined;
-      const stats = statsMap.get(nmId) as {
-        ordersCount: number; buyoutsCount: number; buyoutPercent: number;
-        addToCartCount: number; views: number;
-      } | undefined;
-      const stock = (stocksMap.get(nmId) as number) ?? 0;
+      const prices = pricesMap.get(nmId);
+      const stats = statsMap.get(nmId);
+      const statsYest = statsYestMap.get(nmId);
+      const stock = stocksMap.get(nmId) ?? 0;
 
       const photos = Array.isArray(card.photos) ? card.photos as Record<string, string>[] : [];
       const photoUrl = photos[0]?.c246x328 || photos[0]?.big || '';
@@ -131,6 +140,9 @@ export async function GET(_req: NextRequest) {
         buyoutPercent: stats?.buyoutPercent ?? 0,
         addToCartCount: stats?.addToCartCount ?? 0,
         views: stats?.views ?? 0,
+        ordersYesterday: statsYest?.ordersCount ?? 0,
+        addToCartYesterday: statsYest?.addToCartCount ?? 0,
+        buyoutPercentYesterday: statsYest?.buyoutPercent ?? 0,
       };
     });
 
@@ -139,6 +151,8 @@ export async function GET(_req: NextRequest) {
       sellerLabel: SELLER_LABEL,
       tagId: tag.id,
       fetchedAt: new Date().toLocaleString('ru-RU'),
+      periodFrom: from,
+      periodTo: to,
     };
 
     return NextResponse.json(data, {
@@ -148,6 +162,169 @@ export async function GET(_req: NextRequest) {
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
+}
+
+// ── NM Report v2: batch stats endpoint designed for multiple nmIDs ─────────────
+
+async function fetchNMReport(nmIds: number[], token: string, from: string, to: string) {
+  const map = new Map<number, StatEntry>();
+
+  for (let page = 1; page <= 20; page++) {
+    if (page > 1) await delay(300);
+
+    try {
+      const res = await wbFetch(
+        'https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail',
+        {
+          method: 'POST',
+          headers: { Authorization: token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nmIDs: nmIds,
+            period: { begin: from, end: to },
+            page,
+            timezone: 'Europe/Moscow',
+          }),
+        },
+        15000
+      );
+
+      if (!res.ok) break;
+      const json = await res.json();
+      if (json?.error) break;
+
+      const cards: Record<string, unknown>[] = json?.data?.cards ?? [];
+
+      for (const card of cards) {
+        const nmId = Number(card.nmID);
+        if (!nmId) continue;
+
+        const selected = (
+          (card.statistics as Record<string, unknown>)?.selectedPeriod
+        ) as Record<string, unknown> | undefined;
+
+        if (!selected) continue;
+
+        const ordersCount = Number(selected.ordersCount ?? 0);
+        const buyoutsCount = Number(selected.buyoutsCount ?? 0);
+        const rawBuyoutPct = Number(selected.buyoutPercent ?? 0);
+        const buyoutPercent = rawBuyoutPct > 0
+          ? rawBuyoutPct
+          : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0);
+
+        map.set(nmId, {
+          ordersCount,
+          buyoutsCount,
+          buyoutPercent,
+          addToCartCount: Number(selected.addToCartCount ?? 0),
+          views: Number(selected.openCardCount ?? selected.viewsCount ?? 0),
+        });
+      }
+
+      if (!json?.data?.isNextPage || cards.length === 0) break;
+    } catch { break; }
+  }
+
+  return map;
+}
+
+// ── Batch stats: NM Report → individual funnel → orders API ──────────────────
+
+async function fetchBatchStats(nmIds: number[], token: string, from: string, to: string) {
+  // Strategy 1: NM Report v2 (batch endpoint, fastest path)
+  const nmMap = await fetchNMReport(nmIds, token, from, to);
+  if (nmMap.size > 0) return nmMap;
+
+  const map = new Map<number, StatEntry>();
+
+  // Strategy 2: individual funnel calls (proven to work for single nmId in wildberries.ts)
+  const CONCURRENCY = 8;
+  for (let i = 0; i < nmIds.length; i += CONCURRENCY) {
+    if (i > 0) await delay(150);
+    const batch = nmIds.slice(i, i + CONCURRENCY);
+
+    await Promise.all(batch.map(async (nmId) => {
+      try {
+        const res = await wbFetch(
+          'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',
+          {
+            method: 'POST',
+            headers: { Authorization: token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              selectedPeriod: { start: from, end: to },
+              nmIds: [nmId],
+              limit: 10,
+              offset: 0,
+            }),
+          },
+          8000
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        const prod = json?.data?.products?.[0] as Record<string, unknown> | undefined;
+        if (!prod) return;
+
+        const selected = (
+          (prod.statistic as Record<string, unknown>)?.selected ?? prod
+        ) as Record<string, unknown>;
+        const metrics = (selected.metrics as Record<string, unknown>) ?? selected;
+        const convObj = selected.conversions as Record<string, unknown> | null | undefined;
+
+        const g = (...keys: string[]): number => {
+          for (const k of keys) {
+            if (metrics[k] != null) return Number(metrics[k]);
+            if (selected[k] != null) return Number(selected[k]);
+          }
+          return 0;
+        };
+
+        const ordersCount = g('orderCount', 'ordersCount');
+        const buyoutPct = Number(convObj?.buyoutPercent ?? convObj?.buyoutsPercent ?? 0);
+        const rawBuyouts = g('buyoutCount', 'buyoutsCount');
+        const buyoutsCount = rawBuyouts > 0 ? rawBuyouts : (buyoutPct > 0 ? Math.round(ordersCount * buyoutPct / 100) : 0);
+        const buyoutPercent = buyoutPct > 0 ? buyoutPct : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0);
+
+        map.set(nmId, {
+          ordersCount,
+          buyoutsCount,
+          buyoutPercent,
+          addToCartCount: g('cartCount', 'addToCartCount'),
+          views: g('views', 'viewsCount'),
+        });
+      } catch { /* skip */ }
+    }));
+  }
+
+  if (map.size > 0) return map;
+
+  // Strategy 3: orders API (counts only, no buyout/cart data)
+  try {
+    const res = await wbFetch(
+      `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${from}T00:00:00`,
+      { headers: { Authorization: token } },
+      20000
+    );
+    if (res.ok) {
+      const orders: Record<string, unknown>[] = await res.json();
+      const nmIdSet = new Set(nmIds);
+      const fromDate = new Date(`${from}T00:00:00`);
+      const toDate = new Date(`${to}T23:59:59`);
+      const byNm = new Map<number, number>();
+
+      for (const order of orders) {
+        const nmId = Number(order.nmId ?? order.nmID ?? 0);
+        if (!nmIdSet.has(nmId)) continue;
+        const d = new Date(String(order.date ?? order.lastChangeDate ?? ''));
+        if (d < fromDate || d > toDate) continue;
+        byNm.set(nmId, (byNm.get(nmId) ?? 0) + 1);
+      }
+
+      for (const [nmId, ordersCount] of byNm) {
+        map.set(nmId, { ordersCount, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 });
+      }
+    }
+  } catch { /* ignore */ }
+
+  return map;
 }
 
 async function fetchAllPrices(token: string) {
@@ -184,99 +361,6 @@ async function fetchAllPrices(token: string) {
 
     if (listGoods.length < 1000) break;
   }
-  return map;
-}
-
-async function fetchBatchStats(nmIds: number[], token: string, from: string, to: string) {
-  const map = new Map<number, {
-    ordersCount: number; buyoutsCount: number; buyoutPercent: number;
-    addToCartCount: number; views: number;
-  }>();
-
-  // Strategy 1: Sales Funnel API — gives views + addToCart + orders + buyouts
-  for (let i = 0; i < nmIds.length; i += 100) {
-    if (i > 0) await delay(250);
-    const batch = nmIds.slice(i, i + 100);
-    try {
-      const res = await wbFetch(
-        'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',
-        {
-          method: 'POST',
-          headers: { Authorization: token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ selectedPeriod: { start: from, end: to }, nmIds: batch, limit: 100, offset: 0 }),
-        },
-        15000
-      );
-      if (!res.ok) continue;
-      const json = await res.json();
-      const products: Record<string, unknown>[] = json?.data?.products ?? [];
-
-      for (const prod of products) {
-        const prodR = prod as Record<string, unknown>;
-        // WB API returns nmID (uppercase D) or nmId (lowercase d) depending on version
-        const nmId = Number(prodR.nmID ?? prodR.nmId ?? prodR.id ?? 0);
-        if (!nmId) continue;
-
-        const selected = ((prodR.statistic as Record<string, unknown>)?.selected ?? prodR) as Record<string, unknown>;
-        const metrics = (selected.metrics as Record<string, unknown>) ?? selected;
-        const convObj = selected.conversions as Record<string, unknown> | null | undefined;
-
-        const g = (...keys: string[]) => {
-          for (const k of keys) {
-            if (metrics[k] != null) return Number(metrics[k]);
-            if (selected[k] != null) return Number(selected[k]);
-          }
-          return 0;
-        };
-
-        const ordersCount = g('orderCount', 'ordersCount');
-        const buyoutPct = Number(convObj?.buyoutPercent ?? convObj?.buyoutsPercent ?? 0);
-        const rawBuyouts = g('buyoutCount', 'buyoutsCount');
-        const buyoutsCount = rawBuyouts > 0 ? rawBuyouts : (buyoutPct > 0 ? Math.round(ordersCount * buyoutPct / 100) : 0);
-        const buyoutPercent = buyoutPct > 0 ? buyoutPct : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0);
-
-        map.set(nmId, {
-          ordersCount,
-          buyoutsCount,
-          buyoutPercent,
-          addToCartCount: g('cartCount', 'addToCartCount'),
-          views: g('views', 'viewsCount'),
-        });
-      }
-    } catch { continue; }
-  }
-
-  // Strategy 2: Orders API fallback — used when funnel API returns nothing
-  // Fetches all seller orders once and counts per nmId
-  if (map.size === 0) {
-    try {
-      const res = await wbFetch(
-        `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${from}T00:00:00`,
-        { headers: { Authorization: token } },
-        20000
-      );
-      if (res.ok) {
-        const orders: Record<string, unknown>[] = await res.json();
-        const nmIdSet = new Set(nmIds);
-        const fromDate = new Date(`${from}T00:00:00`);
-        const toDate = new Date(`${to}T23:59:59`);
-        const byNm = new Map<number, number>();
-
-        for (const order of orders) {
-          const nmId = Number(order.nmId ?? order.nmID ?? 0);
-          if (!nmIdSet.has(nmId)) continue;
-          const d = new Date(String(order.date ?? order.lastChangeDate ?? ''));
-          if (d < fromDate || d > toDate) continue;
-          byNm.set(nmId, (byNm.get(nmId) ?? 0) + 1);
-        }
-
-        for (const [nmId, ordersCount] of byNm) {
-          map.set(nmId, { ordersCount, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 });
-        }
-      }
-    } catch { /* ignore */ }
-  }
-
   return map;
 }
 
