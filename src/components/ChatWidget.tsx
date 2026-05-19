@@ -45,9 +45,10 @@ interface ChatWidgetProps {
   analysis: string;
   article: string;
   isStreaming: boolean;
+  assembledData?: string;
 }
 
-export function ChatWidget({ analysis, article, isStreaming }: ChatWidgetProps) {
+export function ChatWidget({ analysis, article, isStreaming, assembledData }: ChatWidgetProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -86,7 +87,7 @@ export function ChatWidget({ analysis, article, isStreaming }: ChatWidgetProps) 
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, context: analysis, article }),
+        body: JSON.stringify({ message: msg, context: analysis, rawContext: assembledData, article }),
       });
 
       const reader = res.body?.getReader();

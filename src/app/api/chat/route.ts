@@ -8,7 +8,7 @@ const MAX_INPUT_CHARS = 400;
 const MAX_OUTPUT_TOKENS = 600;
 
 export async function POST(req: NextRequest) {
-  const { message, context, article } = await req.json();
+  const { message, context, rawContext, article } = await req.json();
 
   if (!message || typeof message !== 'string') {
     return new Response(JSON.stringify({ error: 'Нет сообщения' }), { status: 400 });
@@ -24,15 +24,20 @@ export async function POST(req: NextRequest) {
 
   const groq = new Groq({ apiKey });
 
-  const systemPrompt = `Ты WB-аналитик. Отвечаешь на вопросы по анализу конкретного товара артикул ${article}.
+  const dataSection = rawContext
+    ? `РЕАЛЬНЫЕ ДАННЫЕ ТОВАРА (источник: WB API, Google Sheets, Mpstats):\n${rawContext.slice(0, 7000)}`
+    : `АНАЛИЗ ТОВАРА:\n${context?.slice(0, 6000) || 'Нет данных'}`;
 
-АНАЛИЗ ТОВАРА:
-${context?.slice(0, 6000) || 'Нет данных'}
+  const systemPrompt = `Ты WB-аналитик. Отвечаешь на вопросы по конкретному товару артикул ${article}.
+
+${dataSection}
+
+${rawContext && context ? `ИТОГОВЫЙ AI-АНАЛИЗ (для ссылок на этапы):\n${context.slice(0, 2000)}` : ''}
 
 ПРАВИЛА:
 - Отвечай кратко и конкретно, максимум 150 слов
 - Ссылайся на номера этапов: "в этапе 1.1", "этап 4.2" и т.д.
-- Используй только данные из анализа выше, не придумывай
+- Используй только реальные цифры из данных выше, не придумывай
 - НЕ используй LaTeX, только обычный текст и символы ×, ÷, ₽, %`;
 
   const encoder = new TextEncoder();

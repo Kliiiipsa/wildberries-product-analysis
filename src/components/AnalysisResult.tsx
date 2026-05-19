@@ -11,6 +11,7 @@ import { RawDataPanel } from '@/components/RawDataPanel';
 import { ChatWidget } from '@/components/ChatWidget';
 import type { AnalysisData } from '@/types';
 import { formatRub, getWBImageUrl } from '@/lib/utils';
+import { assemblePrompt } from '@/lib/data-assembler';
 
 interface AnalysisResultProps {
   article: string;
@@ -185,7 +186,12 @@ export function AnalysisResult({ article, analysis, isStreaming, rawData, assemb
         </TabsContent>
       </Tabs>
 
-      <ChatWidget analysis={analysis} article={article} isStreaming={isStreaming} />
+      <ChatWidget
+        analysis={analysis}
+        article={article}
+        isStreaming={isStreaming}
+        assembledData={rawData ? assemblePrompt(rawData) : ''}
+      />
     </div>
   );
 }
