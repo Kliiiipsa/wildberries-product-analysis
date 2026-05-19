@@ -12,43 +12,6 @@ export async function GET() {
   const bearerToken = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   const results: Record<string, unknown> = {};
 
-  // 1. Теги
-  try {
-    const r = await fetch('https://content-api.wildberries.ru/content/v2/tags', {
-      headers: { Authorization: token },
-      signal: AbortSignal.timeout(8000),
-    });
-    const body = await r.json();
-    results.tags = { status: r.status };
-    const tags = body?.data ?? [];
-    const tag = tags.find((t: { name: string }) => t.name === SELLER_LABEL);
-    results.tag = tag ?? null;
-  } catch (e) {
-    results.tags = { error: String(e) };
-  }
-
-  const tag = results.tag as { id: number } | null;
-  if (!tag) return NextResponse.json(results);
-
-  // 2. Карточки (первые 100)
-  let nmIds: number[] = [];
-  try {
-    const r = await fetch('https://content-api.wildberries.ru/content/v2/get/cards/list', {
-      method: 'POST',
-      headers: { Authorization: token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ settings: { cursor: { limit: 100, offset: 0 }, filter: { tagIDs: [tag.id], withPhoto: -1 } } }),
-      signal: AbortSignal.timeout(8000),
-    });
-    const body = await r.json();
-    const cards = body?.cards ?? [];
-    nmIds = cards.map((c: { nmID: number }) => Number(c.nmID));
-    results.cards = { status: r.status, count: cards.length, nmIds };
-  } catch (e) {
-    results.cards = { error: String(e) };
-  }
-
-  if (nmIds.length === 0) return NextResponse.json(results);
-
   // Даты
   const MSK = 3 * 60 * 60 * 1000;
   const nowMsk = new Date(Date.now() + MSK);
@@ -57,84 +20,114 @@ export async function GET() {
   const todayDate = `${beginMsk.getUTCFullYear()}-${p(beginMsk.getUTCMonth()+1)}-${p(beginMsk.getUTCDate())}`;
   const begin30 = new Date(beginMsk.getTime() - 30 * 24 * 60 * 60 * 1000);
   const begin30Date = `${begin30.getUTCFullYear()}-${p(begin30.getUTCMonth()+1)}-${p(begin30.getUTCDate())}`;
+  results.dates = { today: todayDate, begin30: begin30Date };
 
-  // 3. Воронка — первый товар, сегодня (сырой ответ целиком)
-  const firstNmId = nmIds[0];
+  // 1. Теги + карточки
   try {
-    const r = await fetch('https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', {
-      method: 'POST',
-      headers: { Authorization: bearerToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selectedPeriod: { start: todayDate, end: todayDate }, nmIds: [firstNmId], limit: 10, offset: 0 }),
-      signal: AbortSignal.timeout(8000),
+    const r = await fetch('https://content-api.wildberries.ru/content/v2/tags', {
+      headers: { Authorization: token }, signal: AbortSignal.timeout(8000),
     });
     const body = await r.json();
-    results.funnel_today_first = {
-      status: r.status,
-      nmId: firstNmId,
-      period: { start: todayDate, end: todayDate },
-      rawBody: body,
-    };
-  } catch (e) {
-    results.funnel_today_first = { error: String(e) };
-  }
+    results.tags = { status: r.status };
+    const tags = body?.data ?? [];
+    const tag = tags.find((t: { name: string }) => t.name === SELLER_LABEL);
+    results.tag = tag ?? null;
+    if (!tag) return NextResponse.json(results);
 
-  // 4. Воронка — первый товар, 30 дней (сырой ответ целиком)
-  try {
-    const r = await fetch('https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', {
-      method: 'POST',
-      headers: { Authorization: bearerToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selectedPeriod: { start: begin30Date, end: todayDate }, nmIds: [firstNmId], limit: 10, offset: 0 }),
-      signal: AbortSignal.timeout(8000),
-    });
-    const body = await r.json();
-    results.funnel_30d_first = {
-      status: r.status,
-      nmId: firstNmId,
-      period: { start: begin30Date, end: todayDate },
-      rawBody: body,
-    };
-  } catch (e) {
-    results.funnel_30d_first = { error: String(e) };
-  }
-
-  // 5. Воронка — второй товар, 30 дней (чтобы увидеть паттерн)
-  if (nmIds.length > 1) {
-    const secondNmId = nmIds[1];
-    try {
-      const r = await fetch('https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', {
-        method: 'POST',
-        headers: { Authorization: bearerToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selectedPeriod: { start: begin30Date, end: todayDate }, nmIds: [secondNmId], limit: 10, offset: 0 }),
-        signal: AbortSignal.timeout(8000),
-      });
-      const body = await r.json();
-      results.funnel_30d_second = {
-        status: r.status,
-        nmId: secondNmId,
-        period: { start: begin30Date, end: todayDate },
-        rawBody: body,
-      };
-    } catch (e) {
-      results.funnel_30d_second = { error: String(e) };
-    }
-  }
-
-  // 6. Воронка без Bearer (вдруг этот эндпоинт не требует Bearer)
-  try {
-    const r = await fetch('https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', {
+    const r2 = await fetch('https://content-api.wildberries.ru/content/v2/get/cards/list', {
       method: 'POST',
       headers: { Authorization: token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selectedPeriod: { start: begin30Date, end: todayDate }, nmIds: [firstNmId], limit: 10, offset: 0 }),
+      body: JSON.stringify({ settings: { cursor: { limit: 100, offset: 0 }, filter: { tagIDs: [(tag as { id: number }).id], withPhoto: -1 } } }),
       signal: AbortSignal.timeout(8000),
     });
-    const body = await r.json();
-    results.funnel_30d_no_bearer = {
-      status: r.status,
-      rawBody: body,
-    };
-  } catch (e) {
-    results.funnel_30d_no_bearer = { error: String(e) };
-  }
+    const b2 = await r2.json();
+    const cards = b2?.cards ?? [];
+    const nmIds: number[] = cards.map((c: { nmID: number }) => Number(c.nmID));
+    results.cards = { status: r2.status, count: cards.length };
+
+    // 2. statistics-api: orders сегодня
+    try {
+      const ro = await fetch(
+        `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${todayDate}T00:00:00`,
+        { headers: { Authorization: token }, signal: AbortSignal.timeout(15000) }
+      );
+      const orders: Record<string, unknown>[] = ro.ok ? await ro.json() : [];
+      const sampleOrder = orders[0] ?? null;
+      const nmIdSet = new Set(nmIds);
+      const countByNm: Record<number, number> = {};
+      for (const o of orders) {
+        const id = Number(o.nmId ?? o.nmID ?? 0);
+        if (nmIdSet.has(id)) countByNm[id] = (countByNm[id] ?? 0) + 1;
+      }
+      results.statistics_orders_today = {
+        status: ro.status,
+        totalOrders: orders.length,
+        ourProductsWithOrders: Object.keys(countByNm).length,
+        countByNm,
+        sampleOrderFields: sampleOrder ? Object.keys(sampleOrder) : [],
+        sampleOrder,
+      };
+    } catch (e) { results.statistics_orders_today = { error: String(e) }; }
+
+    // 3. statistics-api: orders за 30 дней (для buyout %)
+    try {
+      const ro = await fetch(
+        `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${begin30Date}T00:00:00`,
+        { headers: { Authorization: token }, signal: AbortSignal.timeout(15000) }
+      );
+      const orders: Record<string, unknown>[] = ro.ok ? await ro.json() : [];
+      const nmIdSet = new Set(nmIds);
+      const countByNm: Record<number, number> = {};
+      for (const o of orders) {
+        const id = Number(o.nmId ?? o.nmID ?? 0);
+        if (nmIdSet.has(id)) countByNm[id] = (countByNm[id] ?? 0) + 1;
+      }
+      results.statistics_orders_30d = {
+        status: ro.status,
+        totalOrders: orders.length,
+        ourProductsWithOrders: Object.keys(countByNm).length,
+        sampleOrderFields: orders[0] ? Object.keys(orders[0]) : [],
+      };
+    } catch (e) { results.statistics_orders_30d = { error: String(e) }; }
+
+    // 4. statistics-api: sales за 30 дней (для buyout %)
+    try {
+      const rs = await fetch(
+        `https://statistics-api.wildberries.ru/api/v1/supplier/sales?dateFrom=${begin30Date}T00:00:00`,
+        { headers: { Authorization: token }, signal: AbortSignal.timeout(15000) }
+      );
+      const sales: Record<string, unknown>[] = rs.ok ? await rs.json() : [];
+      const nmIdSet = new Set(nmIds);
+      const countByNm: Record<number, number> = {};
+      for (const s of sales) {
+        const id = Number(s.nmId ?? s.nmID ?? 0);
+        if (nmIdSet.has(id)) countByNm[id] = (countByNm[id] ?? 0) + 1;
+      }
+      results.statistics_sales_30d = {
+        status: rs.status,
+        totalSales: sales.length,
+        ourProductsWithSales: Object.keys(countByNm).length,
+        sampleSaleFields: sales[0] ? Object.keys(sales[0]) : [],
+        sampleSale: sales[0] ?? null,
+      };
+    } catch (e) { results.statistics_sales_30d = { error: String(e) }; }
+
+    // 5. funnel — 1 запрос с Bearer (подтверждаем что работает)
+    try {
+      const rf = await fetch(
+        'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products',
+        {
+          method: 'POST',
+          headers: { Authorization: bearerToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selectedPeriod: { start: todayDate, end: todayDate }, nmIds: [nmIds[0]], limit: 10, offset: 0 }),
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+      const body = await rf.json();
+      results.funnel_one_call = { status: rf.status, hasData: !!(body?.data?.products?.[0]) };
+    } catch (e) { results.funnel_one_call = { error: String(e) }; }
+
+  } catch (e) { results.error = String(e); }
 
   return NextResponse.json(results, { headers: { 'Cache-Control': 'no-store' } });
 }
