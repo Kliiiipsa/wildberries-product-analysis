@@ -1,0 +1,138 @@
+# WB API — Справочник проверенных эндпоинтов
+
+Файл ведётся автоматически: здесь хранятся только **подтверждённые** запросы и структуры ответов.
+Формат: вопрос → проверенный ответ → дата подтверждения.
+
+---
+
+## ✅ Получение списка ярлыков (тегов)
+
+**Вопрос:** Какой эндпоинт и структура для получения всех WB-ярлыков кабинета?
+
+**Ответ:**
+```
+GET https://content-api.wildberries.ru/content/v2/tags
+Authorization: <token>
+```
+Ответ: `{ "data": [ { "id": 123, "name": "Кирилл" } ] }`
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ✅ Список карточек с фильтром по ярлыку (tagIDs)
+
+**Вопрос:** Поддерживает ли `/content/v2/get/cards/list` фильтр tagIDs? Если да — точный body?
+
+**Ответ:**
+```
+POST https://content-api.wildberries.ru/content/v2/get/cards/list
+Authorization: <token>
+Content-Type: application/json
+
+{
+  "settings": {
+    "cursor": { "limit": 100, "offset": 0 },
+    "filter": { "tagIDs": [123], "withPhoto": -1 }
+  }
+}
+```
+Пагинация: offset += 100 пока `cards.length === 100`. При `withPhoto: -1` возвращает карточки с и без фото.
+Ответ: `{ "cards": [ { "nmID": 123456, "title": "...", "brand": "...", "photos": [...] } ] }`
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ✅ Цены и скидки товаров
+
+**Вопрос:** Какой эндпоинт для получения цен и скидок по всем товарам кабинета?
+
+**Ответ:**
+```
+GET https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1000&offset=0
+Authorization: <token>
+```
+Пагинация: offset += 1000 пока `listGoods.length === 1000`.
+Ответ: `{ "data": { "listGoods": [ { "nmID": 123, "discount": 30, "sizes": [ { "price": 1000, "discountedPrice": 700 } ] } ] } }`
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ✅ Остатки на складах WB
+
+**Вопрос:** Какой эндпоинт и body для получения остатков на складах WB по списку nmId?
+
+**Ответ:**
+```
+POST https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses
+Authorization: Bearer <token>   ← обязателен префикс Bearer!
+Content-Type: application/json
+
+{ "nmIds": [123456, 789012], "limit": 10000, "offset": 0 }
+```
+Ответ: `{ "data": { "items": [ { "nmId": 123456, "quantity": 45 } ] } }`
+Важно: токен должен начинаться с `Bearer ` — добавляй принудительно.
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ✅ Воронка продаж (одиночный nmId)
+
+**Вопрос:** Какой эндпоинт и body для получения статистики воронки по одному nmId?
+
+**Ответ:**
+```
+POST https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products
+Authorization: <token>
+Content-Type: application/json
+
+{
+  "selectedPeriod": { "start": "2026-04-19", "end": "2026-05-19" },
+  "nmIds": [123456],
+  "limit": 10,
+  "offset": 0
+}
+```
+Работает только для **одного** nmId — при нескольких возвращает пустой массив.
+Ответ: `{ "data": { "products": [ { "nmID": 123456, "statistic": { "selected": { "metrics": { "orderCount": 10, ... }, "conversions": { "buyoutPercent": 72.5 } } } } ] } }`
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ⏳ Пакетная статистика по nmId — NM Report v2
+
+**Вопрос:** Какой эндпоинт и body для пакетного получения статистики по нескольким nmId?
+
+**Body (подтверждён пользователем):**
+```
+POST https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "nmIds": [123456, 789012],   ← строчная d! (не nmIDs)
+  "period": {
+    "begin": "2026-05-01",
+    "end": "2026-05-18"
+  },
+  "page": 1,
+  "limit": 100
+}
+```
+
+**Структура ответа:** ⏳ ожидаем подтверждения от пользователя
+
+**Дата:** май 2026 | Статус: body ✅ / ответ ⏳
+
+---
+
+## Примечания
+
+- Все токены хранятся в `.env.local` как `WB_API_TOKEN`
+- Для `seller-analytics-api` иногда нужен явный префикс `Bearer `
+- Воронка `/analytics/v3/sales-funnel` — только одиночные nmId
+- Таймаут Edge Runtime на Vercel: **30 секунд** — все запросы должны укладываться в него
