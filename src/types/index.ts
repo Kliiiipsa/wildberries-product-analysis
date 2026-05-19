@@ -160,3 +160,26 @@ export interface StreamEvent {
   prompt?: string;
   error?: string;
 }
+
+export interface DashboardProduct {
+  article: string;
+  name: string;
+  brand: string;
+  priceSale: number;
+  priceBasic: number;
+  salePercent: number;
+  totalStock: number;
+  photoUrl?: string;
+  ordersCount: number;
+  buyoutsCount: number;
+  buyoutPercent: number;
+  addToCartCount: number;
+  views: number;
+}
+
+export interface DashboardData {
+  products: DashboardProduct[];
+  sellerLabel: string;
+  tagId: number;
+  fetchedAt: string;
+}

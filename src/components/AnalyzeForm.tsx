@@ -1,18 +1,22 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Search, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Loader2, AlertCircle, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingState } from '@/components/LoadingState';
 import { AnalysisResult } from '@/components/AnalysisResult';
-import type { AnalysisData, StreamEvent } from '@/types';
+import { DashboardPanel } from '@/components/DashboardPanel';
+import type { AnalysisData, StreamEvent, DashboardData } from '@/types';
 
-type Phase = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
+type AnalysisPhase = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
+type DashboardPhase = 'idle' | 'loading' | 'loaded' | 'error';
+type Mode = 'analysis' | 'dashboard';
 
 export function AnalyzeForm() {
+  // ── Analysis state ──
   const [article, setArticle] = useState('');
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<AnalysisPhase>('idle');
   const [statusMsg, setStatusMsg] = useState('');
   const [analysis, setAnalysis] = useState('');
   const [rawData, setRawData] = useState<AnalysisData | null>(null);
@@ -20,15 +24,14 @@ export function AnalyzeForm() {
   const [error, setError] = useState('');
   const [currentArticle, setCurrentArticle] = useState('');
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  // ── Dashboard state ──
+  const [mode, setMode] = useState<Mode>('analysis');
+  const [dashboardPhase, setDashboardPhase] = useState<DashboardPhase>('idle');
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardError, setDashboardError] = useState('');
 
-    const trimmed = article.trim();
-    if (!trimmed || !/^\d{6,12}$/.test(trimmed)) {
-      setError('Введите корректный артикул WB (только цифры, 6–12 знаков)');
-      return;
-    }
-
+  // ── Core analysis function ──
+  const startAnalysis = useCallback(async (trimmed: string) => {
     setError('');
     setPhase('loading');
     setAnalysis('');
@@ -52,6 +55,7 @@ export function AnalyzeForm() {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let hasError = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -77,7 +81,6 @@ export function AnalyzeForm() {
               setRawData(event.payload);
               setPhase('streaming');
             } else if (event.type === 'token' && event.content) {
-              // Парсим имя модели из первого токена
               if (event.content.includes('Анализирует:')) {
                 const match = event.content.match(/Анализирует:\s*(.+?)\*/);
                 if (match) setStatusMsg(`🤖 ${match[1]}`);
@@ -88,19 +91,28 @@ export function AnalyzeForm() {
             } else if (event.type === 'error' && event.error) {
               setError(event.error);
               setPhase('error');
+              hasError = true;
             }
-          } catch {
-            // skip malformed JSON
-          }
+          } catch { /* skip malformed JSON */ }
         }
       }
 
-      if (phase !== 'error') setPhase('done');
+      if (!hasError) setPhase('done');
     } catch (err) {
       setError(String(err));
       setPhase('error');
     }
-  }, [article, phase]);
+  }, []);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = article.trim();
+    if (!trimmed || !/^\d{6,12}$/.test(trimmed)) {
+      setError('Введите корректный артикул WB (только цифры, 6–12 знаков)');
+      return;
+    }
+    await startAnalysis(trimmed);
+  }, [article, startAnalysis]);
 
   const reset = () => {
     setPhase('idle');
@@ -112,12 +124,117 @@ export function AnalyzeForm() {
     setArticle('');
   };
 
+  // ── Dashboard functions ──
+  const loadDashboard = useCallback(async (force = false) => {
+    if (dashboardData && !force) {
+      setMode('dashboard');
+      return;
+    }
+    setMode('dashboard');
+    setDashboardPhase('loading');
+    setDashboardError('');
+
+    try {
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+      const data: DashboardData = await res.json();
+      setDashboardData(data);
+      setDashboardPhase('loaded');
+    } catch (err) {
+      setDashboardError(String(err));
+      setDashboardPhase('error');
+    }
+  }, [dashboardData]);
+
+  const handleDashboardAnalyze = useCallback((articleStr: string) => {
+    setMode('analysis');
+    setArticle(articleStr);
+    startAnalysis(articleStr);
+  }, [startAnalysis]);
+
+  // ── Dashboard button (reusable) ──
+  const DashboardBtn = ({ size = 'default' }: { size?: 'default' | 'sm' }) =>
+    size === 'sm' ? (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => loadDashboard()}
+        className="h-9 gap-1.5 rounded-lg border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 shrink-0"
+      >
+        <LayoutDashboard className="h-3.5 w-3.5" />
+        Дашборд
+      </Button>
+    ) : (
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => loadDashboard()}
+        className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
+      >
+        <LayoutDashboard className="h-4 w-4" />
+        Дашборд товаров
+      </Button>
+    );
+
+  // ══════════════════════════════════════════════════════
+  // RENDER: Dashboard mode
+  // ══════════════════════════════════════════════════════
+  if (mode === 'dashboard') {
+    return (
+      <div className="w-full">
+        {dashboardPhase === 'loading' && (
+          <div className="w-full max-w-xl mx-auto mt-14">
+            <div className="flex items-center gap-3 mb-5">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-400 shrink-0" />
+              <span className="text-base text-slate-300">Загружаю товары менеджера...</span>
+            </div>
+          </div>
+        )}
+
+        {dashboardPhase === 'error' && (
+          <div className="w-full max-w-lg mx-auto mt-14">
+            <div className="flex items-start gap-2.5 rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400 mb-4">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{dashboardError}</span>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setMode('analysis')} className="border-slate-700">
+                Назад
+              </Button>
+              <Button onClick={() => loadDashboard(true)}>
+                Повторить
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {dashboardPhase === 'loaded' && dashboardData && (
+          <DashboardPanel
+            data={dashboardData}
+            onBack={() => setMode('analysis')}
+            onAnalyze={handleDashboardAnalyze}
+            onRefresh={() => loadDashboard(true)}
+            isRefreshing={dashboardPhase === 'loading'}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
+  // RENDER: Analysis mode
+  // ══════════════════════════════════════════════════════
   return (
     <div className="w-full">
-      {/* Форма ввода */}
+
+      {/* ── Idle / Error: main form ── */}
       {(phase === 'idle' || phase === 'error') && (
         <div className="w-full max-w-md mx-auto">
-          <form onSubmit={handleSubmit} className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex gap-2 mb-3">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <Input
@@ -131,9 +248,13 @@ export function AnalyzeForm() {
               />
             </div>
             <Button type="submit" size="lg" className="h-12 px-5 font-semibold rounded-xl shrink-0">
-              Анализировать
+              Анализ
             </Button>
           </form>
+
+          <div className="flex justify-center">
+            <DashboardBtn />
+          </div>
 
           {error && (
             <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400">
@@ -144,13 +265,13 @@ export function AnalyzeForm() {
         </div>
       )}
 
-      {/* Загрузка */}
+      {/* ── Loading ── */}
       {phase === 'loading' && <LoadingState message={statusMsg} />}
 
-      {/* Результат */}
+      {/* ── Result ── */}
       {(phase === 'streaming' || phase === 'done') && (
         <div className="w-full">
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
             <form onSubmit={handleSubmit} className="flex gap-2 flex-1 max-w-xs">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-600" />
@@ -163,15 +284,17 @@ export function AnalyzeForm() {
                   className="pl-8 h-9 text-sm bg-slate-800/60 border-slate-700/60 rounded-lg"
                 />
               </div>
-              <Button type="submit" variant="outline" size="sm" className="h-9 rounded-lg" disabled={phase === 'streaming'}>
+              <Button type="submit" variant="outline" size="sm" className="h-9 rounded-lg shrink-0" disabled={phase === 'streaming'}>
                 {phase === 'streaming' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Найти'}
               </Button>
             </form>
 
+            <DashboardBtn size="sm" />
+
             {phase === 'streaming' && (
               <div className="flex items-center gap-2 text-sm text-blue-400 ml-auto">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span className="truncate max-w-[180px]">{statusMsg}</span>
+                <span className="truncate max-w-[150px]">{statusMsg}</span>
               </div>
             )}
             {phase === 'done' && (
