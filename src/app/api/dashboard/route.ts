@@ -166,9 +166,17 @@ export async function GET(_req: NextRequest) {
   }
 }
 
-// ── Воронка: строго по одному запросу, задержка 1.1с между вызовами ──
-// Запрос и задержка стартуют одновременно → ждём дольшего (delay 1.1с).
-// Итого на 26 товаров: 25 × 1.1с + ~0.3с = ~28с — укладывается в 30с лимит Vercel.
+// ── Воронка: строго по одному запросу с задержкой между вызовами ──
+//
+// КЛЮЧЕВОЙ ПРИНЦИП: timeout запроса (900мс) < delay (1000мс).
+// Поэтому Promise.all([fetch, delay]) всегда завершается за delay=1000мс,
+// даже если fetch тормозит или таймаутится.
+//
+// Итого 26 товаров: 25 × 1000мс + 900мс ≈ 25.9с — гарантированно < 30с.
+// 1000мс между стартами соседних запросов — уважаем global rate limit WB.
+const FUNNEL_DELAY_MS = 1000;  // интервал между стартами запросов
+const FUNNEL_TIMEOUT_MS = 900; // timeout < FUNNEL_DELAY_MS — гарантирует предсказуемое время
+
 async function fetchFunnelSequential(nmIds: number[], token: string, todayDate: string) {
   const map = new Map<number, FunnelDual>();
 
@@ -177,7 +185,6 @@ async function fetchFunnelSequential(nmIds: number[], token: string, todayDate: 
     const isLast = i === nmIds.length - 1;
 
     const [dual] = await Promise.all([
-      // Запрос к воронке
       (async (): Promise<FunnelDual | null> => {
         try {
           const res = await fetch(
@@ -191,7 +198,7 @@ async function fetchFunnelSequential(nmIds: number[], token: string, todayDate: 
                 limit: 10,
                 offset: 0,
               }),
-              signal: AbortSignal.timeout(5000),
+              signal: AbortSignal.timeout(FUNNEL_TIMEOUT_MS),
             }
           );
           if (!res.ok) return null;
@@ -206,8 +213,7 @@ async function fetchFunnelSequential(nmIds: number[], token: string, todayDate: 
           };
         } catch { return null; }
       })(),
-      // Пауза 1.1с (кроме последнего товара) — обходим global rate limit WB
-      isLast ? Promise.resolve(null) : delay(1100),
+      isLast ? Promise.resolve(null) : delay(FUNNEL_DELAY_MS),
     ]);
 
     if (dual) map.set(nmId, dual);
