@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getLast7Days } from '@/lib/utils';
 import type { DashboardProduct, DashboardData } from '@/types';
 
@@ -12,7 +12,7 @@ const SELLER_LABEL = process.env.SELLER_LABEL || 'Кирилл';
 export async function GET(_req: NextRequest) {
   const token = process.env.WB_API_TOKEN || '';
   if (!token) {
-    return Response.json({ error: 'WB_API_TOKEN не настроен' }, { status: 500 });
+    return NextResponse.json({ error: 'WB_API_TOKEN не настроен' }, { status: 500 });
   }
 
   try {
@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest) {
     });
 
     if (!tagsRes.ok) {
-      return Response.json({ error: `Tags API: HTTP ${tagsRes.status}` }, { status: 500 });
+      return NextResponse.json({ error: `Tags API: HTTP ${tagsRes.status}` }, { status: 500 });
     }
 
     const tagsJson = await tagsRes.json();
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest) {
 
     if (!tag) {
       const available = tags.map((t) => `"${t.name}"`).join(', ');
-      return Response.json({
+      return NextResponse.json({
         error: `Ярлык "${SELLER_LABEL}" не найден в WB кабинете. Доступные ярлыки: ${available || 'нет'}`,
       }, { status: 404 });
     }
@@ -73,7 +73,7 @@ export async function GET(_req: NextRequest) {
         tagId: tag.id,
         fetchedAt: new Date().toLocaleString('ru-RU'),
       };
-      return Response.json(data);
+      return NextResponse.json(data);
     }
 
     const nmIds = allCards.map((c) => Number(c.nmID));
@@ -126,12 +126,12 @@ export async function GET(_req: NextRequest) {
       fetchedAt: new Date().toLocaleString('ru-RU'),
     };
 
-    return Response.json(data, {
+    return NextResponse.json(data, {
       headers: { 'Cache-Control': 'private, max-age=1500' },
     });
 
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 

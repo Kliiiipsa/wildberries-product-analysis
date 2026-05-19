@@ -114,16 +114,6 @@ export function AnalyzeForm() {
     await startAnalysis(trimmed);
   }, [article, startAnalysis]);
 
-  const reset = () => {
-    setPhase('idle');
-    setAnalysis('');
-    setRawData(null);
-    setAssembledPrompt('');
-    setError('');
-    setCurrentArticle('');
-    setArticle('');
-  };
-
   // ── Dashboard functions ──
   const loadDashboard = useCallback(async (force = false) => {
     if (dashboardData && !force) {
@@ -154,31 +144,6 @@ export function AnalyzeForm() {
     setArticle(articleStr);
     startAnalysis(articleStr);
   }, [startAnalysis]);
-
-  // ── Dashboard button (reusable) ──
-  const DashboardBtn = ({ size = 'default' }: { size?: 'default' | 'sm' }) =>
-    size === 'sm' ? (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => loadDashboard()}
-        className="h-9 gap-1.5 rounded-lg border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 shrink-0"
-      >
-        <LayoutDashboard className="h-3.5 w-3.5" />
-        Дашборд
-      </Button>
-    ) : (
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => loadDashboard()}
-        className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
-      >
-        <LayoutDashboard className="h-4 w-4" />
-        Дашборд товаров
-      </Button>
-    );
 
   // ══════════════════════════════════════════════════════
   // RENDER: Dashboard mode
@@ -253,7 +218,15 @@ export function AnalyzeForm() {
           </form>
 
           <div className="flex justify-center">
-            <DashboardBtn />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => loadDashboard()}
+              className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Дашборд товаров
+            </Button>
           </div>
 
           {error && (
@@ -289,7 +262,16 @@ export function AnalyzeForm() {
               </Button>
             </form>
 
-            <DashboardBtn size="sm" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => loadDashboard()}
+              className="h-9 gap-1.5 rounded-lg border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 shrink-0"
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              Дашборд
+            </Button>
 
             {phase === 'streaming' && (
               <div className="flex items-center gap-2 text-sm text-blue-400 ml-auto">
