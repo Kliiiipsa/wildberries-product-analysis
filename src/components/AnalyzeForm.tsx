@@ -125,7 +125,7 @@ export function AnalyzeForm() {
     setDashboardError('');
 
     try {
-      const res = await fetch('/api/dashboard');
+      const res = await fetch('/api/dashboard', force ? { cache: 'no-store' } : {});
       if (!res.ok) {
         const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         throw new Error(json.error || `HTTP ${res.status}`);

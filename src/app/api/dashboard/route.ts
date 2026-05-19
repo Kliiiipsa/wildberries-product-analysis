@@ -185,7 +185,7 @@ export async function GET(_req: NextRequest) {
       periodFrom: beginStr,
       periodTo: endStr,
     } as DashboardData, {
-      headers: { 'Cache-Control': 'private, max-age=1800' },
+      headers: { 'Cache-Control': 'private, max-age=300' },
     });
 
   } catch (err) {
