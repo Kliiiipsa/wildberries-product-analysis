@@ -189,3 +189,26 @@ export interface DashboardData {
   periodFrom: string;
   periodTo: string;
 }
+
+export interface DashboardAdCampaign {
+  advertId: number;
+  name: string;
+  status: number;       // 9=active, 11=paused, 7=completed, 4=ready
+  type: number;         // 8=auto, 6=search, 4=catalog, 9=search+catalog, 5=card, 7=home
+  views: number;        // показы за 7 дн по этому nmId
+  clicks: number;       // клики
+  atbs: number;         // добавления в корзину
+  orders: number;       // заказы
+  sum7d: number;        // расход ₽
+  sum_price: number;    // выручка ₽
+  ctr: number;          // %
+  cpc: number;          // ₽
+  drr: number;          // %
+  budgetRemaining: number; // остаток бюджета кампании ₽ (0 если недоступно)
+}
+
+export interface DashboardAdsResult {
+  ads: Record<string, DashboardAdCampaign | null>;  // keyed by nmId string
+  accountBalance: number;   // общий баланс рекламного кабинета
+  fetchedAt: string;
+}

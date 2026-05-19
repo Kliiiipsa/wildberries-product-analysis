@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   ArrowLeft, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, BarChart2,
+  Megaphone, AlertCircle, Loader2,
 } from 'lucide-react';
 import { formatRub, getWBImageUrl } from '@/lib/utils';
-import type { DashboardData, DashboardProduct } from '@/types';
+import { AdsDashboardPanel } from '@/components/AdsDashboardPanel';
+import type { DashboardData, DashboardProduct, DashboardAdsResult } from '@/types';
 
 interface DashboardPanelProps {
   data: DashboardData;
@@ -73,9 +75,79 @@ function Th({
   );
 }
 
+type Tab = 'products' | 'ads';
+type AdsPhase = 'idle' | 'loading' | 'loaded' | 'error';
+
 export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshing }: DashboardPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>('ordersCount');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  // ── Вкладки ──
+  const [tab, setTab] = useState<Tab>('products');
+  const [adsPhase, setAdsPhase] = useState<AdsPhase>('idle');
+  const [adsData, setAdsData] = useState<DashboardAdsResult | null>(null);
+  const [adsError, setAdsError] = useState('');
+  const [adsProgress, setAdsProgress] = useState(0);
+  const [adsStep, setAdsStep] = useState('');
+
+  const loadAds = useCallback(async (force = false) => {
+    if (adsData && !force) return;
+    setAdsPhase('loading');
+    setAdsProgress(0);
+    setAdsStep('');
+    setAdsError('');
+
+    try {
+      const nmIds = data.products.map(p => Number(p.article));
+      const res = await fetch('/api/dashboard/ads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nmIds }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+          try {
+            const event = JSON.parse(jsonStr);
+            if (event.type === 'progress') {
+              setAdsProgress(event.percent);
+              setAdsStep(event.step);
+            } else if (event.type === 'done') {
+              setAdsProgress(100);
+              setAdsData(event.data as DashboardAdsResult);
+              setAdsPhase('loaded');
+            } else if (event.type === 'error') {
+              setAdsError(event.error);
+              setAdsPhase('error');
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch (err) {
+      setAdsError(String(err));
+      setAdsPhase('error');
+    }
+  }, [data.products, adsData]);
+
+  const handleTabAds = () => {
+    setTab('ads');
+    if (adsPhase === 'idle') loadAds();
+  };
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -106,7 +178,7 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
   return (
     <div className="w-full mt-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
@@ -123,18 +195,44 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
         <div className="flex items-center gap-4 ml-auto text-sm text-slate-500">
           <span className="hidden sm:inline text-xs">{periodLabel} · обновлено {data.fetchedAt}</span>
           <button
-            onClick={onRefresh}
-            disabled={isRefreshing}
+            onClick={tab === 'products' ? onRefresh : () => loadAds(true)}
+            disabled={isRefreshing || adsPhase === 'loading'}
             className="flex items-center gap-1.5 hover:text-slate-300 transition-colors disabled:opacity-40"
             title="Обновить"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${(isRefreshing || adsPhase === 'loading') ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* ── Summary chips ── */}
-      <div className="flex flex-wrap gap-2.5 mb-5">
+      {/* ── Вкладки ── */}
+      <div className="flex gap-1 mb-5 p-1 rounded-xl bg-slate-800/40 border border-slate-700/40 w-fit">
+        <button
+          onClick={() => setTab('products')}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            tab === 'products'
+              ? 'bg-slate-700 text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          Товары
+        </button>
+        <button
+          onClick={handleTabAds}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            tab === 'ads'
+              ? 'bg-slate-700 text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          <Megaphone className="h-3.5 w-3.5" />
+          Реклама
+          {adsPhase === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+        </button>
+      </div>
+
+      {/* ── Summary chips — только для товаров ── */}
+      <div className={`flex flex-wrap gap-2.5 mb-5 ${tab !== 'products' ? 'hidden' : ''}`}>
         {[
           { label: 'Товаров', value: String(data.products.length) },
           { label: 'Заказов сегодня', value: String(totalOrders) },
@@ -151,7 +249,51 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
         ))}
       </div>
 
-      {/* ── Table — breaks out to full viewport width ── */}
+      {/* ── Реклама таб ── */}
+      {tab === 'ads' && (
+        <>
+          {adsPhase === 'loading' && (
+            <div className="w-full max-w-sm mx-auto mt-16">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm text-slate-300 truncate pr-3">{adsStep || 'Загружаю данные...'}</span>
+                <span className="text-xs font-mono text-blue-400 shrink-0">{adsProgress}%</span>
+              </div>
+              <div className="h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
+                  style={{ width: `${adsProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {adsPhase === 'error' && (
+            <div className="w-full max-w-lg mx-auto mt-10">
+              <div className="flex items-start gap-2.5 rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400 mb-4">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{adsError}</span>
+              </div>
+              <button
+                onClick={() => loadAds(true)}
+                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Повторить
+              </button>
+            </div>
+          )}
+
+          {adsPhase === 'loaded' && adsData && (
+            <AdsDashboardPanel
+              products={data.products}
+              adsResult={adsData}
+              onAnalyze={onAnalyze}
+            />
+          )}
+        </>
+      )}
+
+      {/* ── Таблица товаров ── */}
+      {tab === 'products' && (
       <div style={{ width: '100vw', position: 'relative', left: '50%', transform: 'translateX(-50%)' }}>
         <div className="px-3 sm:px-6">
           <div className="max-w-screen-2xl mx-auto rounded-2xl border border-slate-700/60 bg-slate-900/60 overflow-hidden backdrop-blur">
@@ -285,6 +427,7 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
