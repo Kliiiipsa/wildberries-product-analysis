@@ -186,6 +186,62 @@ Content-Type: application/json
 
 ---
 
+## ✅ Рекламные кампании — детали и тип (advert/v2/adverts)
+
+**Вопрос:** Как определить тип рекламной кампании (CPC / CPM ручная / CPM единая)?
+
+**Ответ:**
+```
+GET https://advert-api.wildberries.ru/api/advert/v2/adverts?ids=123,456
+Authorization: <token>
+```
+Ответ: `{ "adverts": [{ "id": 123, "bid_type": "unified", "settings": { "payment_type": "cpm" }, "nm_settings": [{ "nm_id": 456789 }] }] }`
+
+**Определение типа:**
+| `payment_type` | `bid_type` | Тип кампании |
+|---|---|---|
+| `"cpc"` | — | CPC (за клики) |
+| `"cpm"` | `"manual"` | CPM ручная |
+| `"cpm"` | `"unified"` | CPM единая |
+
+- `payment_type` — внутри `settings` объекта
+- `bid_type` — на верхнем уровне объекта кампании
+- `nm_settings` — массив `{ nm_id: number }`, привязка кампании к артикулам
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ✅ Баланс рекламного кабинета
+
+**Вопрос:** Как получить общий баланс рекламного кабинета?
+
+**Ответ:**
+```
+GET https://advert-api.wildberries.ru/adv/v1/balance
+Authorization: <token>
+```
+Параметров нет. Ответ содержит поля `balance`, `net`, `bonus` (точная структура может варьироваться).
+
+**Подтверждено:** май 2026 ✅
+
+---
+
+## ✅ Остаток бюджета конкретной кампании
+
+**Вопрос:** Как получить остаток бюджета отдельной кампании?
+
+**Ответ:**
+```
+GET https://advert-api.wildberries.ru/adv/v1/budget?id=123456789
+Authorization: <token>
+```
+Ответ: поле `total` или `balance` с остатком в рублях.
+
+**Подтверждено:** май 2026 ✅
+
+---
+
 ## Примечания
 
 - Все токены хранятся в `.env.local` как `WB_API_TOKEN`

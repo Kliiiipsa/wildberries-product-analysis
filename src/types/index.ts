@@ -193,8 +193,9 @@ export interface DashboardData {
 export interface DashboardAdCampaign {
   advertId: number;
   name: string;
-  status: number;       // 9=active, 11=paused, 7=completed, 4=ready
-  type: number;         // 8=auto, 6=search, 4=catalog, 9=search+catalog, 5=card, 7=home
+  status: number;         // 9=active, 11=paused, 7=completed, 4=ready
+  paymentType: string;    // "cpc" | "cpm"
+  bidType: string;        // "manual" | "unified" | ""
   views: number;        // показы за 7 дн по этому nmId
   clicks: number;       // клики
   atbs: number;         // добавления в корзину

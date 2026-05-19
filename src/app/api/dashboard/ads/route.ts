@@ -151,7 +151,10 @@ export async function POST(req: NextRequest) {
         emit({ type: 'progress', percent: 22, step: `Найдено ${candidateIds.length} кампаний. Проверяю привязку к товарам...` });
 
         // ── Step 3: Детали кампаний — nm_settings ────────────────────────────────
-        type AdvertInfo = { advertId: number; name: string; status: number; type: number; changeTime: string };
+        type AdvertInfo = {
+          advertId: number; name: string; status: number;
+          paymentType: string; bidType: string; changeTime: string;
+        };
         const nmIdToAdverts = new Map<number, AdvertInfo[]>();
         const advertIdToNmId = new Map<number, number>(); // обратная карта
 
@@ -172,11 +175,17 @@ export async function POST(req: NextRequest) {
               const aId = Number(a.id ?? a.advertId ?? 0);
               if (!aId) continue;
 
+              // Тип кампании: payment_type из settings + bid_type на верхнем уровне
+              const settings = (a.settings ?? {}) as Record<string, unknown>;
+              const paymentType = String(settings.payment_type ?? a.payment_type ?? '');
+              const bidType = String(a.bid_type ?? '');
+
               const info: AdvertInfo = {
                 advertId: aId,
                 name: String(a.name ?? ''),
                 status: statusFromCount.get(aId) ?? Number(a.status ?? 0),
-                type: Number(a.type ?? 0),
+                paymentType,
+                bidType,
                 changeTime: changeTimes.get(aId) ?? '',
               };
 
@@ -283,7 +292,8 @@ export async function POST(req: NextRequest) {
             advertId: best.advertId,
             name: best.name,
             status: best.status,
-            type: best.type,
+            paymentType: best.paymentType,
+            bidType: best.bidType,
             views,
             clicks,
             atbs,

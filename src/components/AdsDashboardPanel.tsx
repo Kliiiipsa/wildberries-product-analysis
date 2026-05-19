@@ -20,10 +20,13 @@ function statusLabel(status: number): { text: string; cls: string } {
   return { text: `Статус ${status}`, cls: 'text-slate-500 bg-slate-800/60 border-slate-700/40' };
 }
 
-// ── Тип кампании ─────────────────────────────────────────────────────────────
-function typeName(type: number): string {
-  const map: Record<number, string> = { 4: 'Каталог', 5: 'Карточка', 6: 'Поиск', 7: 'Главная', 8: 'Авто', 9: 'Поиск+каталог' };
-  return map[type] ?? `Тип ${type}`;
+// ── Тип кампании: payment_type + bid_type ────────────────────────────────────
+function typeName(paymentType: string, bidType: string): string {
+  if (paymentType === 'cpc') return 'CPC';
+  if (paymentType === 'cpm' && bidType === 'unified') return 'CPM единая';
+  if (paymentType === 'cpm' && bidType === 'manual') return 'CPM ручная';
+  if (paymentType === 'cpm') return 'CPM';
+  return paymentType || '—';
 }
 
 // ── Мини-воронка ─────────────────────────────────────────────────────────────
@@ -180,7 +183,7 @@ export function AdsDashboardPanel({ products, adsResult, onAnalyze }: AdsDashboa
                                   {st!.text}
                                 </span>
                                 <span className="text-[10px] text-slate-600 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/40">
-                                  {typeName(ad.type)}
+                                  {typeName(ad.paymentType, ad.bidType)}
                                 </span>
                               </div>
                             </div>
