@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { RawDataPanel } from '@/components/RawDataPanel';
+import { ChatWidget } from '@/components/ChatWidget';
 import type { AnalysisData } from '@/types';
 import { formatRub, getWBImageUrl } from '@/lib/utils';
 
@@ -183,6 +184,8 @@ export function AnalysisResult({ article, analysis, isStreaming, rawData, assemb
           </div>
         </TabsContent>
       </Tabs>
+
+      <ChatWidget analysis={analysis} article={article} isStreaming={isStreaming} />
     </div>
   );
 }
