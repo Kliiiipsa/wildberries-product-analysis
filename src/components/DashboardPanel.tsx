@@ -228,9 +228,9 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                             <div className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
                               {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
                             </div>
-                            {p.buyoutPercentYesterday > 0 && (
+                            {p.hasYesterdayData && (
                               <div className="text-xs text-slate-600 mt-0.5">
-                                {p.buyoutPercentYesterday.toFixed(1)}% вчера
+                                {p.buyoutPercentYesterday > 0 ? `${p.buyoutPercentYesterday.toFixed(1)}% вчера` : '— вчера'}
                               </div>
                             )}
                           </div>
@@ -242,8 +242,10 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                             <div className="text-sm text-white">
                               {p.ordersCount > 0 ? p.ordersCount : <span className="text-slate-600">—</span>}
                             </div>
-                            {p.ordersYesterday > 0 && (
-                              <div className="text-xs text-slate-600 mt-0.5">{p.ordersYesterday} вчера</div>
+                            {p.hasYesterdayData && (
+                              <div className="text-xs text-slate-600 mt-0.5">
+                                {p.ordersYesterday > 0 ? `${p.ordersYesterday} вчера` : '— вчера'}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -254,8 +256,10 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                             <div className="text-sm text-slate-400">
                               {p.addToCartCount > 0 ? p.addToCartCount : <span className="text-slate-600">—</span>}
                             </div>
-                            {p.addToCartYesterday > 0 && (
-                              <div className="text-xs text-slate-600 mt-0.5">{p.addToCartYesterday} вчера</div>
+                            {p.hasYesterdayData && (
+                              <div className="text-xs text-slate-600 mt-0.5">
+                                {p.addToCartYesterday > 0 ? `${p.addToCartYesterday} вчера` : '— вчера'}
+                              </div>
                             )}
                           </div>
                         </td>

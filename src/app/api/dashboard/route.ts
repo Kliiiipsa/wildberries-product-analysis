@@ -135,18 +135,22 @@ export async function GET(_req: NextRequest) {
     const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
 
     // Извлекаем today и yesterday из одного ответа NM Report
-    let statsMap = new Map<number, StatEntry>();
-    let statsYestMap = new Map<number, StatEntry>();
+    const statsMap = new Map<number, StatEntry>();
+    const statsYestMap = new Map<number, StatEntry>();
 
-    if (nmDualMap.size > 0) {
-      for (const [nmId, dual] of nmDualMap) {
-        statsMap.set(nmId, dual.selected);
-        statsYestMap.set(nmId, dual.previous);
-      }
-    } else {
-      // Резерв: индивидуальные вызовы воронки (сегодня, без данных за вчера)
+    for (const [nmId, dual] of nmDualMap) {
+      statsMap.set(nmId, dual.selected);
+      statsYestMap.set(nmId, dual.previous);
+    }
+
+    // Дозаполняем товары, которых не оказалось в ответе NM Report
+    const missingIds = nmIds.filter((id) => !nmDualMap.has(id));
+    if (missingIds.length > 0) {
       const todayDate = beginStr.split(' ')[0];
-      statsMap = await fetchStatsFallback(nmIds, token, todayDate);
+      const fallback = await fetchStatsFallback(missingIds, token, todayDate);
+      for (const [nmId, stats] of fallback) {
+        statsMap.set(nmId, stats);
+      }
     }
 
     const products: DashboardProduct[] = allCards.map((card) => {
@@ -176,6 +180,7 @@ export async function GET(_req: NextRequest) {
         ordersYesterday: statsYest?.ordersCount ?? 0,
         addToCartYesterday: statsYest?.addToCartCount ?? 0,
         buyoutPercentYesterday: statsYest?.buyoutPercent ?? 0,
+        hasYesterdayData: nmDualMap.has(nmId),
       };
     });
 

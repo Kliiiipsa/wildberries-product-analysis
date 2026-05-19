@@ -178,6 +178,7 @@ export interface DashboardProduct {
   ordersYesterday: number;
   addToCartYesterday: number;
   buyoutPercentYesterday: number;
+  hasYesterdayData: boolean;
 }
 
 export interface DashboardData {
