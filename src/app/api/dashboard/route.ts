@@ -54,7 +54,9 @@ export async function GET(_req: NextRequest) {
       }, { status: 404 });
     }
 
-    // Step 2: Get all product cards with this tag (paginate 100 per page)
+    // Step 2: Fetch all cards, filter client-side by tag.
+    // The tagIDs filter in the cards/list API is unreliable — fetching all
+    // and checking card.tags[] is the only guaranteed approach.
     const allCards: Record<string, unknown>[] = [];
     let cursor: { updatedAt?: string; nmID?: number } | null = null;
 
@@ -64,7 +66,7 @@ export async function GET(_req: NextRequest) {
       const body: Record<string, unknown> = {
         settings: {
           cursor: { limit: 100, ...(cursor ?? {}) },
-          filter: { tagIDs: [tag.id] },
+          filter: { withPhoto: -1 },
         },
       };
 
@@ -77,7 +79,13 @@ export async function GET(_req: NextRequest) {
       if (!cardsRes.ok) break;
       const cardsJson = await cardsRes.json();
       const cards: Record<string, unknown>[] = cardsJson?.cards ?? [];
-      allCards.push(...cards);
+
+      for (const card of cards) {
+        const cardTags = Array.isArray(card.tags)
+          ? (card.tags as Array<{ id: number }>)
+          : [];
+        if (cardTags.some((t) => t.id === tag.id)) allCards.push(card);
+      }
 
       const newCursor = cardsJson?.cursor as { updatedAt?: string; nmID?: number } | null;
       if (!newCursor || cards.length < 100) break;
