@@ -27,7 +27,7 @@ async function wbFetch(url: string, opts: RequestInit, timeoutMs = 10000): Promi
   return res;
 }
 
-// seller-analytics-api требует Bearer-префикс
+// /api/analytics/... требует Bearer-префикс
 function bearer(token: string) {
   return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 }
@@ -38,18 +38,31 @@ function fmtMsk(d: Date): string {
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:00:00`;
 }
 
-function parseStatEntry(p: Record<string, unknown> | undefined): StatEntry {
-  if (!p) return { ordersCount: 0, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 };
-  const ordersCount = Number(p.ordersCount ?? 0);
-  const buyoutsCount = Number(p.buyoutsCount ?? 0);
-  const conv = p.conversions as Record<string, unknown> | undefined;
-  const buyoutsPercent = Number(conv?.buyoutsPercent ?? 0);
+// Парсит ответ воронки продаж
+function parseFunnelEntry(prod: Record<string, unknown>): StatEntry {
+  const selected = ((prod.statistic as Record<string, unknown>)?.selected ?? prod) as Record<string, unknown>;
+  const metrics = (selected.metrics as Record<string, unknown>) ?? selected;
+  const convObj = selected.conversions as Record<string, unknown> | null | undefined;
+
+  const g = (...keys: string[]): number => {
+    for (const k of keys) {
+      if (metrics[k] != null) return Number(metrics[k]);
+      if (selected[k] != null) return Number(selected[k]);
+    }
+    return 0;
+  };
+
+  const ordersCount = g('orderCount', 'ordersCount');
+  const buyoutPct = Number(convObj?.buyoutPercent ?? convObj?.buyoutsPercent ?? 0);
+  const rawBuyouts = g('buyoutCount', 'buyoutsCount');
+  const buyoutsCount = rawBuyouts > 0 ? rawBuyouts : (buyoutPct > 0 ? Math.round(ordersCount * buyoutPct / 100) : 0);
+
   return {
     ordersCount,
     buyoutsCount,
-    buyoutPercent: buyoutsPercent > 0 ? buyoutsPercent : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0),
-    addToCartCount: Number(p.addToCartCount ?? 0),
-    views: Number(p.openCardCount ?? 0),
+    buyoutPercent: buyoutPct > 0 ? buyoutPct : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0),
+    addToCartCount: g('cartCount', 'addToCartCount'),
+    views: g('views', 'viewsCount'),
   };
 }
 
@@ -76,7 +89,7 @@ export async function GET(_req: NextRequest) {
     if (!tag) {
       const available = tags.map((t) => `"${t.name}"`).join(', ');
       return NextResponse.json({
-        error: `Ярлык "${SELLER_LABEL}" не найден в WB кабинете. Доступные: ${available || 'нет'}`,
+        error: `Ярлык "${SELLER_LABEL}" не найден. Доступные: ${available || 'нет'}`,
       }, { status: 404 });
     }
 
@@ -103,24 +116,21 @@ export async function GET(_req: NextRequest) {
       if (cards.length < 100) break;
     }
 
-    // Московское время (UTC+3)
-    // Данные обновляются раз в час → end = текущий полный час МСК
+    // Временные метки МСК
     const MSK = 3 * 60 * 60 * 1000;
     const nowMsk = new Date(Date.now() + MSK);
-
     const beginMsk = new Date(nowMsk.getTime());
-    beginMsk.setUTCHours(0, 0, 0, 0); // 00:00 МСК сегодня
-
+    beginMsk.setUTCHours(0, 0, 0, 0);
     const endMsk = new Date(nowMsk.getTime());
-    endMsk.setUTCMinutes(0, 0, 0); // текущий полный час
-    if (endMsk <= beginMsk) endMsk.setUTCHours(1, 0, 0, 0); // минимум 01:00
+    endMsk.setUTCMinutes(0, 0, 0);
+    if (endMsk <= beginMsk) endMsk.setUTCHours(1, 0, 0, 0);
 
-    const beginStr = fmtMsk(beginMsk); // "2026-05-19 00:00:00"
-    const endStr = fmtMsk(endMsk);     // "2026-05-19 15:00:00"
+    const beginStr = fmtMsk(beginMsk);
+    const endStr = fmtMsk(endMsk);
 
-    // 30-дневный период для % выкупа (сегодняшние заказы ещё не выкуплены)
+    const todayDate = beginStr.split(' ')[0]; // "2026-05-19"
     const begin30Msk = new Date(beginMsk.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const begin30Str = fmtMsk(begin30Msk);
+    const begin30Date = fmtMsk(begin30Msk).split(' ')[0]; // "2026-04-19"
 
     if (allCards.length === 0) {
       return NextResponse.json({
@@ -132,43 +142,24 @@ export async function GET(_req: NextRequest) {
 
     const nmIds = allCards.map((c) => Number(c.nmID));
 
-    // Step 3: цены + статистика сегодня + остатки + % выкупа 30д — параллельно
-    const [pricesResult, nmDualResult, stocksResult, buyout30Result] = await Promise.allSettled([
+    // Step 3: цены + остатки + статистика сегодня + выкуп 30д — параллельно
+    const [pricesResult, stocksResult, statsTodayResult, buyout30Result] = await Promise.allSettled([
       fetchAllPrices(token),
-      fetchNMReportDual(nmIds, token, beginStr, endStr),
       fetchBatchStocks(nmIds, token),
-      fetchNMReportBuyout(nmIds, token, begin30Str, endStr),
+      fetchFunnelAll(nmIds, token, todayDate, todayDate),
+      fetchFunnelAll(nmIds, token, begin30Date, todayDate),
     ]);
 
     const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map<number, { priceSale: number; priceBasic: number; salePercent: number }>();
-    const nmDualMap = nmDualResult.status === 'fulfilled' ? nmDualResult.value : new Map<number, { selected: StatEntry; previous: StatEntry }>();
     const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
-    const buyout30Map = buyout30Result.status === 'fulfilled' ? buyout30Result.value : new Map<number, number>();
-
-    // Извлекаем today и yesterday из одного ответа NM Report
-    const statsMap = new Map<number, StatEntry>();
-    const statsYestMap = new Map<number, StatEntry>();
-
-    for (const [nmId, dual] of nmDualMap) {
-      statsMap.set(nmId, dual.selected);
-      statsYestMap.set(nmId, dual.previous);
-    }
-
-    // Дозаполняем товары, которых не оказалось в ответе NM Report
-    const missingIds = nmIds.filter((id) => !nmDualMap.has(id));
-    if (missingIds.length > 0) {
-      const todayDate = beginStr.split(' ')[0];
-      const fallback = await fetchStatsFallback(missingIds, token, todayDate);
-      for (const [nmId, stats] of fallback) {
-        statsMap.set(nmId, stats);
-      }
-    }
+    const statsTodayMap = statsTodayResult.status === 'fulfilled' ? statsTodayResult.value : new Map<number, StatEntry>();
+    const buyout30Map = buyout30Result.status === 'fulfilled' ? buyout30Result.value : new Map<number, StatEntry>();
 
     const products: DashboardProduct[] = allCards.map((card) => {
       const nmId = Number(card.nmID);
       const prices = pricesMap.get(nmId);
-      const stats = statsMap.get(nmId);
-      const statsYest = statsYestMap.get(nmId);
+      const statsToday = statsTodayMap.get(nmId);
+      const stats30 = buyout30Map.get(nmId);
       const stock = stocksMap.get(nmId) ?? 0;
 
       const photos = Array.isArray(card.photos) ? card.photos as Record<string, string>[] : [];
@@ -183,15 +174,15 @@ export async function GET(_req: NextRequest) {
         salePercent: prices?.salePercent ?? 0,
         totalStock: stock,
         photoUrl: photoUrl || undefined,
-        ordersCount: stats?.ordersCount ?? 0,
-        buyoutsCount: stats?.buyoutsCount ?? 0,
-        buyoutPercent: buyout30Map.get(nmId) ?? stats?.buyoutPercent ?? 0,
-        addToCartCount: stats?.addToCartCount ?? 0,
-        views: stats?.views ?? 0,
-        ordersYesterday: statsYest?.ordersCount ?? 0,
-        addToCartYesterday: statsYest?.addToCartCount ?? 0,
-        buyoutPercentYesterday: statsYest?.buyoutPercent ?? 0,
-        hasYesterdayData: nmDualMap.has(nmId),
+        ordersCount: statsToday?.ordersCount ?? 0,
+        buyoutsCount: statsToday?.buyoutsCount ?? 0,
+        buyoutPercent: stats30?.buyoutPercent ?? statsToday?.buyoutPercent ?? 0,
+        addToCartCount: statsToday?.addToCartCount ?? 0,
+        views: statsToday?.views ?? 0,
+        ordersYesterday: 0,
+        addToCartYesterday: 0,
+        buyoutPercentYesterday: 0,
+        hasYesterdayData: false,
       };
     });
 
@@ -209,62 +200,14 @@ export async function GET(_req: NextRequest) {
   }
 }
 
-// ── NM Report v2: один запрос → сегодня (selectedPeriod) + вчера (previousPeriod) ──
-
-async function fetchNMReportDual(nmIds: number[], token: string, begin: string, end: string) {
-  const map = new Map<number, { selected: StatEntry; previous: StatEntry }>();
-
-  for (let page = 1; page <= 20; page++) {
-    if (page > 1) await delay(300);
-
-    try {
-      const res = await wbFetch(
-        'https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail',
-        {
-          method: 'POST',
-          headers: { Authorization: bearer(token), 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nmIds,
-            period: { begin, end },
-            timezone: 'Europe/Moscow',
-            page,
-            limit: 100,
-          }),
-        },
-        8000
-      );
-
-      if (!res.ok) break;
-      const json = await res.json();
-      if (json?.error) break;
-
-      const cards: Record<string, unknown>[] = json?.data?.cards ?? [];
-
-      for (const card of cards) {
-        const nmId = Number(card.nmID);
-        if (!nmId) continue;
-        const stats = card.statistics as Record<string, unknown> | undefined;
-        map.set(nmId, {
-          selected: parseStatEntry(stats?.selectedPeriod as Record<string, unknown> | undefined),
-          previous: parseStatEntry(stats?.previousPeriod as Record<string, unknown> | undefined),
-        });
-      }
-
-      if (!json?.data?.isNextPage || cards.length === 0) break;
-    } catch { break; }
-  }
-
-  return map;
-}
-
-// ── Резервный вариант: индивидуальные вызовы воронки → orders API ──
-
-async function fetchStatsFallback(nmIds: number[], token: string, dateStr: string) {
+// ── Воронка продаж для всех товаров ──
+// Вызывает /api/analytics/v3/sales-funnel/products по 1 nmId за раз (ограничение WB API)
+async function fetchFunnelAll(nmIds: number[], token: string, startDate: string, endDate: string) {
   const map = new Map<number, StatEntry>();
-  const CONCURRENCY = 12;
+  const CONCURRENCY = 10;
 
   for (let i = 0; i < nmIds.length; i += CONCURRENCY) {
-    if (i > 0) await delay(100);
+    if (i > 0) await delay(150);
     await Promise.all(nmIds.slice(i, i + CONCURRENCY).map(async (nmId) => {
       try {
         const res = await wbFetch(
@@ -272,7 +215,12 @@ async function fetchStatsFallback(nmIds: number[], token: string, dateStr: strin
           {
             method: 'POST',
             headers: { Authorization: bearer(token), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ selectedPeriod: { start: dateStr, end: dateStr }, nmIds: [nmId], limit: 10, offset: 0 }),
+            body: JSON.stringify({
+              selectedPeriod: { start: startDate, end: endDate },
+              nmIds: [nmId],
+              limit: 10,
+              offset: 0,
+            }),
           },
           5000
         );
@@ -280,63 +228,38 @@ async function fetchStatsFallback(nmIds: number[], token: string, dateStr: strin
         const json = await res.json();
         const prod = json?.data?.products?.[0] as Record<string, unknown> | undefined;
         if (!prod) return;
-
-        const selected = ((prod.statistic as Record<string, unknown>)?.selected ?? prod) as Record<string, unknown>;
-        const metrics = (selected.metrics as Record<string, unknown>) ?? selected;
-        const convObj = selected.conversions as Record<string, unknown> | null | undefined;
-
-        const g = (...keys: string[]): number => {
-          for (const k of keys) {
-            if (metrics[k] != null) return Number(metrics[k]);
-            if (selected[k] != null) return Number(selected[k]);
-          }
-          return 0;
-        };
-
-        const ordersCount = g('orderCount', 'ordersCount');
-        const buyoutPct = Number(convObj?.buyoutPercent ?? convObj?.buyoutsPercent ?? 0);
-        const rawBuyouts = g('buyoutCount', 'buyoutsCount');
-        const buyoutsCount = rawBuyouts > 0 ? rawBuyouts : (buyoutPct > 0 ? Math.round(ordersCount * buyoutPct / 100) : 0);
-
-        map.set(nmId, {
-          ordersCount, buyoutsCount,
-          buyoutPercent: buyoutPct > 0 ? buyoutPct : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0),
-          addToCartCount: g('cartCount', 'addToCartCount'),
-          views: g('views', 'viewsCount'),
-        });
+        map.set(nmId, parseFunnelEntry(prod));
       } catch { /* skip */ }
     }));
   }
 
-  if (map.size > 0) return map;
-
-  // orders API как последний резерв
-  try {
-    const res = await wbFetch(
-      `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${dateStr}T00:00:00`,
-      { headers: { Authorization: token } },
-      15000
-    );
-    if (res.ok) {
-      const orders: Record<string, unknown>[] = await res.json();
-      const nmIdSet = new Set(nmIds);
-      const fromDate = new Date(`${dateStr}T00:00:00`);
-      const toDate = new Date(`${dateStr}T23:59:59`);
-      const byNm = new Map<number, number>();
-
-      for (const order of orders) {
-        const nmId = Number(order.nmId ?? order.nmID ?? 0);
-        if (!nmIdSet.has(nmId)) continue;
-        const d = new Date(String(order.date ?? order.lastChangeDate ?? ''));
-        if (d < fromDate || d > toDate) continue;
-        byNm.set(nmId, (byNm.get(nmId) ?? 0) + 1);
+  // Последний резерв: statistics-api orders (только для сегодняшней даты)
+  if (map.size === 0 && startDate === endDate) {
+    try {
+      const res = await wbFetch(
+        `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${startDate}T00:00:00`,
+        { headers: { Authorization: token } },
+        15000
+      );
+      if (res.ok) {
+        const orders: Record<string, unknown>[] = await res.json();
+        const nmIdSet = new Set(nmIds);
+        const fromDate = new Date(`${startDate}T00:00:00`);
+        const toDate = new Date(`${startDate}T23:59:59`);
+        const byNm = new Map<number, number>();
+        for (const order of orders) {
+          const id = Number(order.nmId ?? order.nmID ?? 0);
+          if (!nmIdSet.has(id)) continue;
+          const d = new Date(String(order.date ?? order.lastChangeDate ?? ''));
+          if (d < fromDate || d > toDate) continue;
+          byNm.set(id, (byNm.get(id) ?? 0) + 1);
+        }
+        for (const [id, cnt] of byNm) {
+          map.set(id, { ordersCount: cnt, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 });
+        }
       }
-
-      for (const [nmId, ordersCount] of byNm) {
-        map.set(nmId, { ordersCount, buyoutsCount: 0, buyoutPercent: 0, addToCartCount: 0, views: 0 });
-      }
-    }
-  } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  }
 
   return map;
 }
@@ -406,44 +329,5 @@ async function fetchBatchStocks(nmIds: number[], token: string) {
       }
     } catch { continue; }
   }
-  return map;
-}
-
-// ── NM Report v2: 30-дневный % выкупа ──
-async function fetchNMReportBuyout(nmIds: number[], token: string, begin: string, end: string) {
-  const map = new Map<number, number>(); // nmId → buyoutPercent
-
-  for (let page = 1; page <= 20; page++) {
-    if (page > 1) await delay(300);
-    try {
-      const res = await wbFetch(
-        'https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail',
-        {
-          method: 'POST',
-          headers: { Authorization: bearer(token), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nmIds, period: { begin, end }, timezone: 'Europe/Moscow', page, limit: 100 }),
-        },
-        8000
-      );
-      if (!res.ok) break;
-      const json = await res.json();
-      if (json?.error) break;
-
-      const cards: Record<string, unknown>[] = json?.data?.cards ?? [];
-      for (const card of cards) {
-        const nmId = Number(card.nmID);
-        if (!nmId) continue;
-        const stats = card.statistics as Record<string, unknown> | undefined;
-        const sel = stats?.selectedPeriod as Record<string, unknown> | undefined;
-        if (!sel) continue;
-        const conv = sel.conversions as Record<string, unknown> | undefined;
-        const pct = Number(conv?.buyoutsPercent ?? 0);
-        if (pct > 0) map.set(nmId, pct);
-      }
-
-      if (!json?.data?.isNextPage || cards.length === 0) break;
-    } catch { break; }
-  }
-
   return map;
 }
