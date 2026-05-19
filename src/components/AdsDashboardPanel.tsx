@@ -20,13 +20,18 @@ function statusLabel(status: number): { text: string; cls: string } {
   return { text: `Статус ${status}`, cls: 'text-slate-500 bg-slate-800/60 border-slate-700/40' };
 }
 
-// ── Тип кампании: payment_type + bid_type ────────────────────────────────────
-function typeName(paymentType: string, bidType: string): string {
+// ── Тип кампании: payment_type + bid_type, fallback на числовой type ─────────
+const NUMERIC_TYPE: Record<number, string> = {
+  4: 'Каталог', 5: 'Карточка', 6: 'Поиск', 7: 'Главная', 8: 'Авто', 9: 'Поиск+каталог',
+};
+function typeName(paymentType: string, bidType: string, numericType: number): string {
   if (paymentType === 'cpc') return 'CPC';
   if (paymentType === 'cpm' && bidType === 'unified') return 'CPM единая';
   if (paymentType === 'cpm' && bidType === 'manual') return 'CPM ручная';
   if (paymentType === 'cpm') return 'CPM';
-  return paymentType || '—';
+  // Числовой fallback для кампаний без payment_type
+  if (numericType && NUMERIC_TYPE[numericType]) return NUMERIC_TYPE[numericType];
+  return '—';
 }
 
 // ── Мини-воронка ─────────────────────────────────────────────────────────────
@@ -183,7 +188,7 @@ export function AdsDashboardPanel({ products, adsResult, onAnalyze }: AdsDashboa
                                   {st!.text}
                                 </span>
                                 <span className="text-[10px] text-slate-600 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/40">
-                                  {typeName(ad.paymentType, ad.bidType)}
+                                  {typeName(ad.paymentType, ad.bidType, ad.numericType)}
                                 </span>
                               </div>
                             </div>

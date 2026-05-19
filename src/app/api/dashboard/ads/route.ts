@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
         // ── Step 3: Детали кампаний — nm_settings ────────────────────────────────
         type AdvertInfo = {
           advertId: number; name: string; status: number;
-          paymentType: string; bidType: string; changeTime: string;
+          paymentType: string; bidType: string; numericType: number; changeTime: string;
         };
         const nmIdToAdverts = new Map<number, AdvertInfo[]>();
         const advertIdToNmId = new Map<number, number>(); // обратная карта
@@ -186,6 +186,7 @@ export async function POST(req: NextRequest) {
                 status: statusFromCount.get(aId) ?? Number(a.status ?? 0),
                 paymentType,
                 bidType,
+                numericType: Number(a.type ?? 0),
                 changeTime: changeTimes.get(aId) ?? '',
               };
 
@@ -294,6 +295,7 @@ export async function POST(req: NextRequest) {
             status: best.status,
             paymentType: best.paymentType,
             bidType: best.bidType,
+            numericType: best.numericType,
             views,
             clicks,
             atbs,

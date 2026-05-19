@@ -196,6 +196,7 @@ export interface DashboardAdCampaign {
   status: number;         // 9=active, 11=paused, 7=completed, 4=ready
   paymentType: string;    // "cpc" | "cpm"
   bidType: string;        // "manual" | "unified" | ""
+  numericType: number;    // fallback: 8=авто, 6=поиск, 4=каталог, 9=поиск+каталог
   views: number;        // показы за 7 дн по этому nmId
   clicks: number;       // клики
   atbs: number;         // добавления в корзину
