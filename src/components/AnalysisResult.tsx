@@ -150,7 +150,13 @@ export function AnalysisResult({ article, analysis, isStreaming, rawData, assemb
             </div>
             <div className={`markdown prose prose-invert max-w-none ${isStreaming ? 'cursor' : ''}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {analysis.replace(/^>\s*\*Анализирует:.*?\*\n\n/m, '')}
+                {analysis
+                  .replace(/^>\s*\*Анализирует:.*?\*\n\n/m, '')
+                  .replace(/\\times/g, '×')
+                  .replace(/\\div/g, '÷')
+                  .replace(/\\geq/g, '≥')
+                  .replace(/\\leq/g, '≤')
+                  .replace(/\\cdot/g, '·')}
               </ReactMarkdown>
             </div>
             {isStreaming && analysis === '' && (
