@@ -98,21 +98,29 @@ export async function GET(_req: NextRequest) {
 
     const nmIds = allCards.map((c) => Number(c.nmID));
 
-    // Step 3: prices + stats(30d) + stocks in parallel
-    const [pricesResult, statsResult, stocksResult] = await Promise.allSettled([
+    // Вчера
+    const yd = new Date();
+    yd.setDate(yd.getDate() - 1);
+    const yesterday = yd.toISOString().split('T')[0];
+
+    // Step 3: prices + stats(30d) + stocks + stats(вчера) в параллель
+    const [pricesResult, statsResult, stocksResult, statsYestResult] = await Promise.allSettled([
       fetchAllPrices(token),
       fetchBatchStats(nmIds, token, from, to),
       fetchBatchStocks(nmIds, token),
+      fetchNMReport(nmIds, token, yesterday, yesterday),
     ]);
 
     const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map<number, { priceSale: number; priceBasic: number; salePercent: number }>();
     const statsMap = statsResult.status === 'fulfilled' ? statsResult.value : new Map<number, StatEntry>();
     const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
+    const statsYestMap = statsYestResult.status === 'fulfilled' ? statsYestResult.value : new Map<number, StatEntry>();
 
     const products: DashboardProduct[] = allCards.map((card) => {
       const nmId = Number(card.nmID);
       const prices = pricesMap.get(nmId);
       const stats = statsMap.get(nmId);
+      const statsYest = statsYestMap.get(nmId);
       const stock = stocksMap.get(nmId) ?? 0;
 
       const photos = Array.isArray(card.photos) ? card.photos as Record<string, string>[] : [];
@@ -132,9 +140,9 @@ export async function GET(_req: NextRequest) {
         buyoutPercent: stats?.buyoutPercent ?? 0,
         addToCartCount: stats?.addToCartCount ?? 0,
         views: stats?.views ?? 0,
-        ordersYesterday: 0,
-        addToCartYesterday: 0,
-        buyoutPercentYesterday: 0,
+        ordersYesterday: statsYest?.ordersCount ?? 0,
+        addToCartYesterday: statsYest?.addToCartCount ?? 0,
+        buyoutPercentYesterday: statsYest?.buyoutPercent ?? 0,
       };
     });
 
@@ -171,10 +179,10 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
           method: 'POST',
           headers: { Authorization: token, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            nmIDs: nmIds,
+            nmIds,
             period: { begin: from, end: to },
             page,
-            timezone: 'Europe/Moscow',
+            limit: 100,
           }),
         },
         5000
@@ -198,9 +206,10 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
 
         const ordersCount = Number(selected.ordersCount ?? 0);
         const buyoutsCount = Number(selected.buyoutsCount ?? 0);
-        const rawBuyoutPct = Number(selected.buyoutPercent ?? 0);
-        const buyoutPercent = rawBuyoutPct > 0
-          ? rawBuyoutPct
+        const conversions = selected.conversions as Record<string, unknown> | undefined;
+        const buyoutsPercent = Number(conversions?.buyoutsPercent ?? 0);
+        const buyoutPercent = buyoutsPercent > 0
+          ? buyoutsPercent
           : (ordersCount > 0 ? (buyoutsCount / ordersCount) * 100 : 0);
 
         map.set(nmId, {
@@ -208,7 +217,7 @@ async function fetchNMReport(nmIds: number[], token: string, from: string, to: s
           buyoutsCount,
           buyoutPercent,
           addToCartCount: Number(selected.addToCartCount ?? 0),
-          views: Number(selected.openCardCount ?? selected.viewsCount ?? 0),
+          views: Number(selected.openCardCount ?? 0),
         });
       }
 

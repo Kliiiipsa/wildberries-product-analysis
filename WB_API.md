@@ -103,18 +103,18 @@ Content-Type: application/json
 
 ---
 
-## ⏳ Пакетная статистика по nmId — NM Report v2
+## ✅ Пакетная статистика по nmId — NM Report v2
 
 **Вопрос:** Какой эндпоинт и body для пакетного получения статистики по нескольким nmId?
 
-**Body (подтверждён пользователем):**
+**Body:**
 ```
 POST https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "nmIds": [123456, 789012],   ← строчная d! (не nmIDs)
+  "nmIds": [123456, 789012],
   "period": {
     "begin": "2026-05-01",
     "end": "2026-05-18"
@@ -123,10 +123,56 @@ Content-Type: application/json
   "limit": 100
 }
 ```
+⚠️ Важно: поле называется `nmIds` — строчная d! (`nmIDs` с заглавной — не работает)
 
-**Структура ответа:** ⏳ ожидаем подтверждения от пользователя
+**Структура ответа:**
+```json
+{
+  "data": {
+    "cards": [
+      {
+        "nmID": 123456,
+        "vendorCode": "string",
+        "brandName": "string",
+        "statistics": {
+          "selectedPeriod": {
+            "openCardCount": 200,
+            "addToCartCount": 50,
+            "ordersCount": 10,
+            "ordersSumRub": 15000,
+            "buyoutsCount": 8,
+            "buyoutsSumRub": 12000,
+            "cancelCount": 2,
+            "cancelSumRub": 3000,
+            "avgPriceRub": 1500,
+            "avgOrdersCountPerDay": 0.5,
+            "conversions": {
+              "addToCartPercent": 25.0,
+              "cartToOrderPercent": 20.0,
+              "buyoutsPercent": 80.0
+            }
+          },
+          "previousPeriod": { /* те же поля — за предыдущий сопоставимый период */ }
+        }
+      }
+    ],
+    "isNextPage": false
+  }
+}
+```
 
-**Дата:** май 2026 | Статус: body ✅ / ответ ⏳
+**Ключевые поля:**
+| Метрика | Путь | Тип |
+|---|---|---|
+| Заказы | `statistics.selectedPeriod.ordersCount` | int |
+| Выкупы | `statistics.selectedPeriod.buyoutsCount` | int |
+| Корзины | `statistics.selectedPeriod.addToCartCount` | int |
+| Открытия карточки | `statistics.selectedPeriod.openCardCount` | int |
+| % выкупа | `statistics.selectedPeriod.conversions.buyoutsPercent` | float |
+
+⚠️ `buyoutsPercent` лежит внутри `conversions`, а не напрямую в `selectedPeriod`!
+
+**Подтверждено:** май 2026 ✅
 
 ---
 
