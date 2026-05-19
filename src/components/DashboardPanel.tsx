@@ -102,9 +102,9 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
 
   const thProps = { sortKey, sortDir, onSort: handleSort };
 
-  const periodLabel = data.periodFrom && data.periodTo
-    ? `${formatPeriodDate(data.periodFrom)} – ${formatPeriodDate(data.periodTo)}`
-    : '30 дней';
+  const periodLabel = data.periodFrom
+    ? `сегодня ${formatPeriodDate(data.periodFrom)}`
+    : 'сегодня';
 
   return (
     <div className="w-full mt-6">
@@ -140,7 +140,7 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
       <div className="flex flex-wrap gap-2.5 mb-5">
         {[
           { label: 'Товаров', value: String(data.products.length) },
-          { label: 'Заказов / 30д', value: String(totalOrders) },
+          { label: 'Заказов сегодня', value: String(totalOrders) },
           { label: 'Остаток', value: `${totalStock.toLocaleString('ru-RU')} шт` },
           { label: 'Ср. выкуп', value: avgBuyout > 0 ? `${avgBuyout.toFixed(1)}%` : '—' },
         ].map(({ label, value }) => (
@@ -166,20 +166,20 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                     <Th label="Артикул" {...thProps} />
                     <Th label="Цена" col="priceSale" {...thProps} />
                     <Th label="Остаток" col="totalStock" {...thProps} />
-                    <Th label="Выкуп 30д" col="buyoutPercent" {...thProps} />
-                    <Th label="Заказы 30д" col="ordersCount" {...thProps} />
-                    <Th label="Корзины 30д" col="addToCartCount" {...thProps} />
+                    <Th label="Выкуп сегодня" col="buyoutPercent" {...thProps} />
+                    <Th label="Заказы сегодня" col="ordersCount" {...thProps} />
+                    <Th label="Корзины сегодня" col="addToCartCount" {...thProps} />
                     <Th label="Запас" {...thProps} />
                     <th className="px-3 py-2.5 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {sorted.map((p) => {
-                    // Stock weeks based on 30-day buyout rate converted to weekly
-                    const buyoutsIn30d = p.ordersCount > 0 && p.buyoutPercent > 0
+                    // Запас: дневные выкупы → недельный темп (×7)
+                    const dailyBuyouts = p.ordersCount > 0 && p.buyoutPercent > 0
                       ? p.ordersCount * (p.buyoutPercent / 100)
                       : 0;
-                    const weeklyBuyouts = buyoutsIn30d * 7 / 30;
+                    const weeklyBuyouts = dailyBuyouts * 7;
                     const stockWeeks = weeklyBuyouts > 0 ? Math.round(p.totalStock / weeklyBuyouts) : null;
 
                     return (

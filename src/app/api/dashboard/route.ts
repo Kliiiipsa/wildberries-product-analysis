@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLast30Days } from '@/lib/utils';
 import type { DashboardProduct, DashboardData } from '@/types';
 
 export const runtime = 'edge';
@@ -82,7 +81,12 @@ export async function GET(_req: NextRequest) {
       if (cards.length < 100) break;
     }
 
-    const { from, to } = getLast30Days();
+    // Сегодня и вчера (московское время UTC+3)
+    const nowMsk = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const today = nowMsk.toISOString().split('T')[0];
+    const ydMsk = new Date(nowMsk);
+    ydMsk.setDate(ydMsk.getDate() - 1);
+    const yesterday = ydMsk.toISOString().split('T')[0];
 
     if (allCards.length === 0) {
       const data: DashboardData = {
@@ -90,23 +94,18 @@ export async function GET(_req: NextRequest) {
         sellerLabel: SELLER_LABEL,
         tagId: tag.id,
         fetchedAt: new Date().toLocaleString('ru-RU'),
-        periodFrom: from,
-        periodTo: to,
+        periodFrom: today,
+        periodTo: today,
       };
       return NextResponse.json(data);
     }
 
     const nmIds = allCards.map((c) => Number(c.nmID));
 
-    // Вчера
-    const yd = new Date();
-    yd.setDate(yd.getDate() - 1);
-    const yesterday = yd.toISOString().split('T')[0];
-
-    // Step 3: prices + stats(30d) + stocks + stats(вчера) в параллель
+    // Step 3: prices + stats(сегодня) + stocks + stats(вчера) в параллель
     const [pricesResult, statsResult, stocksResult, statsYestResult] = await Promise.allSettled([
       fetchAllPrices(token),
-      fetchBatchStats(nmIds, token, from, to),
+      fetchBatchStats(nmIds, token, today, today),
       fetchBatchStocks(nmIds, token),
       fetchNMReport(nmIds, token, yesterday, yesterday),
     ]);
@@ -151,8 +150,8 @@ export async function GET(_req: NextRequest) {
       sellerLabel: SELLER_LABEL,
       tagId: tag.id,
       fetchedAt: new Date().toLocaleString('ru-RU'),
-      periodFrom: from,
-      periodTo: to,
+      periodFrom: today,
+      periodTo: today,
     };
 
     return NextResponse.json(data, {
