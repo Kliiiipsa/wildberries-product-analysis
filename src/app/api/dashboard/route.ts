@@ -118,6 +118,10 @@ export async function GET(_req: NextRequest) {
     const beginStr = fmtMsk(beginMsk); // "2026-05-19 00:00:00"
     const endStr = fmtMsk(endMsk);     // "2026-05-19 15:00:00"
 
+    // 30-дневный период для % выкупа (сегодняшние заказы ещё не выкуплены)
+    const begin30Msk = new Date(beginMsk.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const begin30Str = fmtMsk(begin30Msk);
+
     if (allCards.length === 0) {
       return NextResponse.json({
         products: [], sellerLabel: SELLER_LABEL, tagId: tag.id,
@@ -128,16 +132,18 @@ export async function GET(_req: NextRequest) {
 
     const nmIds = allCards.map((c) => Number(c.nmID));
 
-    // Step 3: цены + статистика (с previousPeriod за вчера) + остатки — параллельно
-    const [pricesResult, nmDualResult, stocksResult] = await Promise.allSettled([
+    // Step 3: цены + статистика сегодня + остатки + % выкупа 30д — параллельно
+    const [pricesResult, nmDualResult, stocksResult, buyout30Result] = await Promise.allSettled([
       fetchAllPrices(token),
       fetchNMReportDual(nmIds, token, beginStr, endStr),
       fetchBatchStocks(nmIds, token),
+      fetchNMReportBuyout(nmIds, token, begin30Str, endStr),
     ]);
 
     const pricesMap = pricesResult.status === 'fulfilled' ? pricesResult.value : new Map<number, { priceSale: number; priceBasic: number; salePercent: number }>();
     const nmDualMap = nmDualResult.status === 'fulfilled' ? nmDualResult.value : new Map<number, { selected: StatEntry; previous: StatEntry }>();
     const stocksMap = stocksResult.status === 'fulfilled' ? stocksResult.value : new Map<number, number>();
+    const buyout30Map = buyout30Result.status === 'fulfilled' ? buyout30Result.value : new Map<number, number>();
 
     // Извлекаем today и yesterday из одного ответа NM Report
     const statsMap = new Map<number, StatEntry>();
@@ -179,7 +185,7 @@ export async function GET(_req: NextRequest) {
         photoUrl: photoUrl || undefined,
         ordersCount: stats?.ordersCount ?? 0,
         buyoutsCount: stats?.buyoutsCount ?? 0,
-        buyoutPercent: stats?.buyoutPercent ?? 0,
+        buyoutPercent: buyout30Map.get(nmId) ?? stats?.buyoutPercent ?? 0,
         addToCartCount: stats?.addToCartCount ?? 0,
         views: stats?.views ?? 0,
         ordersYesterday: statsYest?.ordersCount ?? 0,
@@ -400,5 +406,44 @@ async function fetchBatchStocks(nmIds: number[], token: string) {
       }
     } catch { continue; }
   }
+  return map;
+}
+
+// ── NM Report v2: 30-дневный % выкупа ──
+async function fetchNMReportBuyout(nmIds: number[], token: string, begin: string, end: string) {
+  const map = new Map<number, number>(); // nmId → buyoutPercent
+
+  for (let page = 1; page <= 20; page++) {
+    if (page > 1) await delay(300);
+    try {
+      const res = await wbFetch(
+        'https://seller-analytics-api.wildberries.ru/api/v2/nm-report/detail',
+        {
+          method: 'POST',
+          headers: { Authorization: bearer(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nmIds, period: { begin, end }, timezone: 'Europe/Moscow', page, limit: 100 }),
+        },
+        8000
+      );
+      if (!res.ok) break;
+      const json = await res.json();
+      if (json?.error) break;
+
+      const cards: Record<string, unknown>[] = json?.data?.cards ?? [];
+      for (const card of cards) {
+        const nmId = Number(card.nmID);
+        if (!nmId) continue;
+        const stats = card.statistics as Record<string, unknown> | undefined;
+        const sel = stats?.selectedPeriod as Record<string, unknown> | undefined;
+        if (!sel) continue;
+        const conv = sel.conversions as Record<string, unknown> | undefined;
+        const pct = Number(conv?.buyoutsPercent ?? 0);
+        if (pct > 0) map.set(nmId, pct);
+      }
+
+      if (!json?.data?.isNextPage || cards.length === 0) break;
+    } catch { break; }
+  }
+
   return map;
 }

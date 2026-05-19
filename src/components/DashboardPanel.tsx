@@ -163,7 +163,7 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
                     <Th label="Артикул" {...thProps} />
                     <Th label="Цена" col="priceSale" {...thProps} />
                     <Th label="Остаток" col="totalStock" {...thProps} />
-                    <Th label="Выкуп сегодня" col="buyoutPercent" {...thProps} />
+                    <Th label="Выкуп (30 дн)" col="buyoutPercent" {...thProps} />
                     <Th label="Заказы сегодня" col="ordersCount" {...thProps} />
                     <Th label="Корзины сегодня" col="addToCartCount" {...thProps} />
                     <Th label="Запас" {...thProps} />
@@ -224,15 +224,8 @@ export function DashboardPanel({ data, onBack, onAnalyze, onRefresh, isRefreshin
 
                         {/* Buyout % */}
                         <td className="px-3 py-3">
-                          <div>
-                            <div className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
-                              {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
-                            </div>
-                            {p.hasYesterdayData && (
-                              <div className="text-xs text-slate-600 mt-0.5">
-                                {p.buyoutPercentYesterday > 0 ? `${p.buyoutPercentYesterday.toFixed(1)}% вчера` : '— вчера'}
-                              </div>
-                            )}
+                          <div className={`text-sm ${buyoutClass(p.buyoutPercent)}`}>
+                            {p.buyoutPercent > 0 ? `${p.buyoutPercent.toFixed(1)}%` : '—'}
                           </div>
                         </td>
 
