@@ -1,5 +1,7 @@
 import { AnalyzeForm } from '@/components/AnalyzeForm';
 import { TrendingUp, Zap, Database, Bot } from 'lucide-react';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 const FEATURES = [
   { icon: Database,    label: 'Unit-экономика',  desc: 'Google Sheets' },
@@ -8,7 +10,12 @@ const FEATURES = [
   { icon: Bot,         label: 'Groq AI',          desc: 'Анализ 9 разделов' },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const cookieStore = await cookies();
+  const session = cookieStore.get('session')?.value;
+  if (!session || session !== process.env.SESSION_SECRET) {
+    redirect('/login');
+  }
   return (
     <main className="min-h-screen bg-background">
       {/* Subtle grid background */}
