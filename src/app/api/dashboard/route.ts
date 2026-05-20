@@ -6,7 +6,7 @@ export const maxDuration = 30;
 
 function sellerLabelFromSession(session: string): string {
   const ilyaKey = process.env.ILYA_SESSION_KEY || '346bkmz421';
-  if (session === ilyaKey) return 'Илья';
+  if (session === ilyaKey) return process.env.ILYA_WB_TAG || 'илья';
   return process.env.SELLER_LABEL || 'Кирилл';
 }
 
