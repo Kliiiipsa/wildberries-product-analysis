@@ -16,7 +16,7 @@ export default async function HomePage() {
   if (!session || session !== process.env.SESSION_SECRET) {
     redirect('/login');
   }
-  const sellerLabel = process.env.SELLER_LABEL || '';
+  const sellerLabel = process.env.SELLER_LABEL || 'Кирилл';
   return (
     <main className="min-h-screen bg-background">
       {/* Seller badge */}
