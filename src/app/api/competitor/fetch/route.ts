@@ -11,42 +11,74 @@ function getLast30Days() {
   return { from: fmt(from), to: fmt(to) };
 }
 
-// Парсим один элемент ответа MPSTATS в CompetitorStats
-function parseItem(raw: Record<string, unknown>, nmId: number, isMine: boolean): CompetitorStats {
-  // MPSTATS может возвращать данные в разных форматах — обрабатываем оба
-  const price     = Number(raw.price      ?? raw.priceU    ?? raw.basic_sale  ?? 0);
-  const priceSale = Number(raw.price_u    ?? raw.priceSale ?? raw.sale_price  ?? price);
-  const discount  = price > 0 && priceSale < price
-    ? Math.round((1 - priceSale / price) * 100)
-    : Number(raw.discount ?? 0);
+async function fetchOneItem(
+  nmId: number,
+  token: string,
+  from: string,
+  to: string,
+  myNmId: number,
+): Promise<CompetitorStats> {
+  const hdrs = { 'X-Mpstats-TOKEN': token, Accept: 'application/json' };
 
-  const sales30d  = Number(raw.sales      ?? raw.ordered   ?? raw.orders      ?? 0);
-  const revenue30d = Number(raw.revenue   ?? raw.sum       ?? (sales30d * priceSale));
-  const stockTotal = Number(raw.balance   ?? raw.stock     ?? raw.quantity     ?? 0);
+  const [byDateRes, fullRes] = await Promise.allSettled([
+    fetch(
+      `https://mpstats.io/api/wb/get/item/${nmId}/by_date?d1=${from}&d2=${to}`,
+      { headers: hdrs, signal: AbortSignal.timeout(22000) },
+    ),
+    fetch(
+      `https://mpstats.io/api/analytics/v1/wb/items/${nmId}/full`,
+      { headers: hdrs, signal: AbortSignal.timeout(22000) },
+    ),
+  ]);
 
-  const name      = String(raw.name       ?? raw.title     ?? '');
-  const brand     = String(raw.brand      ?? raw.brandName ?? '');
-  const rating    = Number(raw.rating     ?? raw.feedbackRating ?? 0);
-  const reviewCount = Number(raw.comments ?? raw.feedbacks ?? raw.reviewCount  ?? 0);
+  let name = '', brand = '', photoUrl: string | undefined;
+  let price = 0, priceSale = 0, discount = 0;
+  let rating = 0, reviewCount = 0, stockTotal = 0;
+  let sales30d = 0, revenue30d = 0;
+  let dataError: string | undefined;
 
-  // Фото: пробуем разные поля
-  const thumb = raw.thumb ?? raw.image ?? raw.photo ?? raw.pic;
-  const photoUrl = typeof thumb === 'string' && thumb ? thumb : undefined;
+  if (fullRes.status === 'fulfilled' && fullRes.value.ok) {
+    const f = await fullRes.value.json() as Record<string, unknown>;
+    name = String(f.full_name || f.name || '');
+    brand = String(f.brand || f.brand_name || '');
+    price = Number(f.price || f.basic_price || 0);
+    priceSale = Number(f.final_price || f.sale_price || f.price_u || price);
+    discount = price > 0 && priceSale < price
+      ? Math.round((1 - priceSale / price) * 100)
+      : Number(f.discount || 0);
+    rating = Number(f.rating || 0);
+    reviewCount = Number(f.comments || f.feedbacks || f.reviews_count || 0);
+    stockTotal = Number(f.balance || f.stock || f.quantity || 0);
+    const thumb = f.thumb || f.image || f.photo;
+    if (typeof thumb === 'string' && thumb) photoUrl = thumb;
+  } else if (fullRes.status === 'fulfilled') {
+    dataError = `MPSTATS /full: HTTP ${fullRes.value.status}`;
+  } else {
+    dataError = `MPSTATS: ${fullRes.reason}`;
+  }
+
+  if (byDateRes.status === 'fulfilled' && byDateRes.value.ok) {
+    const data = await byDateRes.value.json();
+    const arr = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+    if (arr.length > 0) {
+      sales30d = arr.reduce((s, r) => s + Number(r.sales || r.ordered || 0), 0);
+      revenue30d = arr.reduce((s, r) => s + Number(r.proceeds || r.revenue || r.sum || 0), 0);
+      if (!price) {
+        const avg = arr.reduce((s, r) => s + Number(r.price || 0), 0) / arr.length;
+        if (avg > 0) { price = avg; priceSale = avg; }
+      }
+    } else if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const d = data as Record<string, unknown>;
+      sales30d = Number(d.sales || d.ordered || 0);
+      revenue30d = Number(d.revenue || d.proceeds || d.sum || 0);
+    }
+  }
 
   return {
-    nmId,
-    name,
-    brand,
-    price,
-    priceSale,
-    discount,
-    sales30d,
-    revenue30d,
-    stockTotal,
-    rating,
-    reviewCount,
-    photoUrl,
-    isMine,
+    nmId, name, brand, price, priceSale, discount,
+    sales30d, revenue30d, stockTotal, rating, reviewCount,
+    photoUrl, isMine: nmId === myNmId,
+    ...(dataError ? { dataError } : {}),
   };
 }
 
@@ -73,64 +105,19 @@ export async function POST(req: NextRequest) {
   const { from, to } = getLast30Days();
 
   try {
-    const res = await fetch('https://mpstats.io/api/v2/nm-report/detail', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Mpstats-TOKEN': token,
-      },
-      body: JSON.stringify({
-        nmIds,
-        period: { begin: from, end: to },
-      }),
-      signal: AbortSignal.timeout(25000),
-    });
+    const results = await Promise.allSettled(
+      nmIds.map(nmId => fetchOneItem(nmId, token, from, to, myNmId)),
+    );
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      return NextResponse.json(
-        { error: `MPSTATS: HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}` },
-        { status: 502 }
-      );
-    }
-
-    const json = await res.json();
-
-    // Ответ может быть массивом или объектом с полем data/items/results
-    const rawItems: Record<string, unknown>[] = Array.isArray(json)
-      ? json
-      : Array.isArray(json?.data)   ? json.data
-      : Array.isArray(json?.items)  ? json.items
-      : Array.isArray(json?.result) ? json.result
-      : [];
-
-    // Строим индекс по nmId из ответа
-    const rawByNmId = new Map<number, Record<string, unknown>>();
-    for (const item of rawItems) {
-      const id = Number(item.id ?? item.nmId ?? item.nm_id ?? 0);
-      if (id) rawByNmId.set(id, item);
-    }
-
-    const products: CompetitorStats[] = nmIds.map((nmId) => {
-      const raw = rawByNmId.get(nmId);
-      if (!raw) {
-        return {
-          nmId,
-          name: '',
-          brand: '',
-          price: 0,
-          priceSale: 0,
-          discount: 0,
-          sales30d: 0,
-          revenue30d: 0,
-          stockTotal: 0,
-          rating: 0,
-          reviewCount: 0,
-          isMine: nmId === myNmId,
-          dataError: 'Данные MPSTATS не найдены',
-        };
-      }
-      return parseItem(raw, nmId, nmId === myNmId);
+    const products: CompetitorStats[] = results.map((r, i) => {
+      if (r.status === 'fulfilled') return r.value;
+      return {
+        nmId: nmIds[i],
+        name: '', brand: '', price: 0, priceSale: 0, discount: 0,
+        sales30d: 0, revenue30d: 0, stockTotal: 0, rating: 0, reviewCount: 0,
+        isMine: nmIds[i] === myNmId,
+        dataError: String(r.reason),
+      };
     });
 
     const result: ComparisonData = {
@@ -142,7 +129,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, {
       headers: { 'Cache-Control': 'private, max-age=300' },
     });
-
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

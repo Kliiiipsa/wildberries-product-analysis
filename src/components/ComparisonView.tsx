@@ -256,7 +256,6 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
   const [myNmId, setMyNmId] = useState<number | null>(null);
   const [competitors, setCompetitors] = useState<CompetitorEntry[]>([]);
   const [newNmId, setNewNmId] = useState('');
-  const [newVariant, setNewVariant] = useState('');
   const [phase, setPhase] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [result, setResult] = useState<ComparisonData | null>(null);
   const [error, setError] = useState('');
@@ -277,10 +276,9 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
     const id = parseInt(newNmId.trim(), 10);
     if (!id || isNaN(id)) return;
     if (competitors.some(c => c.nmId === id)) return; // дубликат
-    setCompetitors(prev => [...prev, { nmId: id, variantArticle: newVariant.trim() || undefined }]);
+    setCompetitors(prev => [...prev, { nmId: id }]);
     setNewNmId('');
-    setNewVariant('');
-  }, [newNmId, newVariant, competitors]);
+  }, [newNmId, competitors]);
 
   const removeCompetitor = useCallback((nmId: number) => {
     setCompetitors(prev => prev.filter(c => c.nmId !== nmId));
@@ -395,11 +393,6 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
               {competitors.map(c => (
                 <div key={c.nmId} className="flex items-center gap-2 text-sm">
                   <span className="font-mono text-slate-300 flex-1">{c.nmId}</span>
-                  {c.variantArticle && (
-                    <span className="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
-                      арт. {c.variantArticle}
-                    </span>
-                  )}
                   <button
                     onClick={() => removeCompetitor(c.nmId)}
                     className="text-slate-700 hover:text-rose-400 transition-colors shrink-0"
@@ -416,19 +409,11 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
             <Input
               type="text"
               inputMode="numeric"
-              placeholder="nmID конкурента"
+              placeholder="Артикул конкурента"
               value={newNmId}
               onChange={e => setNewNmId(e.target.value.replace(/\D/g, ''))}
               onKeyDown={e => e.key === 'Enter' && addCompetitor()}
               className="bg-slate-800/60 border-slate-700/60 rounded-xl text-sm flex-1 h-9"
-            />
-            <Input
-              type="text"
-              placeholder="Арт. варианта"
-              value={newVariant}
-              onChange={e => setNewVariant(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addCompetitor()}
-              className="bg-slate-800/60 border-slate-700/60 rounded-xl text-sm w-28 h-9"
             />
             <Button
               variant="outline"
