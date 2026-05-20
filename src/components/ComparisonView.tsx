@@ -18,7 +18,7 @@ interface CompGroup {
   error: string;
 }
 
-interface StoredGroup { id: string; myNmId: number | null; competitorIds: number[]; }
+interface StoredGroup { id: string; myNmId: number | null; competitorIds: number[]; result: ComparisonData | null; }
 
 interface ComparisonViewProps {
   dashboardProducts: DashboardProduct[];
@@ -38,7 +38,7 @@ function loadFromLS(): StoredGroup[] {
 function saveToLS(groups: CompGroup[]) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(
-      groups.map(g => ({ id: g.id, myNmId: g.myNmId, competitorIds: g.competitorIds }))
+      groups.map(g => ({ id: g.id, myNmId: g.myNmId, competitorIds: g.competitorIds, result: g.result }))
     ));
   } catch { /* ignore */ }
 }
@@ -169,7 +169,7 @@ function GroupSection({
     setInputVal('');
   }, [inputVal, group.id, group.competitorIds, onAddCompetitor]);
 
-  const canRun = group.myNmId !== null && group.competitorIds.length > 0;
+  const canRun = (group.myNmId ?? 0) > 0 && group.competitorIds.length > 0;
   const products = group.result?.products ?? [];
   const maxOrders  = Math.max(...products.map(p => p.sales7d), 1);
   const maxRevenue = Math.max(...products.map(p => p.revenue7d), 1);
@@ -234,15 +234,17 @@ function GroupSection({
 
         {/* Run */}
         <button
-          onClick={() => canRun && onRun(group.id, group.myNmId!, group.competitorIds)}
+          onClick={() => onRun(group.id, group.myNmId!, group.competitorIds)}
           disabled={!canRun || group.phase === 'loading'}
           className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors shrink-0"
         >
           {group.phase === 'loading'
             ? <RefreshCw className="h-3 w-3 animate-spin" />
-            : <Play className="h-3 w-3 fill-current" />
+            : group.phase === 'done'
+              ? <RefreshCw className="h-3 w-3" />
+              : <Play className="h-3 w-3 fill-current" />
           }
-          {group.phase === 'loading' ? 'Загрузка...' : 'Запустить'}
+          {group.phase === 'loading' ? 'Загрузка...' : group.phase === 'done' ? 'Обновить' : 'Запустить'}
         </button>
 
         {/* Remove group */}
@@ -294,7 +296,7 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
     const saved = loadFromLS();
     setGroups(
       saved.length > 0
-        ? saved.map(g => ({ ...g, result: null, phase: 'idle' as const, error: '' }))
+        ? saved.map(g => ({ ...g, result: g.result ?? null, phase: (g.result ? 'done' : 'idle') as CompGroup['phase'], error: '' }))
         : [{ id: '1', myNmId: null, competitorIds: [], result: null, phase: 'idle', error: '' }]
     );
     setInit(true);
