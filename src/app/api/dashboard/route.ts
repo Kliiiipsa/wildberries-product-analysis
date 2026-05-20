@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { DashboardProduct, DashboardData } from '@/types';
-import { findAccountBySession } from '@/lib/accounts';
 
 export const runtime = 'edge';
 export const maxDuration = 30;
+
+function sellerLabelFromSession(session: string): string {
+  const ilyaKey = process.env.ILYA_SESSION_KEY || '346bkmz421';
+  if (session === ilyaKey) return 'Илья';
+  return process.env.SELLER_LABEL || 'Кирилл';
+}
 
 function delay(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -32,8 +37,7 @@ export async function GET(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'WB_API_TOKEN не настроен' }, { status: 500 });
 
   const sessionCookie = req.cookies.get('session')?.value || '';
-  const account = findAccountBySession(sessionCookie);
-  const SELLER_LABEL = account?.label || process.env.SELLER_LABEL || 'Кирилл';
+  const SELLER_LABEL = sellerLabelFromSession(sessionCookie);
 
   const encoder = new TextEncoder();
 
