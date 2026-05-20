@@ -145,6 +145,77 @@ function MiniCard({ p, isMe, maxOrders, maxRevenue }: {
   );
 }
 
+// ── Summary stats strip ───────────────────────────────────────────────────────
+
+function SummaryStats({ products }: { products: CompetitorStats[] }) {
+  const me = products.find(p => p.isMine);
+  const competitors = products.filter(p => !p.isMine && !p.dataError);
+  if (!me || competitors.length === 0) return null;
+
+  const avgSales   = competitors.reduce((s, p) => s + p.sales7d, 0) / competitors.length;
+  const avgPrice   = competitors.reduce((s, p) => s + p.priceSale, 0) / competitors.length;
+  const salesDiff  = avgSales > 0 ? ((me.sales7d - avgSales) / avgSales) * 100 : 0;
+  const priceDiff  = avgPrice > 0 ? ((me.priceSale - avgPrice) / avgPrice) * 100 : 0;
+  const leader     = [...products].filter(p => !p.dataError).sort((a, b) => b.sales7d - a.sales7d)[0];
+
+  const Diff = ({ val, suffix = '' }: { val: number; suffix?: string }) => (
+    <span className={`text-[11px] font-medium ${val > 0 ? 'text-emerald-400' : val < 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+      {val > 0 ? '+' : ''}{val.toFixed(1)}%{suffix && <span className="text-slate-600"> {suffix}</span>}
+    </span>
+  );
+
+  return (
+    <div className="grid grid-cols-3 gap-px bg-slate-800/60 border-t border-slate-800/60">
+      {/* My sales vs avg */}
+      <div className="bg-slate-900/60 px-4 py-3">
+        <div className="text-[10px] text-slate-500 mb-1">Продажи vs конкуренты (среднее)</div>
+        <div className="text-lg font-bold text-white leading-none">
+          {me.sales7d > 0 ? me.sales7d.toLocaleString('ru-RU') : '—'}
+        </div>
+        <div className="mt-1 flex items-center gap-1.5">
+          <Diff val={salesDiff} />
+          <span className="text-[10px] text-slate-600">
+            vs ср. конкурентов ({Math.round(avgSales).toLocaleString('ru-RU')})
+          </span>
+        </div>
+      </div>
+
+      {/* My price vs avg */}
+      <div className="bg-slate-900/60 px-4 py-3">
+        <div className="text-[10px] text-slate-500 mb-1">Моя цена vs конкуренты (среднее)</div>
+        <div className="text-lg font-bold text-white leading-none">
+          {me.priceSale > 0 ? formatRub(me.priceSale) : '—'}
+        </div>
+        <div className="mt-1 flex items-center gap-1.5">
+          <Diff val={priceDiff} />
+          <span className="text-[10px] text-slate-600">
+            vs ср. конкурентов ({avgPrice > 0 ? formatRub(Math.round(avgPrice)) : '0 ₽'})
+          </span>
+        </div>
+      </div>
+
+      {/* Leader */}
+      <div className="bg-slate-900/60 px-4 py-3">
+        <div className="text-[10px] text-slate-500 mb-1">Лидер по продажам</div>
+        {leader ? (
+          <>
+            <div className="text-sm font-semibold text-white leading-tight truncate">
+              {leader.isMine ? '🏆 Мой товар' : (leader.name || `Арт. ${leader.nmId}`).slice(0, 28)}
+            </div>
+            <div className="mt-0.5 text-[10px] text-slate-600">
+              {leader.sales7d > 0 ? `${leader.sales7d.toLocaleString('ru-RU')} заказов` : '0 заказов'}
+              {' · '}
+              {leader.revenue7d > 0 ? formatRub(leader.revenue7d) : '—'}
+            </div>
+          </>
+        ) : (
+          <div className="text-sm text-slate-500">—</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Group section ─────────────────────────────────────────────────────────────
 
 function GroupSection({
@@ -284,22 +355,25 @@ function GroupSection({
 
       {/* Results */}
       {group.phase === 'done' && products.length > 0 && (
-        <div className="px-4 py-4">
-          <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
-            {products.map(p => (
-              <MiniCard
-                key={p.nmId}
-                p={p}
-                isMe={p.isMine}
-                maxOrders={maxOrders}
-                maxRevenue={maxRevenue}
-              />
-            ))}
+        <>
+          <div className="px-4 py-4">
+            <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+              {products.map(p => (
+                <MiniCard
+                  key={p.nmId}
+                  p={p}
+                  isMe={p.isMine}
+                  maxOrders={maxOrders}
+                  maxRevenue={maxRevenue}
+                />
+              ))}
+            </div>
+            <div className="mt-1.5 text-[10px] text-slate-700 text-right">
+              {group.result!.period.from} — {group.result!.period.to} · {group.result!.fetchedAt}
+            </div>
           </div>
-          <div className="mt-1.5 text-[10px] text-slate-700 text-right">
-            {group.result!.period.from} — {group.result!.period.to} · {group.result!.fetchedAt}
-          </div>
-        </div>
+          <SummaryStats products={products} />
+        </>
       )}
     </div>
   );
