@@ -1,7 +1,9 @@
 import { AnalyzeForm } from '@/components/AnalyzeForm';
-import { TrendingUp, Zap, Database, Bot, User } from 'lucide-react';
+import { SellerBadge } from '@/components/SellerBadge';
+import { TrendingUp, Zap, Database, Bot } from 'lucide-react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { findAccountBySession } from '@/lib/accounts';
 
 const FEATURES = [
   { icon: Database,    label: 'Unit-экономика',  desc: 'Google Sheets' },
@@ -12,20 +14,13 @@ const FEATURES = [
 
 export default async function HomePage() {
   const cookieStore = await cookies();
-  const session = cookieStore.get('session')?.value;
-  if (!session || session !== process.env.SESSION_SECRET) {
-    redirect('/login');
-  }
-  const sellerLabel = process.env.SELLER_LABEL || 'Кирилл';
+  const session = cookieStore.get('session')?.value || '';
+  const account = findAccountBySession(session);
+  if (!account) redirect('/login');
+  const sellerLabel = account.label;
   return (
     <main className="min-h-screen bg-background">
-      {/* Seller badge */}
-      {sellerLabel && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-700/60 bg-slate-900/80 backdrop-blur px-3 py-1.5 text-xs text-slate-400">
-          <User className="h-3 w-3 text-slate-500" />
-          <span>{sellerLabel}</span>
-        </div>
-      )}
+      <SellerBadge label={sellerLabel} />
 
       {/* Subtle grid background */}
       <div

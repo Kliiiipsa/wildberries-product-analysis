@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { DashboardProduct, DashboardData } from '@/types';
+import { findAccountBySession } from '@/lib/accounts';
 
 export const runtime = 'edge';
 export const maxDuration = 30;
-
-const SELLER_LABEL = process.env.SELLER_LABEL || 'Кирилл';
 
 function delay(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -28,9 +27,13 @@ type EmitPayload =
   | { type: 'done'; data: DashboardData }
   | { type: 'error'; error: string };
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const token = process.env.WB_API_TOKEN || '';
   if (!token) return NextResponse.json({ error: 'WB_API_TOKEN не настроен' }, { status: 500 });
+
+  const sessionCookie = req.cookies.get('session')?.value || '';
+  const account = findAccountBySession(sessionCookie);
+  const SELLER_LABEL = account?.label || process.env.SELLER_LABEL || 'Кирилл';
 
   const encoder = new TextEncoder();
 
