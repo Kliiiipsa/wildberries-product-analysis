@@ -242,6 +242,59 @@ Authorization: <token>
 
 ---
 
+## ✅ MPSTATS — Полная карточка товара (конкурент)
+
+**Вопрос:** Какой эндпоинт MPSTATS возвращает все данные по произвольному nmId (конкурент)?
+
+**Ответ:**
+```
+GET https://mpstats.io/api/analytics/v1/wb/items/{nmId}/full
+X-Mpstats-TOKEN: <token>
+```
+
+⚠️ `/api/wb/get/item/{nmId}/by_date` и `/summary` возвращают **405** (требуют OPTIONS) — не использовать.
+
+**Ключевые поля ответа:**
+```json
+{
+  "name": "...",
+  "full_name": "...",
+  "brand": "...",
+  "rating": 5.0,
+  "comments": 48,
+  "balance": 69,
+  "discount": 90,
+  "price": {
+    "price": 10000,
+    "final_price": 1007,
+    "wallet_price": 986
+  },
+  "period_stats": {
+    "sales": 514,
+    "revenue": 527091,
+    "sales_avg": 17,
+    "revenue_avg": 17002.94
+  },
+  "color": {
+    "все_цвета": [
+      { "цвет": "...", "id": 558069949, "фото": "https://basket-XX.wbbasket.ru/.../1.webp" }
+    ]
+  },
+  "stock": { "fbo": 811, "fbs": 0 }
+}
+```
+
+**Важно:**
+- `price` — объект, не число! Цена со скидкой: `price.final_price`
+- `balance` — доступно к покупке (не совпадает с `stock.fbo`)
+- `period_stats.sales/revenue` — агрегат за ~30 дней (период в настройках аккаунта MPSTATS)
+- Фото: `color.все_цвета[0].фото` — thumbnail (246×328)
+- Ключи в ответе могут быть на русском (внутри вложенных объектов)
+
+**Подтверждено:** май 2026 ✅
+
+---
+
 ## Примечания
 
 - Все токены хранятся в `.env.local` как `WB_API_TOKEN`
