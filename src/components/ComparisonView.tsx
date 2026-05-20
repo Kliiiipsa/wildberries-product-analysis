@@ -116,8 +116,8 @@ function ProductCard({
 
       {/* Метрики */}
       <div className="space-y-3">
-        <Metric label="Продажи 7 дн (оценка)" value={product.sales7d} best={maxSales} worst={minSales} />
-        <Metric label="Выручка 7 дн (оценка)" value={product.revenue7d} best={maxRevenue} worst={0} />
+        <Metric label="Заказы (7 дней)" value={product.sales7d} best={maxSales} worst={minSales} />
+        <Metric label="Сумма заказов (7 дней)" value={product.revenue7d} best={maxRevenue} worst={0} />
         <div>
           <div className="text-xs text-slate-500 mb-0.5">Остатки</div>
           <span className={`text-sm font-semibold tabular-nums ${
@@ -153,8 +153,8 @@ function ComparisonTable({ products, myNmId }: { products: CompetitorStats[]; my
           <tr>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Товар</th>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Цена</th>
-            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Продажи 7 дн</th>
-            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Выручка 7 дн</th>
+            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Заказы 7 дн</th>
+            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Сумма заказов 7 дн</th>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Остатки</th>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Рейтинг</th>
           </tr>
@@ -505,7 +505,7 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
               <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
                   {
-                    label: 'Продажи 7 дн vs конкуренты (среднее)',
+                    label: 'Заказы 7 дн vs конкуренты (среднее)',
                     mine: me.sales7d,
                     avg: avgCompSales,
                     fmt: (v: number) => v.toLocaleString('ru-RU'),
