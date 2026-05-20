@@ -1,5 +1,5 @@
 import { AnalyzeForm } from '@/components/AnalyzeForm';
-import { TrendingUp, Zap, Database, Bot } from 'lucide-react';
+import { TrendingUp, Zap, Database, Bot, User } from 'lucide-react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -16,8 +16,17 @@ export default async function HomePage() {
   if (!session || session !== process.env.SESSION_SECRET) {
     redirect('/login');
   }
+  const sellerLabel = process.env.SELLER_LABEL || '';
   return (
     <main className="min-h-screen bg-background">
+      {/* Seller badge */}
+      {sellerLabel && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-700/60 bg-slate-900/80 backdrop-blur px-3 py-1.5 text-xs text-slate-400">
+          <User className="h-3 w-3 text-slate-500" />
+          <span>{sellerLabel}</span>
+        </div>
+      )}
+
       {/* Subtle grid background */}
       <div
         className="fixed inset-0 pointer-events-none"
