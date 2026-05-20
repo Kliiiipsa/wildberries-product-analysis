@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { CompetitorStats, ComparisonData } from '@/types';
 
-// Node.js runtime — Edge Runtime блокируется MPSTATS CORS на by_date
 export const maxDuration = 30;
 
+// d2 должен быть строго ДО сегодня (validated by MPSTATS)
+// Берём вчера как d2, вчера-6дней как d1 → ровно 7 дней
 function getLast7Days() {
-  const to   = new Date();
-  const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const fmt  = (d: Date) => d.toISOString().split('T')[0];
-  return { from: fmt(from), to: fmt(to) };
+  const yesterday = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+  const weekAgo   = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  return { from: fmt(weekAgo), to: fmt(yesterday) };
 }
 
 async function fetchOneItem(
@@ -18,35 +19,27 @@ async function fetchOneItem(
   to: string,
   myNmId: number,
 ): Promise<CompetitorStats> {
-  const hdrs = { 'X-Mpstats-TOKEN': token, Accept: 'application/json' };
-
-  // Параллельно: метаданные + 7-дневные данные по дням
-  const [fullRes, byDateRes] = await Promise.allSettled([
-    fetch(`https://mpstats.io/api/analytics/v1/wb/items/${nmId}/full`, {
-      headers: hdrs,
+  // /full?d1=...&d2=... возвращает и метаданные, и period_stats за выбранный период
+  const res = await fetch(
+    `https://mpstats.io/api/analytics/v1/wb/items/${nmId}/full?d1=${from}&d2=${to}`,
+    {
+      headers: { 'X-Mpstats-TOKEN': token, Accept: 'application/json' },
       signal: AbortSignal.timeout(22000),
-    }),
-    fetch(`https://mpstats.io/api/wb/get/item/${nmId}/by_date?d1=${from}&d2=${to}`, {
-      method: 'POST',
-      headers: { ...hdrs, 'Content-Type': 'application/json' },
-      body: '{}',
-      signal: AbortSignal.timeout(22000),
-    }),
-  ]);
+    },
+  );
 
-  if (fullRes.status === 'rejected' || !fullRes.value.ok) {
-    const err = fullRes.status === 'rejected'
-      ? String(fullRes.reason)
-      : `MPSTATS /full HTTP ${fullRes.value.status}`;
+  if (!res.ok) {
     return {
       nmId, name: '', brand: '', price: 0, priceSale: 0, discount: 0,
       sales7d: 0, revenue7d: 0, stockTotal: 0, rating: 0, reviewCount: 0,
-      isMine: nmId === myNmId, dataError: err,
+      isMine: nmId === myNmId,
+      dataError: `MPSTATS HTTP ${res.status}`,
     };
   }
 
-  const f = await fullRes.value.json() as Record<string, unknown>;
+  const f = await res.json() as Record<string, unknown>;
 
+  // Цена — объект {price, final_price}
   const priceObj  = (f.price && typeof f.price === 'object') ? (f.price as Record<string, unknown>) : null;
   const price     = Number(priceObj?.price ?? 0);
   const priceSale = Number(priceObj?.final_price ?? priceObj?.price ?? price);
@@ -54,6 +47,7 @@ async function fetchOneItem(
     ? Math.round((1 - priceSale / price) * 100)
     : Number(f.discount ?? 0);
 
+  // Фото
   let photoUrl: string | undefined;
   try {
     const allColors = (f.color as Record<string, unknown>)?.['все_цвета'] as Array<Record<string, unknown>> | undefined;
@@ -61,28 +55,23 @@ async function fetchOneItem(
     if (typeof thumb === 'string' && thumb) photoUrl = thumb;
   } catch { /* ignore */ }
 
-  // 7-дневные продажи из by_date (массив дневных записей)
-  // Поля подтверждены в mpstats.ts: r.sales, r.proceeds || r.sum
-  let sales7d   = 0;
-  let revenue7d = 0;
-  if (byDateRes.status === 'fulfilled' && byDateRes.value.ok) {
-    const data = await byDateRes.value.json();
-    const arr: Record<string, unknown>[] = Array.isArray(data) ? data : [];
-    sales7d   = arr.reduce((s, r) => s + Number(r.sales   || r.revenue  || 0), 0);
-    revenue7d = arr.reduce((s, r) => s + Number(r.proceeds || r.sum     || 0), 0);
-  }
+  // period_stats за запрошенный d1–d2 период (7 дней)
+  const ps = (f.period_stats && typeof f.period_stats === 'object')
+    ? (f.period_stats as Record<string, unknown>)
+    : null;
 
   return {
     nmId,
     name:        String(f.full_name ?? f.name ?? ''),
     brand:       String(f.brand ?? ''),
     price, priceSale, discount,
-    sales7d, revenue7d,
+    sales7d:     Number(ps?.sales   ?? 0),
+    revenue7d:   Number(ps?.revenue ?? 0),
     stockTotal:  Number(f.balance ?? 0),
     rating:      Number(f.rating ?? 0),
     reviewCount: Number(f.comments ?? 0),
     photoUrl,
-    isMine:      nmId === myNmId,
+    isMine: nmId === myNmId,
   };
 }
 
