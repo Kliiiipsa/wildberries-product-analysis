@@ -236,15 +236,31 @@ function GroupSection({
         <button
           onClick={() => onRun(group.id, group.myNmId!, group.competitorIds)}
           disabled={!canRun || group.phase === 'loading'}
-          className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors shrink-0"
+          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors shrink-0 ${
+            !canRun
+              ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+              : group.phase === 'loading'
+                ? 'bg-blue-700 text-white cursor-wait'
+                : 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer'
+          }`}
         >
           {group.phase === 'loading'
             ? <RefreshCw className="h-3 w-3 animate-spin" />
             : group.phase === 'done'
               ? <RefreshCw className="h-3 w-3" />
-              : <Play className="h-3 w-3 fill-current" />
+              : !canRun
+                ? null
+                : <Play className="h-3 w-3 fill-current" />
           }
-          {group.phase === 'loading' ? 'Загрузка...' : group.phase === 'done' ? 'Обновить' : 'Запустить'}
+          {group.phase === 'loading'
+            ? 'Загрузка...'
+            : group.phase === 'done'
+              ? 'Обновить'
+              : !(group.myNmId ?? 0)
+                ? 'Выберите товар'
+                : group.competitorIds.length === 0
+                  ? 'Добавьте конкурентов'
+                  : 'Запустить'}
         </button>
 
         {/* Remove group */}
@@ -257,9 +273,12 @@ function GroupSection({
 
       {/* Error */}
       {group.phase === 'error' && (
-        <div className="flex items-center gap-2 px-4 py-2.5 text-xs text-rose-400 bg-rose-900/10 border-b border-slate-800/60">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          {group.error}
+        <div className="flex items-start gap-2.5 px-4 py-3 text-sm text-rose-300 bg-rose-900/20 border-b border-rose-800/40">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+          <div>
+            <div className="font-medium">Ошибка загрузки</div>
+            <div className="text-xs text-rose-400/80 mt-0.5">{group.error}</div>
+          </div>
         </div>
       )}
 
