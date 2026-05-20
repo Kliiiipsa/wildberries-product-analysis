@@ -1,17 +1,18 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Search, Loader2, AlertCircle, LayoutDashboard } from 'lucide-react';
+import { Search, Loader2, AlertCircle, LayoutDashboard, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingState } from '@/components/LoadingState';
 import { AnalysisResult } from '@/components/AnalysisResult';
 import { DashboardPanel } from '@/components/DashboardPanel';
+import { ComparisonView } from '@/components/ComparisonView';
 import type { AnalysisData, StreamEvent, DashboardData } from '@/types';
 
 type AnalysisPhase = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 type DashboardPhase = 'idle' | 'loading' | 'loaded' | 'error';
-type Mode = 'analysis' | 'dashboard';
+type Mode = 'analysis' | 'dashboard' | 'comparison';
 
 export function AnalyzeForm() {
   // ── Analysis state ──
@@ -236,6 +237,18 @@ export function AnalyzeForm() {
   }
 
   // ══════════════════════════════════════════════════════
+  // RENDER: Comparison mode
+  // ══════════════════════════════════════════════════════
+  if (mode === 'comparison') {
+    return (
+      <ComparisonView
+        dashboardProducts={dashboardData?.products ?? []}
+        onBack={() => setMode('analysis')}
+      />
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
   // RENDER: Analysis mode
   // ══════════════════════════════════════════════════════
   return (
@@ -262,7 +275,7 @@ export function AnalyzeForm() {
             </Button>
           </form>
 
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -271,6 +284,15 @@ export function AnalyzeForm() {
             >
               <LayoutDashboard className="h-4 w-4" />
               Дашборд товаров
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setMode('comparison')}
+              className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
+            >
+              <Users className="h-4 w-4" />
+              Конкуренты
             </Button>
           </div>
 

@@ -190,6 +190,37 @@ export interface DashboardData {
   periodTo: string;
 }
 
+// ── Сравнение с конкурентами ─────────────────────────────────────────────────
+
+export interface CompetitorEntry {
+  nmId: number;
+  variantArticle?: string; // артикул варианта для фильтрации склейки
+  label?: string;          // пользовательская метка
+}
+
+export interface CompetitorStats {
+  nmId: number;
+  name: string;
+  brand: string;
+  price: number;           // базовая цена
+  priceSale: number;       // цена со скидкой
+  discount: number;        // % скидки
+  sales30d: number;        // продажи за 30 дней (оценка MPSTATS)
+  revenue30d: number;      // выручка за 30 дней (оценка)
+  stockTotal: number;      // остатки (оценка)
+  rating: number;
+  reviewCount: number;
+  photoUrl?: string;
+  isMine: boolean;
+  dataError?: string;      // если MPSTATS не вернул данные
+}
+
+export interface ComparisonData {
+  products: CompetitorStats[];
+  period: { from: string; to: string };
+  fetchedAt: string;
+}
+
 export interface DashboardAdCampaign {
   advertId: number;
   name: string;
