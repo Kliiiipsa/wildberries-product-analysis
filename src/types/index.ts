@@ -205,8 +205,8 @@ export interface CompetitorStats {
   price: number;           // базовая цена
   priceSale: number;       // цена со скидкой
   discount: number;        // % скидки
-  sales30d: number;        // продажи за 30 дней (оценка MPSTATS)
-  revenue30d: number;      // выручка за 30 дней (оценка)
+  sales7d: number;         // продажи за 7 дней (оценка MPSTATS)
+  revenue7d: number;       // выручка за 7 дней (оценка)
   stockTotal: number;      // остатки (оценка)
   rating: number;
   reviewCount: number;

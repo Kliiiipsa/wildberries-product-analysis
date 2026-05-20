@@ -116,8 +116,8 @@ function ProductCard({
 
       {/* Метрики */}
       <div className="space-y-3">
-        <Metric label="Продажи 30 дн (оценка)" value={product.sales30d} best={maxSales} worst={minSales} />
-        <Metric label="Выручка 30 дн (оценка)" value={product.revenue30d} best={maxRevenue} worst={0} />
+        <Metric label="Продажи 7 дн (оценка)" value={product.sales7d} best={maxSales} worst={minSales} />
+        <Metric label="Выручка 7 дн (оценка)" value={product.revenue7d} best={maxRevenue} worst={0} />
         <div>
           <div className="text-xs text-slate-500 mb-0.5">Остатки</div>
           <span className={`text-sm font-semibold tabular-nums ${
@@ -144,7 +144,7 @@ function ProductCard({
 
 // ── Таблица сравнения (компактный режим для многих конкурентов) ───────────────
 function ComparisonTable({ products, myNmId }: { products: CompetitorStats[]; myNmId: number }) {
-  const maxSales = Math.max(...products.map(p => p.sales30d), 1);
+  const maxSales = Math.max(...products.map(p => p.sales7d), 1);
 
   return (
     <div className="overflow-x-auto">
@@ -153,8 +153,8 @@ function ComparisonTable({ products, myNmId }: { products: CompetitorStats[]; my
           <tr>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Товар</th>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Цена</th>
-            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Продажи 30 дн</th>
-            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Выручка 30 дн</th>
+            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Продажи 7 дн</th>
+            <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Выручка 7 дн</th>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Остатки</th>
             <th className="px-3 py-2.5 text-left text-[11px] font-medium text-slate-500">Рейтинг</th>
           </tr>
@@ -162,7 +162,7 @@ function ComparisonTable({ products, myNmId }: { products: CompetitorStats[]; my
         <tbody className="divide-y divide-slate-800/60">
           {products.map((p) => {
             const isMe = p.nmId === myNmId;
-            const barWidth = maxSales > 0 ? Math.max(4, Math.round((p.sales30d / maxSales) * 100)) : 0;
+            const barWidth = maxSales > 0 ? Math.max(4, Math.round((p.sales7d / maxSales) * 100)) : 0;
             return (
               <tr key={p.nmId} className={`hover:bg-slate-800/25 transition-colors ${isMe ? 'bg-blue-500/5' : ''}`}>
                 {/* Товар */}
@@ -206,9 +206,9 @@ function ComparisonTable({ products, myNmId }: { products: CompetitorStats[]; my
                         style={{ width: `${barWidth}%` }} />
                     </div>
                     <span className={`text-sm tabular-nums font-semibold ${deltaClass(
-                      products.find(x => x.nmId === myNmId)?.sales30d ?? 0, p.sales30d
+                      products.find(x => x.nmId === myNmId)?.sales7d ?? 0, p.sales7d
                     )}`}>
-                      {p.sales30d > 0 ? p.sales30d.toLocaleString('ru-RU') : '—'}
+                      {p.sales7d > 0 ? p.sales7d.toLocaleString('ru-RU') : '—'}
                     </span>
                   </div>
                 </td>
@@ -216,7 +216,7 @@ function ComparisonTable({ products, myNmId }: { products: CompetitorStats[]; my
                 {/* Выручка */}
                 <td className="px-3 py-3 whitespace-nowrap">
                   <span className="text-sm text-slate-300">
-                    {p.revenue30d > 0 ? formatRub(p.revenue30d) : '—'}
+                    {p.revenue7d > 0 ? formatRub(p.revenue7d) : '—'}
                   </span>
                 </td>
 
@@ -312,9 +312,9 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
   const canRun = myNmId && competitors.length > 0;
   const useCards = (result?.products.length ?? 0) <= 4;
 
-  const maxSales  = result ? Math.max(...result.products.map(p => p.sales30d), 1) : 1;
-  const minSales  = result ? Math.min(...result.products.map(p => p.sales30d), 0) : 0;
-  const maxRevenue = result ? Math.max(...result.products.map(p => p.revenue30d), 1) : 1;
+  const maxSales  = result ? Math.max(...result.products.map(p => p.sales7d), 1) : 1;
+  const minSales  = result ? Math.min(...result.products.map(p => p.sales7d), 0) : 0;
+  const maxRevenue = result ? Math.max(...result.products.map(p => p.revenue7d), 1) : 1;
 
   return (
     <div className="w-full mt-6">
@@ -497,7 +497,7 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
             if (!me) return null;
             const competitors = result.products.filter(p => p.nmId !== myNmId);
             const avgCompSales = competitors.length > 0
-              ? competitors.reduce((s, p) => s + p.sales30d, 0) / competitors.length : 0;
+              ? competitors.reduce((s, p) => s + p.sales7d, 0) / competitors.length : 0;
             const avgCompPrice = competitors.length > 0
               ? competitors.reduce((s, p) => s + p.priceSale, 0) / competitors.length : 0;
 
@@ -505,8 +505,8 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
               <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
                   {
-                    label: 'Продажи vs конкуренты (среднее)',
-                    mine: me.sales30d,
+                    label: 'Продажи 7 дн vs конкуренты (среднее)',
+                    mine: me.sales7d,
                     avg: avgCompSales,
                     fmt: (v: number) => v.toLocaleString('ru-RU'),
                     higherBetter: true,
@@ -534,14 +534,14 @@ export function ComparisonView({ dashboardProducts, onBack }: ComparisonViewProp
                 <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
                   <div className="text-xs text-slate-500 mb-1">Лидер по продажам</div>
                   {(() => {
-                    const leader = [...result.products].sort((a, b) => b.sales30d - a.sales30d)[0];
+                    const leader = [...result.products].sort((a, b) => b.sales7d - a.sales7d)[0];
                     return (
                       <>
                         <div className="text-sm font-semibold text-white truncate">
                           {leader.nmId === myNmId ? '🏆 Мой товар' : leader.name || `Арт. ${leader.nmId}`}
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5">
-                          {leader.sales30d.toLocaleString('ru-RU')} продаж · {formatRub(leader.priceSale)}
+                          {leader.sales7d.toLocaleString('ru-RU')} продаж · {formatRub(leader.priceSale)}
                         </div>
                       </>
                     );
