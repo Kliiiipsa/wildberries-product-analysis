@@ -8,9 +8,17 @@ function csvExportUrl(gid: string) {
   return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${gid}`;
 }
 
+function csvExportUrlByName(sheetName: string) {
+  return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=${encodeURIComponent(sheetName)}`;
+}
+
 function csvGvizUrl(gid: string) {
   // hl=en форсирует запятую как разделитель (без него некоторые локали используют ;)
   return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}&hl=en`;
+}
+
+function csvGvizUrlByName(sheetName: string) {
+  return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&hl=en`;
 }
 
 function parseCsv(text: string, sep = ','): string[][] {
@@ -61,9 +69,9 @@ function detectSepAndParse(text: string): string[][] {
   return parseCsv(text, sep);
 }
 
-async function fetchSheetCsv(gid: string): Promise<string[][]> {
+async function fetchSheetCsv(gid: string, sheetName?: string): Promise<string[][]> {
   // eslint-disable-next-line no-console
-  console.log(`[Sheets] Fetching GID=${gid} from spreadsheet ${SPREADSHEET_ID}`);
+  console.log(`[Sheets] Fetching GID=${gid} sheet=${sheetName ?? '—'} from spreadsheet ${SPREADSHEET_ID}`);
   if (!SPREADSHEET_ID) throw new Error('GOOGLE_SPREADSHEET_ID не задан в .env.local');
 
   const headers = {
@@ -72,7 +80,10 @@ async function fetchSheetCsv(gid: string): Promise<string[][]> {
     'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
   };
 
-  const urls = [csvExportUrl(gid), csvGvizUrl(gid)];
+  // Пробуем: по имени листа (наиболее надёжно), затем по GID
+  const urls = sheetName
+    ? [csvExportUrlByName(sheetName), csvGvizUrlByName(sheetName), csvExportUrl(gid), csvGvizUrl(gid)]
+    : [csvExportUrl(gid), csvGvizUrl(gid)];
   let lastErr: unknown;
 
   for (const url of urls) {
@@ -157,7 +168,13 @@ export interface UnitCostNumbers {
 
 function toNum(v: string | null): number {
   if (v === null || v === '') return 0;
-  return parseFloat(v.replace(',', '.')) || 0;
+  // Убираем "р.", "₽", "%", пробелы-разделители тысяч, затем меняем "," → "."
+  const cleaned = v
+    .replace(/р\s*\./gi, '') // "р.738" → "738"
+    .replace(/[₽%]/g, '')    // суффиксы
+    .replace(/\s/g, '')      // "2 083,36" → "2083,36"
+    .replace(',', '.');      // "2083,36" → "2083.36"
+  return parseFloat(cleaned) || 0;
 }
 
 export async function fetchUnitCosts(article: string): Promise<UnitCostNumbers> {
@@ -247,7 +264,7 @@ export async function fetchUnitData(article: string): Promise<GoogleSheetUnit | 
 
   try {
     const gid = findSheetGid(sheetName);
-    const rows = await fetchSheetCsv(gid);
+    const rows = await fetchSheetCsv(gid, sheetName);
 
     if (rows.length < 3) {
       return { found: false, article, headers: [], values: [], rawText: 'Лист Unit пуст' };
