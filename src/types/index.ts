@@ -279,6 +279,8 @@ export interface WhatIfBaseData {
     cardToCart: number;  // карточка → корзина, %
     cartToOrder: number; // корзина → заказ, %
   };
+  seasonalityData?: SeasonalityData | null; // коэффициенты сезонности по месяцам (MPStats)
+  unitRawText?: string;  // полный текст Unit-экономики для AI
 }
 
 export interface WhatIfParams {

@@ -152,6 +152,7 @@ export interface UnitCostNumbers {
   ndsRub: number;
   ndsPercent: number;
   found: boolean;
+  rawText?: string; // полный текст для AI (как в "Анализ артикула")
 }
 
 function toNum(v: string | null): number {
@@ -231,7 +232,7 @@ export async function fetchUnitCosts(article: string): Promise<UnitCostNumbers> 
     // eslint-disable-next-line no-console
     console.log('[fetchUnitCosts] результат:', { zakupka, kargo, logistika, hranenie, komissiyaRub, ekvairingPercent, ndsRub, ndsPercent });
 
-    return { zakupka, kargo, logistika, hranenie, komissiyaRub, ekvairingPercent, ndsRub, ndsPercent, found: true };
+    return { zakupka, kargo, logistika, hranenie, komissiyaRub, ekvairingPercent, ndsRub, ndsPercent, found: true, rawText: unit.rawText };
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[fetchUnitCosts] ошибка:', err);

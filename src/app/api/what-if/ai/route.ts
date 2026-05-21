@@ -9,9 +9,10 @@ const AD_LABELS: Record<string, string> = {
   ARK_MANUAL:'АРК ручная — умеренный трафик, % выкупа ×0.90',
   ARK_AUTO:  'АРК единая/авто — широкий трафик, % выкупа ×0.82',
   PRK:       'Каталог (ПРК) — % выкупа ×0.87',
-  // legacy
   ARK:       'АРК (авто)',
 };
+
+const MONTHS_RU = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
 
 function fmt(n: number) { return n.toLocaleString('ru-RU'); }
 function fmtR(n: number) { return `${fmt(Math.round(n))} ₽`; }
@@ -27,6 +28,38 @@ function getCurrentReality(base: WhatIfBaseData) {
   const unitCostTotal = uc.zakupka + uc.kargo + uc.logistika + uc.komissiyaRub + ekv + nds + uc.hranenie * 7;
   const marginPerUnit = base.priceSale - unitCostTotal;
   return { orders, buyouts, revenue, marginPerUnit, marginWithoutAd: buyouts * marginPerUnit };
+}
+
+function buildSeasonBlock(base: WhatIfBaseData, params: WhatIfParams): string {
+  const s = base.seasonalityData;
+  const lines: string[] = [];
+
+  // Выбранный коэффициент сценария
+  const chosen = params.seasonCoeff;
+  const chosenDesc = chosen > 1 ? 'сезонный рост' : chosen < 1 ? 'сезонный спад' : 'нейтральный';
+  lines.push(`Коэффициент сценария: ×${chosen.toFixed(2)} (${chosenDesc})`);
+
+  if (s?.seasonality) {
+    // Показываем все 12 месяцев
+    const monthLine = Object.entries(s.seasonality)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([m, v]) => `${MONTHS_RU[Number(m) - 1]}: ×${v.toFixed(2)}`)
+      .join(' | ');
+    lines.push(`Сезонность по месяцам (ключ: «${s.keyword}»): ${monthLine}`);
+
+    // Текущий и следующий месяц
+    const now  = new Date();
+    const cur  = now.getMonth() + 1;
+    const next = cur === 12 ? 1 : cur + 1;
+    const cCoeff = s.seasonality[String(cur)];
+    const nCoeff = s.seasonality[String(next)];
+    if (cCoeff !== undefined) lines.push(`Текущий месяц (${MONTHS_RU[cur - 1]}): ×${cCoeff.toFixed(2)}`);
+    if (nCoeff !== undefined) lines.push(`Следующий месяц (${MONTHS_RU[next - 1]}): ×${nCoeff.toFixed(2)}`);
+  } else {
+    lines.push('Исторические данные сезонности MPStats: не загружены');
+  }
+
+  return lines.join('\n');
 }
 
 function buildPrompt(
@@ -46,30 +79,25 @@ function buildPrompt(
     ? `${fmtR(params.dailyAdBudget)}/день | ${AD_LABELS[params.adType] ?? params.adType}${params.cpcBid > 0 ? ` | ставка ${fmtR(params.cpcBid)}` : ''}`
     : 'без рекламы';
 
-  const seasonNote = params.seasonCoeff !== 1
-    ? `Сезонный коэффициент: ×${params.seasonCoeff.toFixed(2)} (${params.seasonCoeff > 1 ? 'сезонный рост' : 'сезонный спад'})`
-    : 'Сезонный коэффициент: ×1.00 (нейтральный)';
+  // Unit-экономика: используем rawText (как в "Анализ артикула") если есть, иначе числа
+  const unitBlock = base.unitRawText
+    ? base.unitRawText
+    : base.unitCost.hasData
+      ? [
+          `  Закупка:        ${fmtR(base.unitCost.zakupka)}`,
+          `  Карго:          ${fmtR(base.unitCost.kargo)}`,
+          `  Логистика МП:   ${fmtR(base.unitCost.logistika)}`,
+          `  Комиссия WB:    ${fmtR(base.unitCost.komissiyaRub)}`,
+          `  Эквайринг:      ${base.unitCost.ekvairingPercent}% от цены`,
+          `  Хранение/день:  ${fmtR(base.unitCost.hranenie)}`,
+          ...(base.unitCost.ndsRub > 0   ? [`  НДС:             ${fmtR(base.unitCost.ndsRub)}`]       : []),
+          ...(base.unitCost.ndsPercent > 0 ? [`  НДС:             ${base.unitCost.ndsPercent}%`] : []),
+          `  Маржа/шт (тек.): ${fmtR(cur.marginPerUnit)}`,
+        ].join('\n')
+      : '  ❌ нет данных';
 
-  const unitBlock = base.unitCost.hasData ? [
-    `  Закупка:        ${fmtR(base.unitCost.zakupka)}`,
-    `  Карго:          ${fmtR(base.unitCost.kargo)}`,
-    `  Логистика МП:   ${fmtR(base.unitCost.logistika)}`,
-    `  Комиссия WB:    ${fmtR(base.unitCost.komissiyaRub)}`,
-    `  Эквайринг:      ${base.unitCost.ekvairingPercent}% от цены`,
-    `  Хранение/день:  ${fmtR(base.unitCost.hranenie)}`,
-    ...(base.unitCost.ndsRub > 0 ? [`  НДС:             ${fmtR(base.unitCost.ndsRub)}`] :
-        base.unitCost.ndsPercent > 0 ? [`  НДС:             ${base.unitCost.ndsPercent}%`] : []),
-    `  Маржа/шт (тек.): ${fmtR(cur.marginPerUnit)}`,
-  ].join('\n') : '  ❌ нет данных';
-
-  const delta = (a: number, b: number) => {
-    const d = Math.round(b - a);
-    return d >= 0 ? `+${fmt(d)}` : fmt(d);
-  };
-  const deltaR = (a: number, b: number) => {
-    const d = Math.round(b - a);
-    return d >= 0 ? `+${fmtR(d)}` : fmtR(d);
-  };
+  const delta  = (a: number, b: number) => { const d = Math.round(b - a); return d >= 0 ? `+${fmt(d)}`  : fmt(d);  };
+  const deltaR = (a: number, b: number) => { const d = Math.round(b - a); return d >= 0 ? `+${fmtR(d)}` : fmtR(d); };
 
   return `СИМУЛЯТОР СЦЕНАРИЕВ — WILDBERRIES
 
@@ -85,14 +113,16 @@ function buildPrompt(
 Конверсия корзина→заказ:    ${fmtPct(base.conversions.cartToOrder)}
 Остаток: ${fmt(base.stock)} шт
 
-Юнит-экономика:
+━━━ ЮНИТ-ЭКОНОМИКА (Google Таблица) ━━━
 ${unitBlock}
+
+━━━ СЕЗОННОСТЬ ━━━
+${buildSeasonBlock(base, params)}
 
 ━━━ СИМУЛИРУЕМЫЙ СЦЕНАРИЙ ━━━
 Цена: ${fmtR(base.priceSale)} → ${fmtR(params.newPrice)} (${sign}${priceChange}%)
 Остаток: ${fmt(base.stock)} → ${fmt(params.newStock)} шт
 Реклама: ${adDesc}
-${seasonNote}
 
 ━━━ ПРОГНОЗ СЦЕНАРИЯ ━━━
               │ СЕЙЧАС (7д) │ СЦЕНАРИЙ 7д │ ΔЕЛЬТА │ СЦЕНАРИЙ 30д

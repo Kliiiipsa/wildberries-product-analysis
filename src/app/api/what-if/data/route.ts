@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchWBProduct, fetchWBStats } from '@/lib/wildberries';
 import { fetchUnitCosts } from '@/lib/google-sheets';
-import { fetchMpstatsData } from '@/lib/mpstats';
+import { fetchMpstatsData, fetchSeasonalityData } from '@/lib/mpstats';
 import type { WhatIfBaseData, WhatIfUnitCost } from '@/types';
 
 export const maxDuration = 30;
@@ -60,86 +60,96 @@ async function fetchSellerPrice(nmId: number, token: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const nmIdStr = req.nextUrl.searchParams.get('nmId') || '';
+  try {
+    const nmIdStr = req.nextUrl.searchParams.get('nmId') || '';
 
-  if (!nmIdStr || !/^\d{6,12}$/.test(nmIdStr)) {
-    return NextResponse.json({ error: 'Укажите корректный артикул (nmId)' }, { status: 400 });
+    if (!nmIdStr || !/^\d{6,12}$/.test(nmIdStr)) {
+      return NextResponse.json({ error: 'Укажите корректный артикул (nmId)' }, { status: 400 });
+    }
+
+    const nmId    = parseInt(nmIdStr, 10);
+    const wbToken = process.env.WB_API_TOKEN || '';
+    const mpToken = process.env.MPSTATS_API_KEY || '';
+
+    const [productResult, statsResult, unitResult, mpResult, priceResult, seasonResult] = await Promise.allSettled([
+      fetchWBProduct(nmIdStr, wbToken || undefined),
+      wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null),
+      fetchUnitCosts(nmIdStr),
+      mpToken ? fetchMpstatsData(nmIdStr, mpToken) : Promise.resolve(null),
+      wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),
+      mpToken ? fetchSeasonalityData(nmIdStr, mpToken) : Promise.resolve(null),
+    ]);
+
+    const product  = productResult.status === 'fulfilled' ? productResult.value : null;
+    if (!product) {
+      const err = productResult.status === 'rejected' ? String(productResult.reason) : 'Товар не найден';
+      return NextResponse.json({ error: err }, { status: 404 });
+    }
+
+    const stats         = statsResult.status    === 'fulfilled' ? statsResult.value?.stats ?? null : null;
+    const unitRaw       = unitResult.status     === 'fulfilled' ? unitResult.value : null;
+    const mp            = mpResult.status       === 'fulfilled' ? mpResult.value  : null;
+    const sellerPr      = priceResult.status    === 'fulfilled' ? priceResult.value : null;
+    const seasonalityData = seasonResult.status === 'fulfilled' ? seasonResult.value : null;
+
+    // Цены: приоритет Discounts API (fetchSellerPrice), затем ContentAPI (fetchWBProduct)
+    const priceSale   = sellerPr?.priceSale   || product.priceSale   || 0;
+    const priceBasic  = sellerPr?.priceBasic  || product.priceBasic  || 0;
+    const salePercent = sellerPr?.salePercent ?? product.salePercent ?? 0;
+
+    // Средние продажи в день: MPStats 30д имеет приоритет над WB stats 7д
+    const mp30       = mp?.productInfo?.sales30 ?? 0;
+    const wb7        = stats?.ordersCount ?? 0;
+    const dailySales = Math.max(0.1, mp30 > 0 ? mp30 / 30 : wb7 / 7);
+
+    const buyoutRate = stats?.buyoutPercent ?? 50;
+
+    // Фактические данные за 7 дней (WB stats)
+    const weeklyOrders  = stats?.ordersCount      ?? 0;
+    const weeklyBuyouts = stats?.buyoutsCount     ?? 0;
+    const weeklyRevenue = stats?.ordersSumRub     ?? 0;
+    const conversions = {
+      cardToCart:  stats?.conversions?.addToCartPercent   ?? 0,
+      cartToOrder: stats?.conversions?.cartToOrderPercent ?? 0,
+    };
+
+    const uc = unitRaw ?? { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
+    const unitCost: WhatIfUnitCost = {
+      zakupka:          uc.zakupka,
+      kargo:            uc.kargo,
+      logistika:        uc.logistika,
+      hranenie:         uc.hranenie,
+      komissiyaRub:     uc.komissiyaRub,
+      ekvairingPercent: uc.ekvairingPercent,
+      ndsRub:           uc.ndsRub,
+      ndsPercent:       uc.ndsPercent,
+      hasData:          uc.found,
+    };
+
+    const result: WhatIfBaseData = {
+      nmId,
+      productName: product.name,
+      brand:       product.brand,
+      photoUrl:    product.photoUrl,
+      priceSale,
+      priceBasic,
+      salePercent,
+      stock:       product.totalStock,
+      dailySales,
+      buyoutRate,
+      unitCost,
+      weeklyOrders,
+      weeklyBuyouts,
+      weeklyRevenue,
+      conversions,
+      seasonalityData: seasonalityData ?? null,
+      unitRawText: uc.rawText,
+    };
+
+    return NextResponse.json(result);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[what-if/data] неожиданная ошибка:', e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
-
-  const nmId    = parseInt(nmIdStr, 10);
-  const wbToken = process.env.WB_API_TOKEN || '';
-  const mpToken = process.env.MPSTATS_API_KEY || '';
-
-  const [productResult, statsResult, unitResult, mpResult, priceResult] = await Promise.allSettled([
-    fetchWBProduct(nmIdStr, wbToken || undefined),
-    wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null),
-    fetchUnitCosts(nmIdStr),
-    mpToken ? fetchMpstatsData(nmIdStr, mpToken) : Promise.resolve(null),
-    wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),
-  ]);
-
-  const product  = productResult.status === 'fulfilled' ? productResult.value : null;
-  if (!product) {
-    const err = productResult.status === 'rejected' ? String(productResult.reason) : 'Товар не найден';
-    return NextResponse.json({ error: err }, { status: 404 });
-  }
-
-  const stats    = statsResult.status  === 'fulfilled' ? statsResult.value?.stats ?? null : null;
-  const unitRaw  = unitResult.status   === 'fulfilled' ? unitResult.value : null;
-  const mp       = mpResult.status     === 'fulfilled' ? mpResult.value  : null;
-  const sellerPr = priceResult.status  === 'fulfilled' ? priceResult.value : null;
-
-  // Цены: приоритет Discounts API (fetchSellerPrice), затем ContentAPI (fetchWBProduct)
-  const priceSale   = sellerPr?.priceSale   || product.priceSale   || 0;
-  const priceBasic  = sellerPr?.priceBasic  || product.priceBasic  || 0;
-  const salePercent = sellerPr?.salePercent ?? product.salePercent ?? 0;
-
-  // Средние продажи в день: MPStats 30д имеет приоритет над WB stats 7д
-  const mp30       = mp?.productInfo?.sales30 ?? 0;
-  const wb7        = stats?.ordersCount ?? 0;
-  const dailySales = Math.max(0.1, mp30 > 0 ? mp30 / 30 : wb7 / 7);
-
-  const buyoutRate = stats?.buyoutPercent ?? 50;
-
-  // Фактические данные за 7 дней (WB stats)
-  const weeklyOrders  = stats?.ordersCount      ?? 0;
-  const weeklyBuyouts = stats?.buyoutsCount     ?? 0;
-  const weeklyRevenue = stats?.ordersSumRub     ?? 0;
-  const conversions = {
-    cardToCart:  stats?.conversions?.addToCartPercent   ?? 0,
-    cartToOrder: stats?.conversions?.cartToOrderPercent ?? 0,
-  };
-
-  const uc = unitRaw ?? { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
-  const unitCost: WhatIfUnitCost = {
-    zakupka:          uc.zakupka,
-    kargo:            uc.kargo,
-    logistika:        uc.logistika,
-    hranenie:         uc.hranenie,
-    komissiyaRub:     uc.komissiyaRub,
-    ekvairingPercent: uc.ekvairingPercent,
-    ndsRub:           uc.ndsRub,
-    ndsPercent:       uc.ndsPercent,
-    hasData:          uc.found,
-  };
-
-  const result: WhatIfBaseData = {
-    nmId,
-    productName: product.name,
-    brand:       product.brand,
-    photoUrl:    product.photoUrl,
-    priceSale,
-    priceBasic,
-    salePercent,
-    stock:       product.totalStock,
-    dailySales,
-    buyoutRate,
-    unitCost,
-    weeklyOrders,
-    weeklyBuyouts,
-    weeklyRevenue,
-    conversions,
-  };
-
-  return NextResponse.json(result);
 }

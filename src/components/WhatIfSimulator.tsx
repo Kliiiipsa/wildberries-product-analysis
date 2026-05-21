@@ -174,6 +174,22 @@ function MetricRow({ label, current, f7, f30, isRub, isPct }: MetricRowProps) {
   );
 }
 
+// ─── Сезонность ──────────────────────────────────────────────────────────────
+
+const MONTHS_RU = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+
+function getSeasonCoeffs(seasonalityData: WhatIfBaseData['seasonalityData']) {
+  if (!seasonalityData?.seasonality) return null;
+  const now  = new Date();
+  const cur  = now.getMonth() + 1;
+  const next = cur === 12 ? 1 : cur + 1;
+  return {
+    cur,  curName: MONTHS_RU[cur - 1],  curCoeff:  seasonalityData.seasonality[String(cur)]  ?? null,
+    next, nextName: MONTHS_RU[next - 1], nextCoeff: seasonalityData.seasonality[String(next)] ?? null,
+    keyword: seasonalityData.keyword,
+  };
+}
+
 // ─── Главный компонент ───────────────────────────────────────────────────────
 
 interface Props {
@@ -203,17 +219,27 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
     setAiPhase('idle');
     try {
       const res = await fetch(`/api/what-if/data?nmId=${nmId}`);
-      const json = await res.json();
+      let json: WhatIfBaseData & { error?: string };
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(`Сервер вернул некорректный ответ (HTTP ${res.status})`);
+      }
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       const data = json as WhatIfBaseData;
       setBase(data);
+
+      // Авто-коэффициент: берём текущий месяц из MPStats, иначе 1.0
+      const curMonth = new Date().getMonth() + 1;
+      const seasonCoeff = data.seasonalityData?.seasonality?.[String(curMonth)] ?? 1.0;
+
       setParams({
         newPrice:      data.priceSale,
         dailyAdBudget: 0,
         cpcBid:        0,
         adType:        'CPC',
         newStock:      data.stock,
-        seasonCoeff:   1.0,
+        seasonCoeff,
       });
       setLoadPhase('loaded');
     } catch (e) {
@@ -500,13 +526,33 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
                 onChange={(v) => setParams((p) => ({ ...p, newStock: v }))}
               />
 
-              <SliderRow
-                label={`Коэффициент сезонности: ×${params.seasonCoeff.toFixed(2)}`}
-                value={params.seasonCoeff}
-                min={0.3} max={2.0} step={0.05}
-                format={(v) => `×${v.toFixed(2)}`}
-                onChange={(v) => setParams((p) => ({ ...p, seasonCoeff: v }))}
-              />
+              {(() => {
+                const sc = getSeasonCoeffs(base.seasonalityData);
+                return (
+                  <div className="space-y-1">
+                    <SliderRow
+                      label={`Коэффициент сезонности: ×${params.seasonCoeff.toFixed(2)}`}
+                      value={params.seasonCoeff}
+                      min={0.3} max={2.0} step={0.05}
+                      format={(v) => `×${v.toFixed(2)}`}
+                      onChange={(v) => setParams((p) => ({ ...p, seasonCoeff: v }))}
+                    />
+                    {sc ? (
+                      <div className="text-[10px] text-slate-500 flex gap-3 flex-wrap">
+                        <span>По MPStats ({sc.keyword}):</span>
+                        <span className={`font-mono ${sc.curCoeff !== null && sc.curCoeff < 0.85 ? 'text-amber-400' : sc.curCoeff !== null && sc.curCoeff > 1.15 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {sc.curName} ×{sc.curCoeff?.toFixed(2) ?? '—'}
+                        </span>
+                        <span className={`font-mono ${sc.nextCoeff !== null && sc.nextCoeff < 0.85 ? 'text-amber-400' : sc.nextCoeff !== null && sc.nextCoeff > 1.15 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {sc.nextName} ×{sc.nextCoeff?.toFixed(2) ?? '—'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-600">Сезонность MPStats не загружена</div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
