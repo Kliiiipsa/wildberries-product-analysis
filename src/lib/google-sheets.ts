@@ -172,12 +172,55 @@ export async function fetchUnitCosts(article: string): Promise<UnitCostNumbers> 
     const h = unit.headers;
     const r = unit.values;
 
-    const zakupka        = toNum(findField(h, r, 'sebes')                     ?? findField(h, r, 'закупка'));
-    const kargo          = toNum(findField(h, r, 'kargo')                     ?? findField(h, r, 'cargo') ?? findField(h, r, 'карго') ?? findField(h, r, 'markirovka'));
-    const logistika      = toNum(findField(h, r, 'delivery_mp_with_buyout')   ?? findField(h, r, 'delivery', 'buyout') ?? findField(h, r, 'логистика', 'мп', 'финотчет') ?? findField(h, r, 'логистика', 'финотчет') ?? findField(h, r, 'логистика', 'мп'));
-    const hranenie       = toNum(findField(h, r, 'per_day_storage_fee_report') ?? findField(h, r, 'storage', 'report') ?? findField(h, r, 'хранение', 'финотчет') ?? findField(h, r, 'хранение', 'день'));
-    const komissiyaRub   = toNum(findField(h, r, 'perc_mp_rub_finreport')     ?? findField(h, r, 'мп', 'руб', 'финотчет'));
-    const ekvairingRaw   = findField(h, r, 'acquiring_perc')                  ?? findField(h, r, 'acquiring') ?? findField(h, r, 'эквайринг');
+    const zakupka      = toNum(
+      findField(h, r, 'sebes')          // sebes_rub, sebestoimost
+      ?? findField(h, r, 'себест')       // себестоимость (любая форма)
+      ?? findField(h, r, 'закупка')      // Закупка
+      ?? findField(h, r, 'закуп')        // Закупочная цена
+      ?? findField(h, r, 'cost_price')   // cost_price
+      ?? findField(h, r, 'purchase')     // purchase cost
+    );
+    const kargo        = toNum(
+      findField(h, r, 'kargo')           // kargo, kargo_rub
+      ?? findField(h, r, 'cargo')        // cargo
+      ?? findField(h, r, 'карго')        // Карго
+      ?? findField(h, r, 'markirovka')   // маркировка
+      ?? findField(h, r, 'маркировк')    // Маркировка (любая форма)
+      ?? findField(h, r, 'перевозк')     // Перевозка
+      ?? findField(h, r, 'freight')      // freight
+    );
+    const logistika    = toNum(
+      findField(h, r, 'delivery_mp_with_buyout')
+      ?? findField(h, r, 'delivery', 'buyout')
+      ?? findField(h, r, 'логистика', 'мп', 'финотчет')
+      ?? findField(h, r, 'логистика', 'финотчет')
+      ?? findField(h, r, 'логистика', 'мп')
+      ?? findField(h, r, 'логистика', 'выкуп')
+      ?? findField(h, r, 'delivery_mp')
+    );
+    const hranenie     = toNum(
+      findField(h, r, 'per_day_storage_fee_report')
+      ?? findField(h, r, 'storage', 'report')
+      ?? findField(h, r, 'хранение', 'финотчет')
+      ?? findField(h, r, 'хранение', 'день')
+      ?? findField(h, r, 'хранение')     // просто "Хранение" без доп. слов
+      ?? findField(h, r, 'storage')      // storage (без report)
+    );
+    const komissiyaRub = toNum(
+      findField(h, r, 'perc_mp_rub_finreport')
+      ?? findField(h, r, 'мп', 'руб', 'финотчет')
+      ?? findField(h, r, 'мп', 'руб')    // без требования "финотчет"
+      ?? findField(h, r, 'комисс', 'мп') // Комиссия МП
+      ?? findField(h, r, 'комисс', 'руб')// Комиссия руб
+      ?? findField(h, r, 'commission')   // commission_rub
+      ?? findField(h, r, 'wb_fee')       // wb_fee
+    );
+    const ekvairingRaw = (
+      findField(h, r, 'acquiring_perc')
+      ?? findField(h, r, 'acquiring')
+      ?? findField(h, r, 'эквайринг')
+      ?? findField(h, r, 'ekvairing')
+    );
     const ekvairingPercent = toNum(ekvairingRaw);
 
     const ndsRubRaw  = findField(h, r, 'additional_costs') ?? findField(h, r, 'nds_22') ?? null;
@@ -239,37 +282,54 @@ export async function fetchUnitData(article: string): Promise<GoogleSheetUnit | 
     }
 
     // Извлекаем только нужные поля — поддерживаем и русские, и английские заголовки
-    // English: sebes_rub | Russian: закупка
+    // English: sebes_rub | Russian: закупка / себестоимость
     const zakupka   = findField(headers, row, 'sebes')
-                   ?? findField(headers, row, 'закупка');
+                   ?? findField(headers, row, 'себест')
+                   ?? findField(headers, row, 'закупка')
+                   ?? findField(headers, row, 'закуп')
+                   ?? findField(headers, row, 'cost_price')
+                   ?? findField(headers, row, 'purchase');
 
-    // English: kargo / cargo / markirovka_rub | Russian: карго
+    // English: kargo / cargo | Russian: карго / маркировка / перевозка
     const kargo     = findField(headers, row, 'kargo')
                    ?? findField(headers, row, 'cargo')
                    ?? findField(headers, row, 'карго')
-                   ?? findField(headers, row, 'markirovka');
+                   ?? findField(headers, row, 'markirovka')
+                   ?? findField(headers, row, 'маркировк')
+                   ?? findField(headers, row, 'перевозк')
+                   ?? findField(headers, row, 'freight');
 
     // English: delivery_mp_with_buyout | Russian: логистика мп финотчет
     const logistika = findField(headers, row, 'delivery_mp_with_buyout')
                    ?? findField(headers, row, 'delivery', 'buyout')
                    ?? findField(headers, row, 'логистика', 'мп', 'финотчет')
                    ?? findField(headers, row, 'логистика', 'финотчет')
-                   ?? findField(headers, row, 'логистика', 'мп');
+                   ?? findField(headers, row, 'логистика', 'мп')
+                   ?? findField(headers, row, 'логистика', 'выкуп')
+                   ?? findField(headers, row, 'delivery_mp');
 
-    // English: per_day_storage_fee_report | Russian: хранение финотчет/день
+    // English: per_day_storage_fee_report | Russian: хранение в день
     const hranenie  = findField(headers, row, 'per_day_storage_fee_report')
                    ?? findField(headers, row, 'storage', 'report')
                    ?? findField(headers, row, 'хранение', 'финотчет')
-                   ?? findField(headers, row, 'хранение', 'день');
+                   ?? findField(headers, row, 'хранение', 'день')
+                   ?? findField(headers, row, 'хранение')
+                   ?? findField(headers, row, 'storage');
 
-    // English: perc_mp_rub_finreport | Russian: % МП руб финотчет (комиссия WB в рублях)
+    // English: perc_mp_rub_finreport | Russian: % МП руб (комиссия WB в рублях)
     const percMpRub = findField(headers, row, 'perc_mp_rub_finreport')
-                   ?? findField(headers, row, 'мп', 'руб', 'финотчет');
+                   ?? findField(headers, row, 'мп', 'руб', 'финотчет')
+                   ?? findField(headers, row, 'мп', 'руб')
+                   ?? findField(headers, row, 'комисс', 'мп')
+                   ?? findField(headers, row, 'комисс', 'руб')
+                   ?? findField(headers, row, 'commission')
+                   ?? findField(headers, row, 'wb_fee');
 
-    // English: acquiring_perc | Russian: эквайринг средний 30д
+    // English: acquiring_perc | Russian: эквайринг
     const ekvairing = findField(headers, row, 'acquiring_perc')
                    ?? findField(headers, row, 'acquiring')
-                   ?? findField(headers, row, 'эквайринг');
+                   ?? findField(headers, row, 'эквайринг')
+                   ?? findField(headers, row, 'ekvairing');
 
     // НДС: колонка "НДС 22% и 10%" в таблице имеет English-ключ "additional_costs"
     // (не путать с tax_total_rub = "Налог итого" — это другая колонка)

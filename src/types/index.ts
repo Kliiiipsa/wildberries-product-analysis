@@ -285,8 +285,9 @@ export interface WhatIfParams {
   newPrice: number;
   dailyAdBudget: number;
   cpcBid: number;
-  adType: 'ARK' | 'CPC' | 'PRK';
+  adType: 'ARK_AUTO' | 'ARK_MANUAL' | 'CPC' | 'PRK';
   newStock: number;
+  seasonCoeff: number; // коэффициент сезонности, 0.5–2.0, по умолчанию 1.0
 }
 
 export interface WhatIfForecast {
