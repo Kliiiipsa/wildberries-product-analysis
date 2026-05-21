@@ -57,6 +57,15 @@ async function fetchSellerPrice(nmId: number, token: string) {
   return null;
 }
 
+// Ограничивает время выполнения промиса: если не успел — возвращает fallback
+function cap<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    p,
+    new Promise<T>((res) => { t = setTimeout(() => res(fallback), ms); }),
+  ]).finally(() => clearTimeout(t));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const nmIdStr = req.nextUrl.searchParams.get('nmId') || '';
@@ -69,12 +78,13 @@ export async function GET(req: NextRequest) {
     const wbToken = process.env.WB_API_TOKEN || '';
     const mpToken = process.env.MPSTATS_API_KEY || '';
 
+    // Каждый вызов ограничен по времени, чтобы сумма не превышала Edge-лимит 30с
     const [productResult, statsResult, unitResult, mpResult, priceResult] = await Promise.allSettled([
-      fetchWBProduct(nmIdStr, wbToken || undefined),
-      wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null),
-      fetchUnitCosts(nmIdStr),
-      mpToken ? fetchMpstatsData(nmIdStr, mpToken) : Promise.resolve(null),
-      wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),
+      cap(fetchWBProduct(nmIdStr, wbToken || undefined),          9000, null),
+      cap(wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null), 9000, null),
+      cap(fetchUnitCosts(nmIdStr),                               11000, { zakupka:0, kargo:0, logistika:0, hranenie:0, komissiyaRub:0, ekvairingPercent:0, ndsRub:0, ndsPercent:0, found:false }),
+      cap(mpToken ? fetchMpstatsData(nmIdStr, mpToken) : Promise.resolve(null), 11000, null),
+      cap(wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),    9000, null),
     ]);
 
     const product  = productResult.status === 'fulfilled' ? productResult.value : null;
