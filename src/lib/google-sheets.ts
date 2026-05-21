@@ -140,6 +140,67 @@ function findField(headers: string[], values: string[], ...keywords: string[]): 
   return values[idx];
 }
 
+// ─── Unit costs (parsed numbers) ─────────────────────────────────────────────
+
+export interface UnitCostNumbers {
+  zakupka: number;
+  kargo: number;
+  logistika: number;
+  hranenie: number;
+  komissiyaRub: number;
+  ekvairingPercent: number;
+  ndsRub: number;
+  ndsPercent: number;
+  found: boolean;
+}
+
+function toNum(v: string | null): number {
+  if (v === null || v === '') return 0;
+  return parseFloat(v.replace(',', '.')) || 0;
+}
+
+export async function fetchUnitCosts(article: string): Promise<UnitCostNumbers> {
+  try {
+    const sheetName = process.env.SHEET_UNIT || 'Unit';
+    const gid = (() => {
+      const known: Record<string, string> = { 'Unit': process.env.UNIT_GID || '526155247' };
+      return process.env[`SHEET_${sheetName.toUpperCase().replace(/[^A-Z]/g, '_')}_GID`] || known[sheetName] || '0';
+    })();
+
+    const rows = await fetchSheetCsv(gid);
+    if (rows.length < 3) return { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
+
+    const candidateRows = [rows[1], rows[0]].filter(Boolean) as string[][];
+    const headers = candidateRows.reduce((best, r) =>
+      r.filter((c) => c.trim()).length > best.filter((c) => c.trim()).length ? r : best,
+      candidateRows[0] || []
+    );
+    const dataRows = rows.slice(2).filter((r) => r.some((c) => c.trim()));
+    const NM_ID_COL = 5;
+
+    let row = dataRows.find((r) => (r[NM_ID_COL] || '').toString().trim() === article);
+    if (!row) row = dataRows.find((r) => r.some((c) => (c || '').toString().trim() === article));
+    if (!row) return { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
+
+    const zakupka        = toNum(findField(headers, row, 'sebes') ?? findField(headers, row, 'закупка'));
+    const kargo          = toNum(findField(headers, row, 'kargo') ?? findField(headers, row, 'cargo') ?? findField(headers, row, 'карго') ?? findField(headers, row, 'markirovka'));
+    const logistika      = toNum(findField(headers, row, 'delivery_mp_with_buyout') ?? findField(headers, row, 'delivery', 'buyout') ?? findField(headers, row, 'логистика', 'мп', 'финотчет') ?? findField(headers, row, 'логистика', 'финотчет') ?? findField(headers, row, 'логистика', 'мп'));
+    const hranenie       = toNum(findField(headers, row, 'per_day_storage_fee_report') ?? findField(headers, row, 'storage', 'report') ?? findField(headers, row, 'хранение', 'финотчет') ?? findField(headers, row, 'хранение', 'день'));
+    const komissiyaRub   = toNum(findField(headers, row, 'perc_mp_rub_finreport') ?? findField(headers, row, 'мп', 'руб', 'финотчет'));
+    const ekvairingRaw   = findField(headers, row, 'acquiring_perc') ?? findField(headers, row, 'acquiring') ?? findField(headers, row, 'эквайринг');
+    const ekvairingPercent = toNum(ekvairingRaw);
+
+    const ndsRubRaw  = findField(headers, row, 'additional_costs') ?? findField(headers, row, 'nds_22') ?? null;
+    const ndsPercRaw = findField(headers, row, 'vat_perc') ?? findField(headers, row, 'tax_total_perc') ?? findField(headers, row, 'ндс', '22') ?? findField(headers, row, 'ндс') ?? null;
+    const ndsRub     = ndsRubRaw !== null ? toNum(ndsRubRaw) : 0;
+    const ndsPercent = ndsRubRaw === null && ndsPercRaw !== null ? toNum(ndsPercRaw) : 0;
+
+    return { zakupka, kargo, logistika, hranenie, komissiyaRub, ekvairingPercent, ndsRub, ndsPercent, found: true };
+  } catch {
+    return { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
+  }
+}
+
 // ─── Unit ────────────────────────────────────────────────────────────────────
 
 export async function fetchUnitData(article: string): Promise<GoogleSheetUnit | null> {

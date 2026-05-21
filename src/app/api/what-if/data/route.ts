@@ -1,16 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchWBProduct, fetchWBStats } from '@/lib/wildberries';
-import { fetchUnitData } from '@/lib/google-sheets';
+import { fetchUnitCosts } from '@/lib/google-sheets';
 import { fetchMpstatsData } from '@/lib/mpstats';
 import type { WhatIfBaseData, WhatIfUnitCost } from '@/types';
 
 export const maxDuration = 30;
 
-function parseNum(rawText: string, keyword: string): number {
-  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = rawText.match(new RegExp(escaped + '[^:\\n]*:\\s*([\\d,.]+)', 'i'));
-  if (!match) return 0;
-  return parseFloat(match[1].replace(/,/g, '.')) || 0;
+// Надёжный способ получить цены — тот же что в дашборде:
+// перебираем все товары продавца через /api/v2/list/goods/filter с пагинацией
+async function fetchSellerPrice(nmId: number, token: string) {
+  const BASE = 'https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter';
+
+  function extractPrices(good: Record<string, unknown>) {
+    const sizes = Array.isArray(good.sizes) ? good.sizes as Record<string, unknown>[] : [];
+    const size = sizes[0];
+    const priceBasic = Number(size?.price ?? good.price ?? 0);
+    if (priceBasic === 0) return null;
+    const discount = Number(good.discount ?? 0);
+    const discountedRaw = Number(size?.discountedPrice ?? good.discountedPrice ?? 0);
+    const priceSale = discountedRaw > 0
+      ? discountedRaw
+      : (discount > 0 ? Math.round(priceBasic * (1 - discount / 100)) : priceBasic);
+    const salePercent = priceBasic > 0 && priceSale < priceBasic
+      ? Math.round((1 - priceSale / priceBasic) * 100) : discount;
+    return { priceSale, priceBasic, salePercent };
+  }
+
+  // Шаг 1: прямой запрос по nmId
+  for (const param of ['filterNmIds', 'filterNmId']) {
+    try {
+      const r = await fetch(`${BASE}?limit=100&${param}=${nmId}`, {
+        headers: { Authorization: token }, signal: AbortSignal.timeout(8000),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        const goods: Record<string, unknown>[] = j?.data?.listGoods ?? [];
+        const g = goods.find((x) => Number(x.nmID ?? x.nmId) === nmId);
+        if (g) { const p = extractPrices(g); if (p) return p; }
+      }
+    } catch { /* следующий вариант */ }
+  }
+
+  // Шаг 2: пагинация по всем товарам продавца (как в дашборде)
+  for (let offset = 0; offset < 10000; offset += 1000) {
+    try {
+      const r = await fetch(`${BASE}?limit=1000&offset=${offset}`, {
+        headers: { Authorization: token }, signal: AbortSignal.timeout(10000),
+      });
+      if (!r.ok) break;
+      const j = await r.json();
+      const goods: Record<string, unknown>[] = j?.data?.listGoods ?? [];
+      if (!goods.length) break;
+      const g = goods.find((x) => Number(x.nmID ?? x.nmId) === nmId);
+      if (g) { const p = extractPrices(g); if (p) return p; }
+      if (goods.length < 1000) break;
+    } catch { break; }
+  }
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -20,64 +66,63 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Укажите корректный артикул (nmId)' }, { status: 400 });
   }
 
+  const nmId    = parseInt(nmIdStr, 10);
   const wbToken = process.env.WB_API_TOKEN || '';
   const mpToken = process.env.MPSTATS_API_KEY || '';
 
-  const [productResult, statsResult, unitResult, mpResult] = await Promise.allSettled([
+  const [productResult, statsResult, unitResult, mpResult, priceResult] = await Promise.allSettled([
     fetchWBProduct(nmIdStr, wbToken || undefined),
     wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null),
-    fetchUnitData(nmIdStr),
+    fetchUnitCosts(nmIdStr),
     mpToken ? fetchMpstatsData(nmIdStr, mpToken) : Promise.resolve(null),
+    wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),
   ]);
 
-  const product = productResult.status === 'fulfilled' ? productResult.value : null;
+  const product  = productResult.status === 'fulfilled' ? productResult.value : null;
   if (!product) {
     const err = productResult.status === 'rejected' ? String(productResult.reason) : 'Товар не найден';
     return NextResponse.json({ error: err }, { status: 404 });
   }
 
-  const stats = statsResult.status === 'fulfilled' ? statsResult.value?.stats ?? null : null;
-  const unit  = unitResult.status  === 'fulfilled' ? unitResult.value  : null;
-  const mp    = mpResult.status    === 'fulfilled' ? mpResult.value    : null;
+  const stats    = statsResult.status  === 'fulfilled' ? statsResult.value?.stats ?? null : null;
+  const unitRaw  = unitResult.status   === 'fulfilled' ? unitResult.value : null;
+  const mp       = mpResult.status     === 'fulfilled' ? mpResult.value  : null;
+  const sellerPr = priceResult.status  === 'fulfilled' ? priceResult.value : null;
 
-  // Daily sales: prefer MPStats 30d average over WB 7d average
-  const mp30 = mp?.productInfo?.sales30 ?? 0;
-  const wb7  = stats?.ordersCount ?? 0;
+  // Цены: приоритет Discounts API (fetchSellerPrice), затем ContentAPI (fetchWBProduct)
+  const priceSale   = sellerPr?.priceSale   || product.priceSale   || 0;
+  const priceBasic  = sellerPr?.priceBasic  || product.priceBasic  || 0;
+  const salePercent = sellerPr?.salePercent ?? product.salePercent ?? 0;
+
+  // Средние продажи в день: MPStats 30д имеет приоритет над WB stats 7д
+  const mp30       = mp?.productInfo?.sales30 ?? 0;
+  const wb7        = stats?.ordersCount ?? 0;
   const dailySales = Math.max(0.1, mp30 > 0 ? mp30 / 30 : wb7 / 7);
 
   const buyoutRate = stats?.buyoutPercent ?? 50;
 
-  // Parse unit costs
-  const raw = unit?.found ? unit.rawText : '';
-  const zakupka        = parseNum(raw, 'Закупка');
-  const kargo          = parseNum(raw, 'Карго');
-  const logistika      = parseNum(raw, 'Логистика МП с % выкупа');
-  const hranenie       = parseNum(raw, 'Хранение в день');
-  const komissiyaRub   = parseNum(raw, 'Комиссия WB');
-  const ekvairingPercent = parseNum(raw, 'Эквайринг');
-
-  let ndsRub = 0;
-  let ndsPercent = 0;
-  const ndsRubM  = raw.match(/НДС \(итого, руб\.\):\s*([\d,.]+)/i);
-  const ndsPercM = raw.match(/НДС \(ставка %\):\s*([\d,.]+)/i);
-  if (ndsRubM)  ndsRub     = parseFloat(ndsRubM[1].replace(',', '.'))  || 0;
-  else if (ndsPercM) ndsPercent = parseFloat(ndsPercM[1].replace(',', '.')) || 0;
-
+  const uc = unitRaw ?? { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
   const unitCost: WhatIfUnitCost = {
-    zakupka, kargo, logistika, hranenie,
-    komissiyaRub, ekvairingPercent, ndsRub, ndsPercent,
-    hasData: unit?.found ?? false,
+    zakupka:          uc.zakupka,
+    kargo:            uc.kargo,
+    logistika:        uc.logistika,
+    hranenie:         uc.hranenie,
+    komissiyaRub:     uc.komissiyaRub,
+    ekvairingPercent: uc.ekvairingPercent,
+    ndsRub:           uc.ndsRub,
+    ndsPercent:       uc.ndsPercent,
+    hasData:          uc.found,
   };
 
   const result: WhatIfBaseData = {
-    nmId: parseInt(nmIdStr, 10),
+    nmId,
     productName: product.name,
-    brand: product.brand,
-    photoUrl: product.photoUrl,
-    priceSale: product.priceSale,
-    priceBasic: product.priceBasic,
-    salePercent: product.salePercent,
-    stock: product.totalStock,
+    brand:       product.brand,
+    photoUrl:    product.photoUrl,
+    priceSale,
+    priceBasic,
+    salePercent,
+    stock:       product.totalStock,
     dailySales,
     buyoutRate,
     unitCost,
