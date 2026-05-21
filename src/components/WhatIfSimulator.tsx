@@ -223,57 +223,6 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
   const [aiText, setAiText]     = useState('');
   const [aiError, setAiError]   = useState('');
 
-  // Асинхронная загрузка Unit-экономики — тот же fetchUnitCosts что в "Анализ артикула"
-  const loadUnit = useCallback(async (nmId: string) => {
-    setUnitPhase('loading');
-    try {
-      const res = await fetch(`/api/what-if/unit?nmId=${nmId}`);
-      const json = await res.json();
-      if (!res.ok || !json.found) { setUnitPhase('error'); return; }
-      setBase((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          unitRawText: json.rawText,
-          unitCost: {
-            zakupka:          json.zakupka          ?? 0,
-            kargo:            json.kargo            ?? 0,
-            logistika:        json.logistika        ?? 0,
-            hranenie:         json.hranenie         ?? 0,
-            komissiyaRub:     json.komissiyaRub     ?? 0,
-            ekvairingPercent: json.ekvairingPercent ?? 0,
-            ndsRub:           json.ndsRub           ?? 0,
-            ndsPercent:       json.ndsPercent       ?? 0,
-            hasData:          true,
-          },
-        };
-      });
-      setUnitPhase('done');
-    } catch {
-      setUnitPhase('error');
-    }
-  }, []);
-
-  // Асинхронная загрузка сезонности (отдельный медленный запрос к MPStats)
-  const loadSeasonality = useCallback(async (nmId: string) => {
-    setSeasonPhase('loading');
-    try {
-      const res = await fetch(`/api/what-if/seasonality?nmId=${nmId}`);
-      const json = await res.json();
-      if (!res.ok || json.error) { setSeasonPhase('error'); return; }
-      // Вставляем seasonalityData в base и обновляем слайдер коэффициента
-      const curMonth = new Date().getMonth() + 1;
-      const coeff = json.seasonality?.[String(curMonth)];
-      setBase((prev) => prev ? { ...prev, seasonalityData: json } : prev);
-      if (coeff !== undefined) {
-        setParams((p) => ({ ...p, seasonCoeff: coeff }));
-      }
-      setSeasonPhase('done');
-    } catch {
-      setSeasonPhase('error');
-    }
-  }, []);
-
   const loadData = useCallback(async (nmId: string) => {
     setLoadPhase('loading');
     setLoadError('');
@@ -284,32 +233,82 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
     setUnitPhase('idle');
     try {
       const res = await fetch(`/api/what-if/data?nmId=${nmId}`);
-      let json: WhatIfBaseData & { error?: string };
-      try {
-        json = await res.json();
-      } catch {
-        throw new Error(`Сервер вернул некорректный ответ (HTTP ${res.status})`);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try { const j = await res.json(); errMsg = j.error || errMsg; } catch { /* */ }
+        throw new Error(errMsg);
       }
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      const data = json as WhatIfBaseData;
-      setBase(data);
-      setParams({
-        newPrice:      data.priceSale,
-        dailyAdBudget: 0,
-        cpcBid:        0,
-        adType:        'CPC',
-        newStock:      data.stock,
-        seasonCoeff:   1.0,
-      });
-      setLoadPhase('loaded');
-      // Unit и сезонность грузятся фоном — не блокируют UI
-      loadUnit(nmId);
-      loadSeasonality(nmId);
+      const reader = res.body!.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      setUnitPhase('loading');
+      setSeasonPhase('loading');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === 'data') {
+              const data = ev.payload as WhatIfBaseData;
+              setBase(data);
+              setParams({
+                newPrice:      data.priceSale,
+                dailyAdBudget: 0,
+                cpcBid:        0,
+                adType:        'CPC',
+                newStock:      data.stock,
+                seasonCoeff:   1.0,
+              });
+              setLoadPhase('loaded');
+            } else if (ev.type === 'unit') {
+              const u = ev.payload;
+              setBase((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  unitRawText: u.rawText,
+                  unitCost: {
+                    zakupka:          u.zakupka          ?? 0,
+                    kargo:            u.kargo            ?? 0,
+                    logistika:        u.logistika        ?? 0,
+                    hranenie:         u.hranenie         ?? 0,
+                    komissiyaRub:     u.komissiyaRub     ?? 0,
+                    ekvairingPercent: u.ekvairingPercent ?? 0,
+                    ndsRub:           u.ndsRub           ?? 0,
+                    ndsPercent:       u.ndsPercent       ?? 0,
+                    hasData:          true,
+                  },
+                };
+              });
+              setUnitPhase('done');
+            } else if (ev.type === 'unit_error') {
+              setUnitPhase('error');
+            } else if (ev.type === 'seasonality') {
+              const s = ev.payload;
+              const curMonth = new Date().getMonth() + 1;
+              const coeff = s.seasonality?.[String(curMonth)];
+              setBase((prev) => prev ? { ...prev, seasonalityData: s } : prev);
+              if (coeff !== undefined) setParams((p) => ({ ...p, seasonCoeff: coeff }));
+              setSeasonPhase('done');
+            } else if (ev.type === 'done') {
+              setUnitPhase((p) => p === 'loading' ? 'error' : p);
+              setSeasonPhase((p) => p === 'loading' ? 'error' : p);
+            } else if (ev.type === 'error') {
+              throw new Error(ev.payload);
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      }
     } catch (e) {
       setLoadError(String(e));
-      setLoadPhase('error');
+      setLoadPhase((p) => p === 'loading' ? 'error' : p);
     }
-  }, [loadUnit, loadSeasonality]);
+  }, []);
 
   useEffect(() => {
     if (initialNmId && /^\d{6,12}$/.test(initialNmId)) loadData(initialNmId);
