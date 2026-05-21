@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchWBProduct, fetchWBStats } from '@/lib/wildberries';
-import { fetchUnitCosts } from '@/lib/google-sheets';
 import { fetchMpstatsData } from '@/lib/mpstats';
 import type { WhatIfBaseData, WhatIfUnitCost } from '@/types';
 
 export const runtime = 'edge';
 export const maxDuration = 30;
 
-// Надёжный способ получить цены — перебираем все товары продавца с пагинацией
 async function fetchSellerPrice(nmId: number, token: string) {
   const BASE = 'https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter';
 
@@ -43,7 +41,7 @@ async function fetchSellerPrice(nmId: number, token: string) {
   for (let offset = 0; offset < 10000; offset += 1000) {
     try {
       const r = await fetch(`${BASE}?limit=1000&offset=${offset}`, {
-        headers: { Authorization: token }, signal: AbortSignal.timeout(10000),
+        headers: { Authorization: token }, signal: AbortSignal.timeout(8000),
       });
       if (!r.ok) break;
       const j = await r.json();
@@ -57,7 +55,6 @@ async function fetchSellerPrice(nmId: number, token: string) {
   return null;
 }
 
-// Ограничивает время выполнения промиса: если не успел — возвращает fallback
 function cap<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   let t: ReturnType<typeof setTimeout>;
   return Promise.race([
@@ -69,7 +66,6 @@ function cap<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 export async function GET(req: NextRequest) {
   try {
     const nmIdStr = req.nextUrl.searchParams.get('nmId') || '';
-
     if (!nmIdStr || !/^\d{6,12}$/.test(nmIdStr)) {
       return NextResponse.json({ error: 'Укажите корректный артикул (nmId)' }, { status: 400 });
     }
@@ -78,13 +74,12 @@ export async function GET(req: NextRequest) {
     const wbToken = process.env.WB_API_TOKEN || '';
     const mpToken = process.env.MPSTATS_API_KEY || '';
 
-    // Каждый вызов ограничен по времени, чтобы сумма не превышала Edge-лимит 30с
-    const [productResult, statsResult, unitResult, mpResult, priceResult] = await Promise.allSettled([
-      cap(fetchWBProduct(nmIdStr, wbToken || undefined),          9000, null),
-      cap(wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null), 9000, null),
-      cap(fetchUnitCosts(nmIdStr),                               11000, { zakupka:0, kargo:0, logistika:0, hranenie:0, komissiyaRub:0, ekvairingPercent:0, ndsRub:0, ndsPercent:0, found:false }),
+    // Unit и сезонность загружаются отдельно (async с фронта) — здесь только быстрые WB + MPStats
+    const [productResult, statsResult, mpResult, priceResult] = await Promise.allSettled([
+      cap(fetchWBProduct(nmIdStr, wbToken || undefined),                         9000, null),
+      cap(wbToken ? fetchWBStats(nmIdStr, wbToken) : Promise.resolve(null),      9000, null),
       cap(mpToken ? fetchMpstatsData(nmIdStr, mpToken) : Promise.resolve(null), 11000, null),
-      cap(wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),    9000, null),
+      cap(wbToken ? fetchSellerPrice(nmId, wbToken) : Promise.resolve(null),     9000, null),
     ]);
 
     const product  = productResult.status === 'fulfilled' ? productResult.value : null;
@@ -94,7 +89,6 @@ export async function GET(req: NextRequest) {
     }
 
     const stats    = statsResult.status  === 'fulfilled' ? statsResult.value?.stats ?? null : null;
-    const unitRaw  = unitResult.status   === 'fulfilled' ? unitResult.value : null;
     const mp       = mpResult.status     === 'fulfilled' ? mpResult.value  : null;
     const sellerPr = priceResult.status  === 'fulfilled' ? priceResult.value : null;
 
@@ -110,18 +104,15 @@ export async function GET(req: NextRequest) {
     const weeklyOrders  = stats?.ordersCount      ?? 0;
     const weeklyBuyouts = stats?.buyoutsCount     ?? 0;
     const weeklyRevenue = stats?.ordersSumRub     ?? 0;
-    const conversions = {
+    const conversions   = {
       cardToCart:  stats?.conversions?.addToCartPercent   ?? 0,
       cartToOrder: stats?.conversions?.cartToOrderPercent ?? 0,
     };
 
-    // Средняя цена рынка (медиана цен похожих товаров из MPStats)
+    // Медиана цен конкурентов (MPStats)
     let marketAvgPrice = 0;
     if (mp?.competitors && mp.competitors.length > 0) {
-      const prices = mp.competitors
-        .map((c) => c.price)
-        .filter((p) => p > 0)
-        .sort((a, b) => a - b);
+      const prices = mp.competitors.map((c) => c.price).filter((p) => p > 0).sort((a, b) => a - b);
       if (prices.length > 0) {
         const mid = Math.floor(prices.length / 2);
         marketAvgPrice = prices.length % 2 === 0
@@ -130,28 +121,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const uc = unitRaw ?? { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
+    // unitCost пустой — заполняется фронтом через /api/what-if/unit
     const unitCost: WhatIfUnitCost = {
-      zakupka:          uc.zakupka,
-      kargo:            uc.kargo,
-      logistika:        uc.logistika,
-      hranenie:         uc.hranenie,
-      komissiyaRub:     uc.komissiyaRub,
-      ekvairingPercent: uc.ekvairingPercent,
-      ndsRub:           uc.ndsRub,
-      ndsPercent:       uc.ndsPercent,
-      hasData:          uc.found,
+      zakupka: 0, kargo: 0, logistika: 0, hranenie: 0,
+      komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0,
+      hasData: false,
     };
 
     const result: WhatIfBaseData = {
       nmId,
-      productName: product.name,
-      brand:       product.brand,
-      photoUrl:    product.photoUrl,
+      productName:  product.name,
+      brand:        product.brand,
+      photoUrl:     product.photoUrl,
       priceSale,
       priceBasic,
       salePercent,
-      stock:       product.totalStock,
+      stock:        product.totalStock,
       dailySales,
       buyoutRate,
       unitCost,
@@ -160,7 +145,6 @@ export async function GET(req: NextRequest) {
       weeklyRevenue,
       conversions,
       marketAvgPrice,
-      unitRawText: uc.rawText,
     };
 
     return NextResponse.json(result);

@@ -216,11 +216,43 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
     newPrice: 0, dailyAdBudget: 0, cpcBid: 0, adType: 'CPC', newStock: 0, seasonCoeff: 1.0,
   });
 
+  const [unitPhase,   setUnitPhase]   = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [seasonPhase, setSeasonPhase] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   const [aiPhase, setAiPhase]   = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [aiText, setAiText]     = useState('');
   const [aiError, setAiError]   = useState('');
+
+  // Асинхронная загрузка Unit-экономики — тот же fetchUnitCosts что в "Анализ артикула"
+  const loadUnit = useCallback(async (nmId: string) => {
+    setUnitPhase('loading');
+    try {
+      const res = await fetch(`/api/what-if/unit?nmId=${nmId}`);
+      const json = await res.json();
+      if (!res.ok || !json.found) { setUnitPhase('error'); return; }
+      setBase((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          unitRawText: json.rawText,
+          unitCost: {
+            zakupka:          json.zakupka          ?? 0,
+            kargo:            json.kargo            ?? 0,
+            logistika:        json.logistika        ?? 0,
+            hranenie:         json.hranenie         ?? 0,
+            komissiyaRub:     json.komissiyaRub     ?? 0,
+            ekvairingPercent: json.ekvairingPercent ?? 0,
+            ndsRub:           json.ndsRub           ?? 0,
+            ndsPercent:       json.ndsPercent       ?? 0,
+            hasData:          true,
+          },
+        };
+      });
+      setUnitPhase('done');
+    } catch {
+      setUnitPhase('error');
+    }
+  }, []);
 
   // Асинхронная загрузка сезонности (отдельный медленный запрос к MPStats)
   const loadSeasonality = useCallback(async (nmId: string) => {
@@ -249,6 +281,7 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
     setAiText('');
     setAiPhase('idle');
     setSeasonPhase('idle');
+    setUnitPhase('idle');
     try {
       const res = await fetch(`/api/what-if/data?nmId=${nmId}`);
       let json: WhatIfBaseData & { error?: string };
@@ -269,13 +302,14 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
         seasonCoeff:   1.0,
       });
       setLoadPhase('loaded');
-      // Запускаем загрузку сезонности параллельно (не блокирует UI)
+      // Unit и сезонность грузятся фоном — не блокируют UI
+      loadUnit(nmId);
       loadSeasonality(nmId);
     } catch (e) {
       setLoadError(String(e));
       setLoadPhase('error');
     }
-  }, [loadSeasonality]);
+  }, [loadUnit, loadSeasonality]);
 
   useEffect(() => {
     if (initialNmId && /^\d{6,12}$/.test(initialNmId)) loadData(initialNmId);
@@ -477,8 +511,14 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
                 </>
               )}
               {!base.unitCost.hasData && (
-                <div className="text-xs text-slate-600 italic">
-                  Юнит-экономика не найдена в Google Sheets — расчёт маржи недоступен
+                <div className="text-xs text-slate-500 italic flex items-center gap-1.5">
+                  {unitPhase === 'loading' ? (
+                    <><Loader2 className="h-3 w-3 animate-spin shrink-0" />Загружаю юнит-экономику из Google Sheets...</>
+                  ) : unitPhase === 'error' ? (
+                    <><AlertCircle className="h-3 w-3 shrink-0 text-amber-500" />Юнит-экономика не найдена в Google Sheets</>
+                  ) : (
+                    <span className="text-slate-600">Юнит-экономика не загружена</span>
+                  )}
                 </div>
               )}
             </div>
