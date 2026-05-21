@@ -36,7 +36,7 @@ export default async function HomePage() {
         <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full bg-violet-600/[0.05] blur-[110px]" />
       </div>
 
-      <div className="relative container mx-auto px-4 pt-24 pb-16 max-w-2xl">
+      <div className="relative container mx-auto px-6 pt-24 pb-16 max-w-5xl">
 
         {/* Hero */}
         <div className="text-center mb-10 animate-fade-up">
