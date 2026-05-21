@@ -272,6 +272,13 @@ export interface WhatIfBaseData {
   dailySales: number;    // средние заказы в день (из MPStats или WB stats)
   buyoutRate: number;    // 0–100 (%)
   unitCost: WhatIfUnitCost;
+  weeklyOrders: number;  // факт заказов за 7 дней (WB stats)
+  weeklyBuyouts: number; // факт выкупов за 7 дней
+  weeklyRevenue: number; // факт выручки за 7 дней
+  conversions: {
+    cardToCart: number;  // карточка → корзина, %
+    cartToOrder: number; // корзина → заказ, %
+  };
 }
 
 export interface WhatIfParams {

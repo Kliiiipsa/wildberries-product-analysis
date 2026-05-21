@@ -212,8 +212,7 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
   const forecast30d = useMemo(() => base ? calcForecast(base, params, 30) : null, [base, params]);
 
   // Текущие значения (при текущей цене без новой рекламы)
-  const current7d  = useMemo(() => base ? calcForecast(base, { ...params, newPrice: base.priceSale, dailyAdBudget: 0, newStock: base.stock }, 7)  : null, [base, params]);
-  const current30d = useMemo(() => base ? calcForecast(base, { ...params, newPrice: base.priceSale, dailyAdBudget: 0, newStock: base.stock }, 30) : null, [base, params]);
+  const current7d  = useMemo(() => base ? calcForecast(base, { ...params, newPrice: base.priceSale, dailyAdBudget: 0, newStock: base.stock }, 7) : null, [base, params]);
 
   // Синхронизация цены ↔ скидки
   const discountFromPrice = base && base.priceBasic > 0
@@ -351,6 +350,14 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
                   ['Остаток',         `${base.stock.toLocaleString('ru-RU')} шт.`],
                   ['Продажи/день',    `~${base.dailySales.toFixed(1)} зак.`],
                   ['% выкупа',        `${base.buyoutRate.toFixed(1)}%`],
+                  ...(base.weeklyOrders > 0 ? [
+                    ['Заказы 7д (факт)',  base.weeklyOrders.toLocaleString('ru-RU')],
+                    ['Выкупы 7д (факт)', base.weeklyBuyouts.toLocaleString('ru-RU')],
+                  ] : []),
+                  ...(base.conversions.cardToCart > 0 ? [
+                    ['Карт.→Корзина', `${base.conversions.cardToCart.toFixed(1)}%`],
+                    ['Корзина→Заказ', `${base.conversions.cartToOrder.toFixed(1)}%`],
+                  ] : []),
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between">
                     <span className="text-slate-500">{k}</span>

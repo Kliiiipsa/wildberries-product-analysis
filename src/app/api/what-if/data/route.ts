@@ -101,6 +101,15 @@ export async function GET(req: NextRequest) {
 
   const buyoutRate = stats?.buyoutPercent ?? 50;
 
+  // Фактические данные за 7 дней (WB stats)
+  const weeklyOrders  = stats?.ordersCount      ?? 0;
+  const weeklyBuyouts = stats?.buyoutsCount     ?? 0;
+  const weeklyRevenue = stats?.ordersSumRub     ?? 0;
+  const conversions = {
+    cardToCart:  stats?.conversions?.addToCartPercent   ?? 0,
+    cartToOrder: stats?.conversions?.cartToOrderPercent ?? 0,
+  };
+
   const uc = unitRaw ?? { zakupka: 0, kargo: 0, logistika: 0, hranenie: 0, komissiyaRub: 0, ekvairingPercent: 0, ndsRub: 0, ndsPercent: 0, found: false };
   const unitCost: WhatIfUnitCost = {
     zakupka:          uc.zakupka,
@@ -126,6 +135,10 @@ export async function GET(req: NextRequest) {
     dailySales,
     buyoutRate,
     unitCost,
+    weeklyOrders,
+    weeklyBuyouts,
+    weeklyRevenue,
+    conversions,
   };
 
   return NextResponse.json(result);
