@@ -281,6 +281,7 @@ export interface WhatIfBaseData {
   };
   seasonalityData?: SeasonalityData | null; // коэффициенты сезонности по месяцам (MPStats)
   unitRawText?: string;  // полный текст Unit-экономики для AI
+  marketAvgPrice?: number; // медиана цен конкурентов (MPStats similar)
 }
 
 export interface WhatIfParams {

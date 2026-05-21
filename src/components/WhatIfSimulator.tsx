@@ -41,11 +41,20 @@ function calcForecast(
   const priceMult    = Math.max(0.2, Math.min(4.0, 1 + PRICE_ELASTICITY * priceRatio));
   const seasonMult   = params.seasonCoeff ?? 1;
 
+  // Штраф за выход выше рыночной цены конкурентов
+  // +10% выше рынка → ×0.85, +30% → ×0.4, +50% → ×0.1
+  let marketMult = 1.0;
+  const mkt = base.marketAvgPrice ?? 0;
+  if (mkt > 0 && params.newPrice > mkt) {
+    const over = params.newPrice / mkt; // 1.0 = на уровне, 1.3 = +30%
+    marketMult = Math.max(0.05, 1.0 - (over - 1.0) * 2.5);
+  }
+
   const effectiveCpc = params.cpcBid > 0 ? params.cpcBid : (AD_DEFAULT_CPC[params.adType] ?? 28);
   const adClicks     = params.dailyAdBudget > 0 ? params.dailyAdBudget / effectiveCpc : 0;
   const adOrdersDay  = adClicks * (AD_CONVERSION[params.adType] ?? 0.05);
 
-  const organicOrdersTotal = base.dailySales * priceMult * seasonMult * days;
+  const organicOrdersTotal = base.dailySales * priceMult * seasonMult * marketMult * days;
   const adOrdersTotal      = adOrdersDay * days;
   const orders             = organicOrdersTotal + adOrdersTotal;
 
@@ -207,9 +216,31 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
     newPrice: 0, dailyAdBudget: 0, cpcBid: 0, adType: 'CPC', newStock: 0, seasonCoeff: 1.0,
   });
 
+  const [seasonPhase, setSeasonPhase] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+
   const [aiPhase, setAiPhase]   = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [aiText, setAiText]     = useState('');
   const [aiError, setAiError]   = useState('');
+
+  // Асинхронная загрузка сезонности (отдельный медленный запрос к MPStats)
+  const loadSeasonality = useCallback(async (nmId: string) => {
+    setSeasonPhase('loading');
+    try {
+      const res = await fetch(`/api/what-if/seasonality?nmId=${nmId}`);
+      const json = await res.json();
+      if (!res.ok || json.error) { setSeasonPhase('error'); return; }
+      // Вставляем seasonalityData в base и обновляем слайдер коэффициента
+      const curMonth = new Date().getMonth() + 1;
+      const coeff = json.seasonality?.[String(curMonth)];
+      setBase((prev) => prev ? { ...prev, seasonalityData: json } : prev);
+      if (coeff !== undefined) {
+        setParams((p) => ({ ...p, seasonCoeff: coeff }));
+      }
+      setSeasonPhase('done');
+    } catch {
+      setSeasonPhase('error');
+    }
+  }, []);
 
   const loadData = useCallback(async (nmId: string) => {
     setLoadPhase('loading');
@@ -217,6 +248,7 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
     setBase(null);
     setAiText('');
     setAiPhase('idle');
+    setSeasonPhase('idle');
     try {
       const res = await fetch(`/api/what-if/data?nmId=${nmId}`);
       let json: WhatIfBaseData & { error?: string };
@@ -228,25 +260,22 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       const data = json as WhatIfBaseData;
       setBase(data);
-
-      // Авто-коэффициент: берём текущий месяц из MPStats, иначе 1.0
-      const curMonth = new Date().getMonth() + 1;
-      const seasonCoeff = data.seasonalityData?.seasonality?.[String(curMonth)] ?? 1.0;
-
       setParams({
         newPrice:      data.priceSale,
         dailyAdBudget: 0,
         cpcBid:        0,
         adType:        'CPC',
         newStock:      data.stock,
-        seasonCoeff,
+        seasonCoeff:   1.0,
       });
       setLoadPhase('loaded');
+      // Запускаем загрузку сезонности параллельно (не блокирует UI)
+      loadSeasonality(nmId);
     } catch (e) {
       setLoadError(String(e));
       setLoadPhase('error');
     }
-  }, []);
+  }, [loadSeasonality]);
 
   useEffect(() => {
     if (initialNmId && /^\d{6,12}$/.test(initialNmId)) loadData(initialNmId);
@@ -458,12 +487,25 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
             <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 space-y-5">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Параметры сценария</div>
 
-              <SliderRow
-                label="Цена со скидкой" value={params.newPrice}
-                min={priceMin} max={priceMax} step={10}
-                format={(v) => fmtRub(v)}
-                onChange={setPrice}
-              />
+              <div className="space-y-1">
+                <SliderRow
+                  label="Цена со скидкой" value={params.newPrice}
+                  min={priceMin} max={priceMax} step={10}
+                  format={(v) => fmtRub(v)}
+                  onChange={setPrice}
+                />
+                {(base.marketAvgPrice ?? 0) > 0 && (() => {
+                  const mkt = base.marketAvgPrice as number;
+                  const over = params.newPrice / mkt;
+                  const isAbove = params.newPrice > mkt;
+                  return (
+                    <div className={`text-[10px] flex gap-2 items-center ${isAbove ? 'text-amber-400' : 'text-slate-500'}`}>
+                      <span>Медиана рынка: {fmtRub(mkt)}</span>
+                      {isAbove && <span className="font-mono">▲ +{Math.round((over - 1) * 100)}% выше рынка{over >= 1.3 ? ' ⚠️ резкий спад заказов' : ''}</span>}
+                    </div>
+                  );
+                })()}
+              </div>
 
               <SliderRow
                 label={`Скидка от базовой (${fmtRub(base.priceBasic)})`}
@@ -539,16 +581,21 @@ export function WhatIfSimulator({ initialNmId, onBack }: Props) {
                     />
                     {sc ? (
                       <div className="text-[10px] text-slate-500 flex gap-3 flex-wrap">
-                        <span>По MPStats ({sc.keyword}):</span>
-                        <span className={`font-mono ${sc.curCoeff !== null && sc.curCoeff < 0.85 ? 'text-amber-400' : sc.curCoeff !== null && sc.curCoeff > 1.15 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                        <span>MPStats ({sc.keyword}):</span>
+                        <span className={`font-mono ${(sc.curCoeff ?? 1) < 0.85 ? 'text-amber-400' : (sc.curCoeff ?? 1) > 1.15 ? 'text-emerald-400' : 'text-slate-400'}`}>
                           {sc.curName} ×{sc.curCoeff?.toFixed(2) ?? '—'}
                         </span>
-                        <span className={`font-mono ${sc.nextCoeff !== null && sc.nextCoeff < 0.85 ? 'text-amber-400' : sc.nextCoeff !== null && sc.nextCoeff > 1.15 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                        <span className={`font-mono ${(sc.nextCoeff ?? 1) < 0.85 ? 'text-amber-400' : (sc.nextCoeff ?? 1) > 1.15 ? 'text-emerald-400' : 'text-slate-400'}`}>
                           {sc.nextName} ×{sc.nextCoeff?.toFixed(2) ?? '—'}
                         </span>
                       </div>
+                    ) : seasonPhase === 'loading' ? (
+                      <div className="text-[10px] text-slate-600 flex items-center gap-1">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        Загружаю сезонность MPStats...
+                      </div>
                     ) : (
-                      <div className="text-[10px] text-slate-600">Сезонность MPStats не загружена</div>
+                      <div className="text-[10px] text-slate-600">Сезонность MPStats недоступна</div>
                     )}
                   </div>
                 );

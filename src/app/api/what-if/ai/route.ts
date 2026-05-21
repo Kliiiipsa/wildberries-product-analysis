@@ -106,6 +106,7 @@ function buildPrompt(
 
 ━━━ ТЕКУЩАЯ СИТУАЦИЯ (факт 7д) ━━━
 Цена: ${fmtR(base.priceSale)} | Скидка: ${base.salePercent}% | Базовая: ${fmtR(base.priceBasic)}
+${(base.marketAvgPrice ?? 0) > 0 ? `Медиана рынка (MPStats конкуренты): ${fmtR(base.marketAvgPrice as number)}` : 'Медиана рынка: нет данных'}
 Заказы: ${fmt(cur.orders)} шт | Выкупы: ${fmt(cur.buyouts)} шт | % выкупа: ${base.buyoutRate.toFixed(1)}%
 Выручка: ${fmtR(cur.revenue)}
 Продажи/день (среднее): ~${base.dailySales.toFixed(1)} зак.
@@ -120,7 +121,7 @@ ${unitBlock}
 ${buildSeasonBlock(base, params)}
 
 ━━━ СИМУЛИРУЕМЫЙ СЦЕНАРИЙ ━━━
-Цена: ${fmtR(base.priceSale)} → ${fmtR(params.newPrice)} (${sign}${priceChange}%)
+Цена: ${fmtR(base.priceSale)} → ${fmtR(params.newPrice)} (${sign}${priceChange}%)${(base.marketAvgPrice ?? 0) > 0 ? ` | vs рынок: ${params.newPrice > (base.marketAvgPrice as number) ? `+${Math.round((params.newPrice / (base.marketAvgPrice as number) - 1) * 100)}% выше медианы` : params.newPrice < (base.marketAvgPrice as number) ? `-${Math.round((1 - params.newPrice / (base.marketAvgPrice as number)) * 100)}% ниже медианы` : 'на уровне медианы'}` : ''}
 Остаток: ${fmt(base.stock)} → ${fmt(params.newStock)} шт
 Реклама: ${adDesc}
 
