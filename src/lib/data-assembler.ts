@@ -17,7 +17,7 @@ export function assemblePrompt(data: AnalysisData): string {
       `Цена до скидки: ${formatRub(p.priceBasic)}`,
       `Цена со скидкой: ${formatRub(p.priceSale)} (-${p.salePercent}%)`,
       ...(p.rating > 0 ? [`Рейтинг: ${p.rating}/5`] : []),
-      `Цвета: ${p.colors.join(', ') || '—'}`,
+      ...(p.colors.length > 0 ? [`Цвета: ${p.colors.join(', ')}`] : []),
       `Остаток общий: ${p.totalStock} шт.`,
     ];
 
@@ -27,11 +27,12 @@ export function assemblePrompt(data: AnalysisData): string {
 
     blocks.push(`=== КАРТОЧКА ТОВАРА (WB) ===\n${lines.join('\n')}`);
 
-    // Остатки по складам — отдельный блок (источник: Analytics API)
+    // Остатки по складам — топ-5 по количеству
     if (p.stocks.length > 0) {
       const stockLines = p.stocks
         .filter((s) => s.qty > 0)
         .sort((a, b) => b.qty - a.qty)
+        .slice(0, 5)
         .map((s) => `  ${s.warehouseName ?? `Склад ${s.warehouseId}`}: ${s.qty} шт.`);
       blocks.push(`=== ОСТАТКИ ПО СКЛАДАМ ===\nОбщий остаток: ${p.totalStock} шт.\n${stockLines.join('\n')}`);
     }
@@ -90,7 +91,7 @@ export function assemblePrompt(data: AnalysisData): string {
       : null;
 
     const campTypeLabel = (type: number) => {
-      const types: Record<number, string> = { 4: 'каталог', 5: 'карточка', 6: 'поиск', 7: 'поиск+карточка', 8: 'поиск+каталог', 9: 'авто' };
+      const types: Record<number, string> = { 0: 'АРК авто', 4: 'каталог (ПРК)', 5: 'карточка', 6: 'поиск (CPC)', 7: 'поиск+карточка', 8: 'поиск+каталог', 9: 'АРК авто' };
       return types[type] || `тип ${type}`;
     };
 
@@ -98,12 +99,10 @@ export function assemblePrompt(data: AnalysisData): string {
       '',
       'РЕКЛАМА:',
       `Общий расход: ${formatRub(a.totalSpend)}`,
-      `Выручка с рекламы: ${formatRub(adRevenue)}`,
       `Заказов с рекламы: ${a.totalOrders}`,
-      `Средний CTR: ${formatPercent(a.avgCtr)}`,
-      `Средний CPC: ${formatRub(a.avgCpc)}`,
+      `CTR рекламы: ${formatPercent(a.avgCtr)}`,
+      `CPC средний: ${formatRub(a.avgCpc)}`,
       `ДРР: ${formatPercent(a.drr)}`,
-      `ROMI: ${a.totalSpend > 0 ? formatPercent(romi) : '—'}`,
       ...(adPerBuyout !== null ? [`Реклама на ед. выкупа: ${formatRub(adPerBuyout)}`] : []),
     );
 
@@ -147,8 +146,8 @@ export function assemblePrompt(data: AnalysisData): string {
     }
 
     if (mp.competitors.length > 0) {
-      mpLines.push('КОНКУРЕНТЫ (топ-10):');
-      mp.competitors.forEach((c, i) => {
+      mpLines.push('КОНКУРЕНТЫ (топ-3 по продажам):');
+      mp.competitors.slice(0, 3).forEach((c, i) => {
         const perColor = c.colors_count && c.colors_count > 1
           ? ` (~${Math.round(c.sales30 / c.colors_count)} шт./цвет, ${c.colors_count} цв.)`
           : '';
@@ -185,13 +184,13 @@ export function assemblePrompt(data: AnalysisData): string {
     const { keyword, seasonality } = data.seasonalityData;
     const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
     const currentMonth = new Date().getMonth() + 1;
-    const lines = Array.from({ length: 12 }, (_, i) => {
+    const coeffs = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
       const c = seasonality[String(m)];
-      const mark = m === currentMonth ? ' ← сейчас' : '';
-      return c !== undefined ? `  ${MONTHS_SHORT[i]}: ×${c}${mark}` : `  ${MONTHS_SHORT[i]}: —`;
-    });
-    blocks.push(`=== СЕЗОННОСТЬ (Mpstats) ===\nКлючевое слово: «${keyword}»\n${lines.join('\n')}`);
+      const mark = m === currentMonth ? '←' : '';
+      return c !== undefined ? `${MONTHS_SHORT[i]}×${c}${mark}` : `${MONTHS_SHORT[i]}—`;
+    }).join(' ');
+    blocks.push(`=== СЕЗОННОСТЬ (Mpstats) ===\nКлюч: «${keyword}»\n${coeffs}`);
   } else {
     blocks.push(`=== СЕЗОННОСТЬ (Mpstats) ===\nДанные не получены`);
   }
