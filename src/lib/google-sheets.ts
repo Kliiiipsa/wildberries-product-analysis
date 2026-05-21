@@ -8,9 +8,6 @@ function csvExportUrl(gid: string) {
   return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${gid}`;
 }
 
-function csvExportUrlByName(sheetName: string) {
-  return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=${encodeURIComponent(sheetName)}`;
-}
 
 function csvGvizUrl(gid: string) {
   // hl=en форсирует запятую как разделитель (без него некоторые локали используют ;)
@@ -80,9 +77,9 @@ async function fetchSheetCsv(gid: string, sheetName?: string): Promise<string[][
     'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
   };
 
-  // Пробуем: по имени листа (наиболее надёжно), затем по GID
+  // GID-URL надёжнее; gviz по имени — запасной вариант если GID устарел
   const urls = sheetName
-    ? [csvExportUrlByName(sheetName), csvGvizUrlByName(sheetName), csvExportUrl(gid), csvGvizUrl(gid)]
+    ? [csvExportUrl(gid), csvGvizUrl(gid), csvGvizUrlByName(sheetName)]
     : [csvExportUrl(gid), csvGvizUrl(gid)];
   let lastErr: unknown;
 
