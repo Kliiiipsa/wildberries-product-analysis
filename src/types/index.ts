@@ -245,3 +245,50 @@ export interface DashboardAdsResult {
   accountBalance: number;   // общий баланс рекламного кабинета
   fetchedAt: string;
 }
+
+// ── What-If Simulator ────────────────────────────────────────────────────────
+
+export interface WhatIfUnitCost {
+  zakupka: number;
+  kargo: number;
+  logistika: number;
+  hranenie: number;         // ₽ в день
+  komissiyaRub: number;
+  ekvairingPercent: number; // %
+  ndsRub: number;           // ₽ (если итого)
+  ndsPercent: number;       // % (если ставка)
+  hasData: boolean;
+}
+
+export interface WhatIfBaseData {
+  nmId: number;
+  productName: string;
+  brand: string;
+  photoUrl?: string;
+  priceSale: number;
+  priceBasic: number;
+  salePercent: number;
+  stock: number;
+  dailySales: number;    // средние заказы в день (из MPStats или WB stats)
+  buyoutRate: number;    // 0–100 (%)
+  unitCost: WhatIfUnitCost;
+}
+
+export interface WhatIfParams {
+  newPrice: number;
+  dailyAdBudget: number;
+  cpcBid: number;
+  adType: 'ARK' | 'CPC' | 'PRK';
+  newStock: number;
+}
+
+export interface WhatIfForecast {
+  orders: number;
+  buyouts: number;
+  revenue: number;
+  marginPerUnit: number;
+  marginWithoutAd: number;
+  marginWithAd: number;
+  adSpend: number;
+  roi: number;
+}

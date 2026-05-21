@@ -642,6 +642,52 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
   throw new Error(`Groq: все модели недоступны или rate-limited. Последняя ошибка: ${lastError}`);
 }
 
+// ─── What-If стриминг (короткий системный промпт) ────────────────────────────
+
+export async function* whatIfGroqStream(userPrompt: string): AsyncGenerator<string> {
+  const groq = getGroqClient();
+  const system = `Ты эксперт Wildberries. Анализируй сценарии кратко и конкретно.
+Правила: только ×, ÷, ≥, ≤, %, ₽ — без LaTeX. Числа: 18 111 (пробел как разделитель тысяч).
+Структура ответа: 1) оценка сценария (2-3 предложения с цифрами), 2) главный риск, 3) 2-3 конкретных улучшения с числами.`;
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const available = getAvailableModels();
+    if (available.length === 0) {
+      if (attempt === 0) { await new Promise((r) => setTimeout(r, 10_000)); continue; }
+      break;
+    }
+    for (const model of available) {
+      try {
+        const stream = await groq.chat.completions.create({
+          model: model.id,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user',   content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 1024,
+          stream: true,
+        });
+        for await (const chunk of stream) {
+          const text = chunk.choices[0]?.delta?.content;
+          if (text) yield text;
+        }
+        return;
+      } catch (err) {
+        lastError = err;
+        if (isRateLimitError(err)) { markRateLimited(model.id); continue; }
+        if (isModelUnavailableError(err)) {
+          rateLimitedUntil[model.id] = Date.now() + 24 * 60 * 60 * 1000;
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+  throw new Error(`Groq what-if: все модели недоступны. Последняя ошибка: ${lastError}`);
+}
+
 // ─── Диагностика ──────────────────────────────────────────────────────────────
 
 export function getModelStatus() {
