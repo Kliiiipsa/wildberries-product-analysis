@@ -91,7 +91,7 @@ export function AnalyzeForm() {
               }
               setAnalysis((prev) => prev + event.content);
             } else if (event.type === 'done') {
-              setPhase('done');
+              if (!hasError) setPhase('done');
             } else if (event.type === 'error' && event.error) {
               setError(event.error);
               setPhase('error');

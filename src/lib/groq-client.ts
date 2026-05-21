@@ -670,16 +670,13 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
 
         if (isRateLimitError(err)) {
           markRateLimited(model.id);
-          continue;
-        }
-
-        if (isModelUnavailableError(err)) {
+        } else if (isModelUnavailableError(err)) {
           rateLimitedUntil[model.id] = Date.now() + 24 * 60 * 60 * 1000;
           console.warn(`[Groq] Модель ${model.id} недоступна, исключаем`);
-          continue;
+        } else {
+          console.warn(`[Groq analyze] ${model.id} ошибка:`, err);
         }
-
-        throw err;
+        continue;
       }
     }
   }
