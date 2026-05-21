@@ -718,12 +718,10 @@ export async function* whatIfGroqStream(userPrompt: string): AsyncGenerator<stri
         return;
       } catch (err) {
         lastError = err;
-        if (isRateLimitError(err)) { markRateLimited(model.id); continue; }
-        if (isModelUnavailableError(err)) {
-          rateLimitedUntil[model.id] = Date.now() + 24 * 60 * 60 * 1000;
-          continue;
-        }
-        throw err;
+        if (isRateLimitError(err)) { markRateLimited(model.id); }
+        else if (isModelUnavailableError(err)) { rateLimitedUntil[model.id] = Date.now() + 24 * 60 * 60 * 1000; }
+        else { console.warn(`[Groq what-if] ${model.id} ошибка:`, err); }
+        continue;
       }
     }
   }

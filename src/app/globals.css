@@ -142,3 +142,45 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+.text-gradient-hero {
+  background: linear-gradient(135deg, #4A9FFF 0%, #8B5CF6 55%, #4A9FFF 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 5s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%   { background-position: 0% center; }
+  50%  { background-position: 100% center; }
+  100% { background-position: 0% center; }
+}
+
+/* ── Glass card ─────────────────────────────────────────────── */
+.glass {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+/* ── Glow button ────────────────────────────────────────────── */
+.btn-glow {
+  box-shadow: 0 0 20px rgba(74, 159, 255, 0.35), 0 0 40px rgba(74, 159, 255, 0.15);
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 28px rgba(74, 159, 255, 0.55), 0 0 60px rgba(74, 159, 255, 0.25);
+  transform: scale(1.02);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.55s ease both; }
+.animate-fade-up-1 { animation: fade-up 0.55s 0.1s ease both; }
+.animate-fade-up-2 { animation: fade-up 0.55s 0.2s ease both; }
+.animate-fade-up-3 { animation: fade-up 0.55s 0.3s ease both; }

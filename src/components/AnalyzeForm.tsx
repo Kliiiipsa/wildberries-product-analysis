@@ -269,61 +269,81 @@ export function AnalyzeForm() {
 
       {/* ── Idle / Error: main form ── */}
       {(phase === 'idle' || phase === 'error') && (
-        <div className="w-full max-w-md mx-auto">
-          <form onSubmit={handleSubmit} className="flex gap-2 mb-3">
+        <div className="w-full max-w-2xl mx-auto">
+
+          {/* Search bar */}
+          <form onSubmit={handleSubmit} className="flex gap-3 mb-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-6 w-6 text-slate-500" />
               <Input
                 type="text"
                 inputMode="numeric"
-                placeholder="Артикул WB, например 770632673"
+                placeholder="Введите артикул WB, например 770632673"
                 value={article}
                 onChange={(e) => setArticle(e.target.value.replace(/\D/g, ''))}
-                className="pl-10 h-12 text-base bg-slate-800/60 border-slate-700/60 placeholder:text-slate-600 focus:border-blue-500/50 rounded-xl"
+                className="pl-14 h-[68px] text-lg bg-slate-800/50 border-slate-700/50 placeholder:text-slate-600 focus:border-blue-500/60 rounded-2xl backdrop-blur-sm"
                 autoFocus
               />
             </div>
-            <Button type="submit" size="lg" className="h-12 px-5 font-semibold rounded-xl shrink-0">
+            <button
+              type="submit"
+              className="h-[68px] px-7 font-bold text-base rounded-2xl shrink-0 bg-gradient-to-r from-blue-500 to-violet-600 text-white btn-glow transition-all"
+            >
               Анализ
-            </Button>
+            </button>
           </form>
 
-          <div className="flex flex-wrap justify-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => loadDashboard()}
-              className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              Дашборд товаров
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setMode('comparison')}
-              className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
-            >
-              <Users className="h-4 w-4" />
-              Конкуренты
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setMode('simulator')}
-              className="h-12 px-5 gap-2 rounded-xl border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
-            >
-              <Zap className="h-4 w-4" />
-              Симулятор
-            </Button>
-          </div>
-
           {error && (
-            <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400">
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
+
+          {/* Action cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+            <button
+              type="button"
+              onClick={() => loadDashboard()}
+              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <LayoutDashboard className="h-6 w-6 text-blue-400" />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-sm leading-tight">Дашборд товаров</div>
+                <div className="text-xs text-slate-500 mt-0.5">Все артикулы разом</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode('comparison')}
+              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-violet-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="h-12 w-12 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+                <Users className="h-6 w-6 text-violet-400" />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-sm leading-tight">Конкуренты</div>
+                <div className="text-xs text-slate-500 mt-0.5">Сравнение и анализ</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode('simulator')}
+              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-purple-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="h-12 w-12 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
+                <Zap className="h-6 w-6 text-purple-400" />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-sm leading-tight">Симулятор</div>
+                <div className="text-xs text-slate-500 mt-0.5">Сценарии и прогнозы</div>
+              </div>
+            </button>
+          </div>
         </div>
       )}
 
