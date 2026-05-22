@@ -416,14 +416,14 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         {article && <span className="text-xs text-slate-500">Артикул: {article}</span>}
       </div>
 
-      {/* 3-column layout: original | controls | result */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_1fr] gap-6">
+      {/* Row 1: photos side by side — big */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
 
-        {/* ── COL 1: Original photo ── */}
+        {/* Original photo */}
         <div className="space-y-3">
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Исходное фото</p>
           <div
-            className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 aspect-[3/4] group cursor-pointer"
+            className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 w-full aspect-[3/4] max-h-[72vh] group cursor-pointer"
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) handleFileSelect(f); }}
             onClick={() => fileInputRef.current?.click()}
@@ -440,8 +440,9 @@ export function PhotoFunnelPanel({ onBack }: Props) {
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-slate-600 p-4 text-center">
-                <Upload className="h-8 w-8 mb-2" />
-                <p className="text-xs">Перетащите или нажмите</p>
+                <Upload className="h-10 w-10 mb-3" />
+                <p className="text-sm">Перетащите или нажмите</p>
+                <p className="text-xs mt-1 opacity-60">JPG, PNG, WEBP</p>
               </div>
             )}
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
@@ -450,248 +451,21 @@ export function PhotoFunnelPanel({ onBack }: Props) {
           {error && (
             <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-3 py-2.5 text-xs text-red-400">{error}</div>
           )}
-          <Button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !effectiveUrl}
-            className="w-full bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
-          >
-            {isAnalyzing
-              ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Анализирую...</>
-              : <><Sparkles className="h-4 w-4 mr-2" />Анализировать</>}
-          </Button>
         </div>
 
-        {/* ── COL 2: Controls / analysis tabs ── */}
-        <div className="min-w-0">
-          {!analysis && !isAnalyzing && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center h-full min-h-[320px]">
-              <div className="text-center text-slate-600 p-8">
-                <Camera className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm">Нажмите «Анализировать»</p>
-                <p className="text-xs mt-1 opacity-70">AI оценит карточку и предложит идеи для улучшения</p>
-              </div>
-            </div>
-          )}
-
-          {isAnalyzing && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center min-h-[320px]">
-              <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-rose-400 mx-auto mb-3" />
-                <p className="text-sm text-slate-400">AI анализирует фото...</p>
-                <p className="text-xs text-slate-600 mt-1">~15-25 секунд</p>
-              </div>
-            </div>
-          )}
-
-          {analysis && (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-4 w-full bg-slate-800/60 rounded-xl mb-5 h-10">
-                <TabsTrigger value="assessment" className="text-xs rounded-lg">Оценка</TabsTrigger>
-                <TabsTrigger value="ideas" className="text-xs rounded-lg">Идеи</TabsTrigger>
-                <TabsTrigger value="generate" className="text-xs rounded-lg">Генерация</TabsTrigger>
-                <TabsTrigger value="character" className="text-xs rounded-lg">Персонаж</TabsTrigger>
-              </TabsList>
-
-              {/* ── ASSESSMENT ── */}
-              <TabsContent value="assessment" className="mt-0 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-xl border border-emerald-800/40 bg-emerald-900/10 p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="h-6 w-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
-                        <span className="text-emerald-400 text-xs font-bold">✓</span>
-                      </div>
-                      <span className="text-sm font-semibold text-emerald-400">Что уже хорошо</span>
-                    </div>
-                    <ul className="space-y-2">
-                      {toArr(analysis.good).map((item, i) => (
-                        <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                          <span className="text-emerald-500 mt-0.5 shrink-0">•</span>{item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="rounded-xl border border-orange-800/40 bg-orange-900/10 p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="h-6 w-6 rounded-full bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0">
-                        <span className="text-orange-400 text-xs font-bold">!</span>
-                      </div>
-                      <span className="text-sm font-semibold text-orange-400">Что улучшить</span>
-                    </div>
-                    <ul className="space-y-2">
-                      {toArr(analysis.improve).map((item, i) => (
-                        <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                          <span className="text-orange-500 mt-0.5 shrink-0">•</span>{item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-blue-800/40 bg-blue-900/10 p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="h-4 w-4 text-blue-400 shrink-0" />
-                    <span className="text-sm font-semibold text-blue-400">Рекомендации по улучшению</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {[
-                      { label: 'Композиция', key: 'composition' as const },
-                      { label: 'Техника съёмки', key: 'technique' as const },
-                      { label: 'Стайлинг', key: 'styling' as const },
-                    ].map(({ label, key }) => (
-                      toArr(analysis.recommendations[key]).length > 0 ? (
-                        <div key={key}>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{label}</p>
-                          {toArr(analysis.recommendations[key]).map((r, i) => (
-                            <p key={i} className="text-xs text-slate-300 flex items-start gap-1.5 mb-1.5">
-                              <span className="shrink-0 text-blue-500">•</span>{r}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null
-                    ))}
-                  </div>
-                </div>
-
-                {generatePrompt && (
-                  <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4">
-                    <p className="text-xs text-slate-500 mb-2 font-medium">AI промпт для генерации</p>
-                    <p className="text-xs text-slate-300 leading-relaxed">{generatePrompt}</p>
-                    <Button
-                      onClick={() => handleGenerate()}
-                      disabled={isGenerating}
-                      className="mt-3 bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white text-xs rounded-xl h-9 px-4"
-                    >
-                      <Sparkles className="h-3 w-3 mr-1.5" />Применить рекомендации
-                    </Button>
-                  </div>
-                )}
-              </TabsContent>
-
-              {/* ── IDEAS ── */}
-              <TabsContent value="ideas" className="mt-0">
-                <p className="text-xs text-slate-500 mb-4">
-                  Нажмите на идею — AI сгенерирует фото по этой концепции
-                </p>
-                <div className="space-y-2">
-                  {analysis.ideas?.map((idea, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleIdeaClick(idea)}
-                      disabled={isGenerating}
-                      className="w-full text-left rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 hover:border-rose-500/50 hover:bg-slate-800/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-1.5">
-                        <span className="font-semibold text-white text-sm group-hover:text-rose-300 transition-colors">
-                          {idea.title}
-                        </span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {idea.tag && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                              idea.tag === 'Главная'
-                                ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
-                                : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                            }`}>{idea.tag}</span>
-                          )}
-                          <span className="text-xs text-slate-600 group-hover:text-rose-400 transition-colors">
-                            {isGenerating ? '...' : '→ Генерировать'}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-400 leading-relaxed">{idea.description}</p>
-                    </button>
-                  ))}
-                </div>
-              </TabsContent>
-
-              {/* ── GENERATE ── */}
-              <TabsContent value="generate" className="mt-0 space-y-4">
-                <div>
-                  <label className="text-xs text-slate-400 mb-2 block">Промпт (английский) — AI заполнил автоматически</label>
-                  <textarea
-                    value={generatePrompt}
-                    onChange={e => setGeneratePrompt(e.target.value)}
-                    placeholder="Describe what to change..."
-                    rows={5}
-                    className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
-                  />
-                </div>
-                <Button
-                  onClick={() => handleGenerate()}
-                  disabled={isGenerating || !generatePrompt.trim() || !effectiveUrl}
-                  className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
-                >
-                  {isGenerating
-                    ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую...</>
-                    : <><ImageIcon className="h-4 w-4 mr-2" />Сгенерировать</>}
-                </Button>
-              </TabsContent>
-
-              {/* ── CHARACTER ── */}
-              <TabsContent value="character" className="mt-0 space-y-4">
-                <p className="text-xs text-slate-500">
-                  Настройте внешность модели на фото. Параметры добавятся к промпту генерации.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {([
-                    { label: 'Пол модели', key: 'gender', options: ['Женщина', 'Мужчина'] },
-                    { label: 'Возраст', key: 'age', options: ['18-25', '25-35', '35-45', '45+'] },
-                    { label: 'Телосложение', key: 'bodyType', options: ['Стройное', 'Спортивное', 'Пышное', 'Полное'] },
-                    { label: 'Цвет волос', key: 'hairColor', options: ['Тёмные', 'Светлые', 'Рыжие', 'Седые'] },
-                  ] as const).map(({ label, key, options }) => (
-                    <div key={key}>
-                      <label className="text-xs text-slate-400 mb-1.5 block">{label}</label>
-                      <select
-                        value={modelAppearance[key]}
-                        onChange={e => setModelAppearance(prev => ({ ...prev, [key]: e.target.value }))}
-                        className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/60"
-                      >
-                        <option value="">Не менять</option>
-                        {options.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 mb-1.5 block">Дополнительное описание</label>
-                  <textarea
-                    value={modelAppearance.extra}
-                    onChange={e => setModelAppearance(prev => ({ ...prev, extra: e.target.value }))}
-                    placeholder="Например: длинные волосы, улыбается, загорелая кожа..."
-                    rows={2}
-                    className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
-                  />
-                </div>
-                {!generatePrompt && (
-                  <p className="text-xs text-amber-500/80">Сначала проанализируйте фото, чтобы AI сформировал базовый промпт</p>
-                )}
-                <Button
-                  onClick={() => handleGenerate()}
-                  disabled={isGenerating || !effectiveUrl || !generatePrompt.trim()}
-                  className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
-                >
-                  {isGenerating
-                    ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую...</>
-                    : <><User className="h-4 w-4 mr-2" />Применить персонажа</>}
-                </Button>
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
-
-        {/* ── COL 3: Result ── */}
+        {/* Result photo */}
         <div className="space-y-3">
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Результат</p>
-          <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 aspect-[3/4] flex items-center justify-center">
+          <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 w-full aspect-[3/4] max-h-[72vh] flex items-center justify-center">
             {isGenerating && (
               <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-violet-400 mx-auto mb-3" />
+                <Loader2 className="h-10 w-10 animate-spin text-violet-400 mx-auto mb-3" />
                 <p className="text-sm text-slate-400">Генерирую...</p>
-                <p className="text-xs text-slate-600 mt-1">~30-60 секунд</p>
+                <p className="text-xs text-slate-600 mt-1">~30–60 секунд</p>
               </div>
             )}
             {!isGenerating && generateError && (
-              <div className="p-4 text-center">
+              <div className="p-6 text-center">
                 <p className="text-xs text-red-400">{generateError}</p>
               </div>
             )}
@@ -700,8 +474,9 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             )}
             {!isGenerating && !generateError && !generatedImage && (
               <div className="text-center text-slate-700 p-8">
-                <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-20" />
                 <p className="text-sm">Здесь появится результат</p>
+                <p className="text-xs mt-1 opacity-60">Нажмите «Анализировать» или выберите идею</p>
               </div>
             )}
           </div>
@@ -717,8 +492,224 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             </a>
           )}
         </div>
-
       </div>
+
+      {/* Row 2: Analyze button */}
+      <Button
+        onClick={handleAnalyze}
+        disabled={isAnalyzing || !effectiveUrl}
+        className="w-full bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white font-semibold rounded-xl h-12 mb-5"
+      >
+        {isAnalyzing
+          ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Анализирую... (~20 сек)</>
+          : <><Sparkles className="h-4 w-4 mr-2" />Анализировать фото</>}
+      </Button>
+
+      {/* Row 3: Analysis tabs */}
+      {!analysis && !isAnalyzing && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center py-10">
+          <div className="text-center text-slate-600 p-4">
+            <Camera className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">Нажмите «Анализировать» — AI оценит фото и предложит идеи</p>
+          </div>
+        </div>
+      )}
+
+      {isAnalyzing && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center py-10">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-rose-400 mx-auto mb-3" />
+            <p className="text-sm text-slate-400">AI анализирует фото...</p>
+          </div>
+        </div>
+      )}
+
+      {analysis && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid grid-cols-4 w-full bg-slate-800/60 rounded-xl mb-5 h-10">
+            <TabsTrigger value="assessment" className="text-xs rounded-lg">Оценка</TabsTrigger>
+            <TabsTrigger value="ideas" className="text-xs rounded-lg">Идеи</TabsTrigger>
+            <TabsTrigger value="generate" className="text-xs rounded-lg">Генерация</TabsTrigger>
+            <TabsTrigger value="character" className="text-xs rounded-lg">Персонаж</TabsTrigger>
+          </TabsList>
+
+          {/* ── ASSESSMENT ── */}
+          <TabsContent value="assessment" className="mt-0 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-emerald-800/40 bg-emerald-900/10 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-6 w-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                    <span className="text-emerald-400 text-xs font-bold">✓</span>
+                  </div>
+                  <span className="text-sm font-semibold text-emerald-400">Что уже хорошо</span>
+                </div>
+                <ul className="space-y-2">
+                  {toArr(analysis.good).map((item, i) => (
+                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+                      <span className="text-emerald-500 mt-0.5 shrink-0">•</span>{item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-orange-800/40 bg-orange-900/10 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-6 w-6 rounded-full bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0">
+                    <span className="text-orange-400 text-xs font-bold">!</span>
+                  </div>
+                  <span className="text-sm font-semibold text-orange-400">Что улучшить</span>
+                </div>
+                <ul className="space-y-2">
+                  {toArr(analysis.improve).map((item, i) => (
+                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+                      <span className="text-orange-500 mt-0.5 shrink-0">•</span>{item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-blue-800/40 bg-blue-900/10 p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-4 w-4 text-blue-400 shrink-0" />
+                <span className="text-sm font-semibold text-blue-400">Рекомендации</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {[
+                  { label: 'Композиция', key: 'composition' as const },
+                  { label: 'Техника съёмки', key: 'technique' as const },
+                  { label: 'Стайлинг', key: 'styling' as const },
+                ].map(({ label, key }) => (
+                  toArr(analysis.recommendations[key]).length > 0 ? (
+                    <div key={key}>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{label}</p>
+                      {toArr(analysis.recommendations[key]).map((r, i) => (
+                        <p key={i} className="text-xs text-slate-300 flex items-start gap-1.5 mb-1.5">
+                          <span className="shrink-0 text-blue-500">•</span>{r}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null
+                ))}
+              </div>
+            </div>
+
+            {generatePrompt && (
+              <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4">
+                <p className="text-xs text-slate-500 mb-2 font-medium">AI промпт для генерации</p>
+                <p className="text-xs text-slate-300 leading-relaxed">{generatePrompt}</p>
+                <Button
+                  onClick={() => handleGenerate()}
+                  disabled={isGenerating}
+                  className="mt-3 bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white text-xs rounded-xl h-9 px-4"
+                >
+                  <Sparkles className="h-3 w-3 mr-1.5" />Применить рекомендации
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── IDEAS ── */}
+          <TabsContent value="ideas" className="mt-0">
+            <p className="text-xs text-slate-500 mb-4">Нажмите на идею — AI сгенерирует фото по этой концепции</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {analysis.ideas?.map((idea, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleIdeaClick(idea)}
+                  disabled={isGenerating}
+                  className="text-left rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 hover:border-rose-500/50 hover:bg-slate-800/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <span className="font-semibold text-white text-sm group-hover:text-rose-300 transition-colors">{idea.title}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {idea.tag && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                          idea.tag === 'Главная'
+                            ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                        }`}>{idea.tag}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">{idea.description}</p>
+                  <p className="text-xs text-slate-600 group-hover:text-rose-400 transition-colors mt-2">{isGenerating ? '...' : '→ Генерировать'}</p>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* ── GENERATE ── */}
+          <TabsContent value="generate" className="mt-0 space-y-4">
+            <div>
+              <label className="text-xs text-slate-400 mb-2 block">Промпт (английский) — AI заполнил автоматически, можно редактировать</label>
+              <textarea
+                value={generatePrompt}
+                onChange={e => setGeneratePrompt(e.target.value)}
+                placeholder="Describe what to change..."
+                rows={5}
+                className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
+              />
+            </div>
+            <Button
+              onClick={() => handleGenerate()}
+              disabled={isGenerating || !generatePrompt.trim() || !effectiveUrl}
+              className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
+            >
+              {isGenerating
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую...</>
+                : <><ImageIcon className="h-4 w-4 mr-2" />Сгенерировать</>}
+            </Button>
+          </TabsContent>
+
+          {/* ── CHARACTER ── */}
+          <TabsContent value="character" className="mt-0 space-y-4">
+            <p className="text-xs text-slate-500">Настройте внешность модели. Параметры добавятся к промпту генерации.</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {([
+                { label: 'Пол', key: 'gender', options: ['Женщина', 'Мужчина'] },
+                { label: 'Возраст', key: 'age', options: ['18-25', '25-35', '35-45', '45+'] },
+                { label: 'Телосложение', key: 'bodyType', options: ['Стройное', 'Спортивное', 'Пышное', 'Полное'] },
+                { label: 'Волосы', key: 'hairColor', options: ['Тёмные', 'Светлые', 'Рыжие', 'Седые'] },
+              ] as const).map(({ label, key, options }) => (
+                <div key={key}>
+                  <label className="text-xs text-slate-400 mb-1.5 block">{label}</label>
+                  <select
+                    value={modelAppearance[key]}
+                    onChange={e => setModelAppearance(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/60"
+                  >
+                    <option value="">Не менять</option>
+                    {options.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1.5 block">Дополнительное описание</label>
+              <textarea
+                value={modelAppearance.extra}
+                onChange={e => setModelAppearance(prev => ({ ...prev, extra: e.target.value }))}
+                placeholder="Например: длинные волосы, улыбается, загорелая кожа..."
+                rows={2}
+                className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
+              />
+            </div>
+            {!generatePrompt && (
+              <p className="text-xs text-amber-500/80">Сначала проанализируйте фото — AI сформирует базовый промпт</p>
+            )}
+            <Button
+              onClick={() => handleGenerate()}
+              disabled={isGenerating || !effectiveUrl || !generatePrompt.trim()}
+              className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
+            >
+              {isGenerating
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую...</>
+                : <><User className="h-4 w-4 mr-2" />Применить персонажа</>}
+            </Button>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }
