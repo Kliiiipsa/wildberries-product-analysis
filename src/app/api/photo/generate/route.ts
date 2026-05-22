@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
         prompt,
         image: imageUrl,
         image_size: '1056x1584',
-        num_inference_steps: 25,
-        guidance_scale: 7.5,
+        num_inference_steps: 30,
+        guidance_scale: 12,
       }),
     });
     clearTimeout(timer);

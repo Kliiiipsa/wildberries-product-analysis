@@ -107,30 +107,36 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const effectiveUrl = imageBase64 || selectedPhotoUrl || urlInput.trim();
 
   // ── Load WB photos ──────────────────────────────────────────────────────────
-  const handleLoadArticle = () => {
+  const handleLoadArticle = async () => {
     const nmId = parseInt(articleInput.trim());
     if (!nmId || isNaN(nmId)) { setError('Введите корректный артикул'); return; }
     setArticle(articleInput.trim());
-    setWbPhotoUrls(getWbPhotoUrls(nmId));
+    setWbPhotoUrls([]);
     setLoadedIndices(new Set());
     setLoadingPhotos(true);
     setError('');
     setAppMode('gallery');
+    try {
+      const res = await fetch('/api/photo/wb-photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nmId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.photos?.length) {
+        setError(data.error || 'Фото не найдены. Проверьте артикул.');
+        setLoadingPhotos(false);
+        return;
+      }
+      setWbPhotoUrls(data.photos);
+      setLoadedIndices(new Set(data.photos.map((_: string, i: number) => i)));
+    } catch {
+      setError('Ошибка загрузки фото');
+    } finally {
+      setLoadingPhotos(false);
+    }
   };
 
-  const handleImgLoad = (i: number) => {
-    setLoadedIndices(prev => {
-      const next = new Set(prev);
-      next.add(i);
-      return next;
-    });
-    setLoadingPhotos(false);
-  };
-
-  const handleImgError = (i: number, total: number) => {
-    if (i === 0) setLoadingPhotos(false);
-    if (i >= total - 1) setLoadingPhotos(false);
-  };
 
   // ── Select photo → editor ───────────────────────────────────────────────────
   const openEditor = (url: string) => {
@@ -326,15 +332,6 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     const visible = wbPhotoUrls.filter((_, i) => loadedIndices.has(i));
     return (
       <div className="w-full">
-        {/* Hidden preloaders */}
-        <div className="hidden">
-          {wbPhotoUrls.map((url, i) => (
-            <img key={i} src={url} alt=""
-              onLoad={() => handleImgLoad(i)}
-              onError={() => handleImgError(i, wbPhotoUrls.length)} />
-          ))}
-        </div>
-
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => setAppMode('input')} className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm">
             <ArrowLeft className="h-4 w-4" />Назад
@@ -364,26 +361,24 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {wbPhotoUrls.map((url, i) =>
-            loadedIndices.has(i) ? (
-              <div key={i} className="group flex flex-col rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 hover:border-slate-600 transition-all">
-                <div className="relative aspect-[3/4] overflow-hidden">
-                  <img src={url} alt={`Фото ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                  <div className="absolute top-2 left-2">
-                    <span className="text-xs text-white/80 bg-black/50 px-2 py-0.5 rounded-full">Фото {i + 1}</span>
-                  </div>
-                </div>
-                <div className="p-2">
-                  <button
-                    onClick={() => openEditor(url)}
-                    className="w-full text-xs font-semibold text-white bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 rounded-xl py-2 transition-opacity"
-                  >
-                    Улучшить
-                  </button>
+          {wbPhotoUrls.map((url, i) => (
+            <div key={i} className="group flex flex-col rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 hover:border-slate-600 transition-all">
+              <div className="relative aspect-[3/4] overflow-hidden">
+                <img src={url} alt={`Фото ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <div className="absolute top-2 left-2">
+                  <span className="text-xs text-white/80 bg-black/50 px-2 py-0.5 rounded-full">Фото {i + 1}</span>
                 </div>
               </div>
-            ) : null
-          )}
+              <div className="p-2">
+                <button
+                  onClick={() => openEditor(url)}
+                  className="w-full text-xs font-semibold text-white bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 rounded-xl py-2 transition-opacity"
+                >
+                  Улучшить
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
