@@ -41,31 +41,43 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'WB_API_TOKEN не задан' }, { status: 500 });
   }
 
+  const reqBody = {
+    settings: {
+      cursor: { limit: 10, offset: 0 },
+      filter: { nmIds: [nmId], withPhoto: -1 },
+    },
+  };
+  console.log(`[wb-photos] nmId=${nmId}, token_prefix=${token.slice(0, 20)}...`);
+  console.log(`[wb-photos] request body: ${JSON.stringify(reqBody)}`);
+
   const res = await fetch('https://content-api.wildberries.ru/content/v2/get/cards/list', {
     method: 'POST',
     headers: {
       'Authorization': token,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      settings: {
-        cursor: { limit: 10, offset: 0 },
-        filter: { nmIds: [nmId], withPhoto: -1 },
-      },
-    }),
-  }).catch(() => null);
+    body: JSON.stringify(reqBody),
+  }).catch((e) => { console.log(`[wb-photos] fetch error: ${e}`); return null; });
 
   if (!res || !res.ok) {
     const text = await res?.text().catch(() => '');
+    console.log(`[wb-photos] WB API error: status=${res?.status}, body=${text}`);
     return Response.json({ error: `WB API ${res?.status ?? 'недоступен'}: ${text}` }, { status: 500 });
   }
 
   const data = await res.json();
+  console.log(`[wb-photos] WB API ok, cards count=${data?.cards?.length ?? 0}`);
+  console.log(`[wb-photos] raw response keys: ${Object.keys(data ?? {}).join(', ')}`);
+
   const card = data?.cards?.[0];
 
   if (!card) {
+    console.log(`[wb-photos] no card found. Full response: ${JSON.stringify(data).slice(0, 500)}`);
     return Response.json({ error: 'Артикул не найден в вашем кабинете' }, { status: 404 });
   }
+
+  console.log(`[wb-photos] card nmID=${card.nmID}, title="${card.title}", photos_raw=${JSON.stringify(card.photos).slice(0, 300)}`);
+  console.log(`[wb-photos] card keys: ${Object.keys(card).join(', ')}`);
 
   // Extract photo URLs — sort by sortOrder, use url (big) as primary
   const photos: string[] = [];
@@ -76,6 +88,9 @@ export async function POST(req: NextRequest) {
       const url = p?.url || p?.midUrl || p?.smallUrl || null;
       if (url) photos.push(url);
     }
+    console.log(`[wb-photos] extracted from card.photos: ${photos.length} urls`);
+  } else {
+    console.log(`[wb-photos] card.photos is not array: ${typeof card.photos} = ${JSON.stringify(card.photos).slice(0, 200)}`);
   }
 
   // Fallback to mediaFiles if photos array is empty
@@ -83,6 +98,7 @@ export async function POST(req: NextRequest) {
     for (const url of card.mediaFiles) {
       if (typeof url === 'string') photos.push(url);
     }
+    console.log(`[wb-photos] fallback mediaFiles: ${photos.length} urls`);
   }
 
   // Last-resort fallback: construct CDN URLs from nmId using basket formula
@@ -93,7 +109,10 @@ export async function POST(req: NextRequest) {
     for (let i = 1; i <= 15; i++) {
       photos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.jpg`);
     }
+    console.log(`[wb-photos] fallback basket formula: vol=${vol}, part=${part}, basket=${basket}, ${photos.length} urls`);
   }
+
+  console.log(`[wb-photos] final photos count=${photos.length}, first=${photos[0] ?? 'none'}`);
 
   return Response.json({
     photos,
