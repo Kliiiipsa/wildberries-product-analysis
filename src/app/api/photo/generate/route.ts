@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-dev',
         prompt,
-        image: imageUrl,
+        image_url: imageUrl,
         num_inference_steps: 28,
         guidance_scale: 3.5,
       }),
