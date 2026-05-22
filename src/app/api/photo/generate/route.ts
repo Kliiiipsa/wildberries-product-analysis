@@ -3,6 +3,18 @@ import { NextRequest } from 'next/server';
 export const runtime = 'edge';
 export const maxDuration = 60;
 
+async function toBase64DataUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Не удалось загрузить изображение: ${res.status}`);
+  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+  const mimeType = contentType.split(';')[0].trim();
+  const buffer = await res.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
 export async function POST(req: NextRequest) {
   const { imageUrl, prompt } = await req.json();
 
@@ -19,6 +31,8 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
+    const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
+
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
@@ -29,9 +43,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-dev',
         prompt,
-        image_url: imageUrl,
-        num_inference_steps: 28,
-        guidance_scale: 3.5,
+        image: imageData,
       }),
     });
     clearTimeout(timer);
@@ -42,7 +54,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await resp.json();
-    const url = data?.data?.[0]?.url || data?.images?.[0]?.url || data?.image || null;
+    const url = data?.images?.[0]?.url ?? null;
 
     if (!url) {
       return Response.json({ error: `Нет URL в ответе: ${JSON.stringify(data)}` }, { status: 500 });
