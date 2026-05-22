@@ -455,113 +455,12 @@ function isModelUnavailableError(err: unknown): boolean {
   );
 }
 
-// ─── Yandex AI Studio — Qwen3-8B (batch, дешевле) ────────────────────────────
-
-async function yandexBatch(
-  messages: { role: string; content: string }[],
-  maxTokens = 8000,
-): Promise<string> {
-  const apiKey   = (process.env.YANDEX_API_KEY   ?? '').trim();
-  const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
-  if (!apiKey) throw new Error('YANDEX_API_KEY не задан');
-
-  const model = `gpt://${folderId}/qwen3-8b/latest`;
-
-  const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type':  'application/json',
-      'x-folder-id':   folderId,
-    },
-    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens }),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Yandex AI 8B ${resp.status}: ${text}`);
-  }
-
-  const data = await resp.json();
-  return (data.choices?.[0]?.message?.content ?? '') as string;
-}
-
-// ─── Yandex AI Studio — Qwen 3.6 35B (streaming, дороже) ─────────────────────
-
-async function* yandexStream(
-  messages: { role: string; content: string }[],
-  maxTokens = 8192,
-): AsyncGenerator<string> {
-  const apiKey   = (process.env.YANDEX_API_KEY   ?? '').trim();
-  const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
-  if (!apiKey) throw new Error('YANDEX_API_KEY не задан');
-
-  const model = `gpt://${folderId}/qwen3.6-35b-a3b/latest`;
-
-  const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type':  'application/json',
-      'x-folder-id':   folderId,
-    },
-    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens, stream: true }),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Yandex AI ${resp.status}: ${text}`);
-  }
-
-  const reader = resp.body!.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop() || '';
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') return;
-      try {
-        const chunk = JSON.parse(data);
-        const text = chunk.choices?.[0]?.delta?.content;
-        if (text) yield text;
-      } catch { /* skip malformed */ }
-    }
-  }
-}
-
 // ─── Streaming ────────────────────────────────────────────────────────────────
 
 export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<string> {
   const systemPrompt = SYSTEM_PROMPT;
 
-  // ── Yandex AI 8B batch (приоритет, дешевле) ───────────────────────────────
-  if (process.env.YANDEX_API_KEY?.trim()) {
-    try {
-      console.log('[AI] Пробую Yandex Qwen3-8B (batch)...');
-      const content = await yandexBatch(
-        [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
-        8000,
-      );
-      if (content) {
-        yield '\n> *Анализирует: Qwen3-8B (Yandex AI)*\n\n';
-        yield content;
-        return;
-      }
-    } catch (err8b) {
-      const msg = String(err8b);
-      console.warn('[Yandex 8B] ошибка:', msg);
-      yield `\n> ⚠️ Yandex 8B: ${msg}\n\n`;
-    }
-  }
-
-  // ── Groq fallback ──────────────────────────────────────────────────────────
+  // ── Groq ──────────────────────────────────────────────────────────────────
   const groq = getGroqClient();
   let lastError: unknown = null;
 
@@ -669,20 +568,7 @@ export async function* whatIfGroqStream(userPrompt: string): AsyncGenerator<stri
 - Копировать текст из таблицы без анализа
 - Использовать LaTeX-символы`;
 
-  // ── Yandex AI (приоритет) ──────────────────────────────────────────────────
-  if (process.env.YANDEX_API_KEY?.trim()) {
-    try {
-      yield* yandexStream(
-        [{ role: 'system', content: system }, { role: 'user', content: userPrompt }],
-        4096,
-      );
-      return;
-    } catch (err) {
-      console.warn('[Yandex AI what-if] ошибка, переключаюсь на Groq:', err);
-    }
-  }
-
-  // ── Groq fallback ──────────────────────────────────────────────────────────
+  // ── Groq ──────────────────────────────────────────────────────────────────
   const groq = getGroqClient();
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
