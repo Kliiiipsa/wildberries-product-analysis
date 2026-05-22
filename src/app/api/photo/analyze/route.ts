@@ -30,14 +30,14 @@ const PROMPT = `Ты эксперт по визуальному контенту
     {"title": "Название идеи", "description": "Детальное описание", "tag": null},
     {"title": "Название идеи", "description": "Детальное описание", "tag": null}
   ],
-  "generatePrompt": "Specific English prompt starting with action verb: what exactly to change/improve in this product photo for Wildberries. Be precise about background, lighting, composition, styling changes needed."
+  "generatePrompt": "FLUX Kontext edit instructions in English: describe ONLY the specific changes to make, not the full image. Example: 'Replace the background with a clean white seamless studio backdrop. Remove the chair and table from the scene. Keep the model and clothing exactly as is.'"
 }
 
 Правила:
 - good/improve: 3 конкретных пункта каждый (не общих слова, а конкретные наблюдения по этому фото)
 - recommendations: по 1-2 конкретных действия в каждом разделе
 - ideas: 5-7 идей. tag "Главная" — лучшая концепция для главного фото WB, "Выгода" — показывает выгоду покупки, null — дополнительные
-- generatePrompt: начинать с глагола действия, описывать конкретные изменения (фон, освещение, кадр, стайлинг)`;
+- generatePrompt: ОБЯЗАТЕЛЬНО на английском. Стиль FLUX Kontext — описывай только ИЗМЕНЕНИЯ (что убрать, что заменить, что добавить). Начни с конкретных изменений фона/освещения/реквизита. В конце добавь: "Keep the model pose, clothing, and composition exactly the same."`;
 
 async function toBase64DataUrl(url: string): Promise<string> {
   const res = await fetch(url);
