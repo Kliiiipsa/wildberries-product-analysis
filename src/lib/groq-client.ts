@@ -455,9 +455,9 @@ function isModelUnavailableError(err: unknown): boolean {
   );
 }
 
-// ─── Yandex Alice AI LLM Flash (синхронный, /v1/responses) ───────────────────
+// ─── YandexGPT 5 Lite — асинхронный режим (0.1 ₽/1К) ────────────────────────
 
-async function aliceFlash(
+async function yandexAsync(
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 8000,
@@ -466,31 +466,52 @@ async function aliceFlash(
   const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
   if (!apiKey) throw new Error('YANDEX_API_KEY не задан');
 
-  const model = `gpt://${folderId}/aliceai-llm-flash/latest`;
+  const modelUri = `gpt://${folderId}/yandexgpt-5-lite/latest`;
 
-  const resp = await fetch('https://ai.api.cloud.yandex.net/v1/responses', {
+  // 1. Отправляем задачу
+  const submitResp = await fetch('https://ai.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type':  'application/json',
-      'x-folder-id':   folderId,
     },
     body: JSON.stringify({
-      model,
-      temperature: 0.3,
-      instructions: systemPrompt,
-      input: userPrompt,
-      max_output_tokens: maxTokens,
+      modelUri,
+      completionOptions: { stream: false, temperature: 0.3, maxTokens: String(maxTokens) },
+      messages: [
+        { role: 'system', text: systemPrompt },
+        { role: 'user',   text: userPrompt },
+      ],
     }),
   });
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Alice Flash ${resp.status}: ${text}`);
+  if (!submitResp.ok) {
+    const text = await submitResp.text().catch(() => submitResp.statusText);
+    throw new Error(`YandexGPT async ${submitResp.status}: ${text}`);
   }
 
-  const data = await resp.json();
-  return (data.output_text ?? data.output?.[0]?.content?.[0]?.text ?? '') as string;
+  const operation = await submitResp.json();
+  const operationId: string = operation.id;
+  if (!operationId) throw new Error('YandexGPT: не получен operation ID');
+
+  // 2. Polling каждые 2 секунды, максимум 2 минуты
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const pollResp = await fetch(`https://ai.api.cloud.yandex.net/operations/${operationId}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+
+    if (!pollResp.ok) continue;
+
+    const result = await pollResp.json();
+    if (!result.done) continue;
+    if (result.error) throw new Error(`YandexGPT operation error: ${JSON.stringify(result.error)}`);
+
+    return (result.response?.alternatives?.[0]?.message?.text ?? '') as string;
+  }
+
+  throw new Error('YandexGPT async: таймаут 2 минуты');
 }
 
 // ─── Streaming ────────────────────────────────────────────────────────────────
@@ -498,20 +519,20 @@ async function aliceFlash(
 export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<string> {
   const systemPrompt = SYSTEM_PROMPT;
 
-  // ── Alice AI LLM Flash (приоритет) ────────────────────────────────────────
+  // ── YandexGPT 5 Lite async (приоритет, 0.1 ₽/1К) ─────────────────────────
   if (process.env.YANDEX_API_KEY?.trim()) {
     try {
-      console.log('[AI] Пробую Alice AI LLM Flash...');
-      const content = await aliceFlash(systemPrompt, prompt, 8000);
+      console.log('[AI] Пробую YandexGPT 5 Lite (async)...');
+      const content = await yandexAsync(systemPrompt, prompt, 8000);
       if (content) {
-        yield '\n> *Анализирует: Alice AI LLM Flash (Yandex)*\n\n';
+        yield '\n> *Анализирует: YandexGPT 5 Lite*\n\n';
         yield content;
         return;
       }
     } catch (err) {
       const msg = String(err);
-      console.warn('[Alice Flash] ошибка, переключаюсь на Groq:', msg);
-      yield `\n> ⚠️ Alice Flash: ${msg}\n\n`;
+      console.warn('[YandexGPT] ошибка, переключаюсь на Groq:', msg);
+      yield `\n> ⚠️ YandexGPT: ${msg}\n\n`;
     }
   }
 
