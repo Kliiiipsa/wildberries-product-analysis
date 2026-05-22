@@ -7,16 +7,21 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 interface PhotoAnalysis {
-  good: string[];
-  improve: string[];
+  good: string[] | string;
+  improve: string[] | string;
   recommendations: {
-    composition: string[];
-    technique: string[];
-    styling: string[];
+    composition: string[] | string;
+    technique: string[] | string;
+    styling: string[] | string;
   };
   ideas: Array<{ title: string; description: string; tag?: string | null }>;
   generatePrompt?: string;
 }
+
+const toArr = (v: string | string[] | undefined): string[] => {
+  if (!v) return [];
+  return Array.isArray(v) ? v : [v];
+};
 
 interface Props {
   onBack: () => void;
@@ -237,7 +242,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                     <span className="text-sm font-semibold text-emerald-400">Что уже хорошо</span>
                   </div>
                   <ul className="space-y-1.5">
-                    {analysis.good.map((item, i) => (
+                    {toArr(analysis.good).map((item, i) => (
                       <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
                         <span className="text-emerald-500 mt-0.5 shrink-0">•</span>
                         {item}
@@ -254,7 +259,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                     <span className="text-sm font-semibold text-orange-400">Что можно улучшить</span>
                   </div>
                   <ul className="space-y-1.5">
-                    {analysis.improve.map((item, i) => (
+                    {toArr(analysis.improve).map((item, i) => (
                       <li key={i} className="text-xs text-slate-300 flex items-start gap-1.5">
                         <span className="text-orange-500 mt-0.5 shrink-0">•</span>
                         {item}
@@ -269,26 +274,26 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                     <span className="text-sm font-semibold text-blue-400">Рекомендации по улучшению</span>
                   </div>
                   <div className="space-y-3">
-                    {analysis.recommendations.composition?.length > 0 && (
+                    {toArr(analysis.recommendations.composition).length > 0 && (
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Композиция</p>
-                        {analysis.recommendations.composition.map((r, i) => (
+                        {toArr(analysis.recommendations.composition).map((r, i) => (
                           <p key={i} className="text-xs text-slate-300 flex items-start gap-1.5"><span className="shrink-0">•</span>{r}</p>
                         ))}
                       </div>
                     )}
-                    {analysis.recommendations.technique?.length > 0 && (
+                    {toArr(analysis.recommendations.technique).length > 0 && (
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Техника</p>
-                        {analysis.recommendations.technique.map((r, i) => (
+                        {toArr(analysis.recommendations.technique).map((r, i) => (
                           <p key={i} className="text-xs text-slate-300 flex items-start gap-1.5"><span className="shrink-0">•</span>{r}</p>
                         ))}
                       </div>
                     )}
-                    {analysis.recommendations.styling?.length > 0 && (
+                    {toArr(analysis.recommendations.styling).length > 0 && (
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Стайлинг</p>
-                        {analysis.recommendations.styling.map((r, i) => (
+                        {toArr(analysis.recommendations.styling).map((r, i) => (
                           <p key={i} className="text-xs text-slate-300 flex items-start gap-1.5"><span className="shrink-0">•</span>{r}</p>
                         ))}
                       </div>
