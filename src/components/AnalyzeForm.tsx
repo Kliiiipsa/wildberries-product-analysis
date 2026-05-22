@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Search, Loader2, AlertCircle, LayoutDashboard, Users, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,8 @@ export function AnalyzeForm() {
   const [assembledPrompt, setAssembledPrompt] = useState('');
   const [error, setError] = useState('');
   const [currentArticle, setCurrentArticle] = useState('');
+  const [aiProgress, setAiProgress] = useState(0);
+  const aiTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Dashboard state ──
   const [mode, setMode] = useState<Mode>('analysis');
@@ -36,6 +38,8 @@ export function AnalyzeForm() {
 
   // ── Core analysis function ──
   const startAnalysis = useCallback(async (trimmed: string) => {
+    if (aiTimerRef.current) { clearInterval(aiTimerRef.current); aiTimerRef.current = null; }
+    setAiProgress(0);
     setError('');
     setPhase('loading');
     setAnalysis('');
@@ -84,7 +88,17 @@ export function AnalyzeForm() {
             } else if (event.type === 'data' && event.payload) {
               setRawData(event.payload);
               setPhase('streaming');
+              setAiProgress(0);
+              if (aiTimerRef.current) clearInterval(aiTimerRef.current);
+              aiTimerRef.current = setInterval(() => {
+                setAiProgress((p) => Math.min(p + 2, 90));
+              }, 1000);
             } else if (event.type === 'token' && event.content) {
+              if (aiTimerRef.current) {
+                clearInterval(aiTimerRef.current);
+                aiTimerRef.current = null;
+                setAiProgress(100);
+              }
               if (event.content.includes('Анализирует:')) {
                 const match = event.content.match(/Анализирует:\s*(.+?)\*/);
                 if (match) setStatusMsg(`🤖 ${match[1]}`);
@@ -405,6 +419,21 @@ export function AnalyzeForm() {
               </div>
             )}
           </div>
+
+          {phase === 'streaming' && analysis.length === 0 && (
+            <div className="w-full max-w-xs mx-auto my-16">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm text-slate-400">AI анализирует...</span>
+                <span className="text-sm font-mono text-blue-400">{aiProgress}%</span>
+              </div>
+              <div className="h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all duration-1000 ease-linear"
+                  style={{ width: `${aiProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           <AnalysisResult
             article={currentArticle}
