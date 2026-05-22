@@ -10,35 +10,9 @@ const GROQ_MODELS = [
   { id: 'llama-3.1-8b-instant',                       maxTokens: 8192,  label: 'LLaMA 3.1 8B' },
 ];
 
-// ─── Динамическая дата ────────────────────────────────────────────────────────
+// ─── Системный промпт (статичный — для кеша Yandex 0.05₽/1К) ────────────────
 
-const MONTHS_RU = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-
-function todayRu(): string {
-  const d = new Date();
-  return `${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()} года`;
-}
-
-function last7DaysRu(): string {
-  const to = new Date();
-  to.setDate(to.getDate() - 1);
-  const from = new Date(to);
-  from.setDate(from.getDate() - 6);
-
-  const toStr   = `${to.getDate()} ${MONTHS_RU[to.getMonth()]} ${to.getFullYear()}`;
-  const fromStr = from.getMonth() === to.getMonth()
-    ? `${from.getDate()}`
-    : `${from.getDate()} ${MONTHS_RU[from.getMonth()]}`;
-
-  return `${fromStr}–${toStr}`;
-}
-
-// ─── Системный промпт ─────────────────────────────────────────────────────────
-
-function buildSystemPrompt(): string {
-  return `Сегодня: ${todayRu()}.
-
-# РОЛЬ И ЗАДАЧА
+const SYSTEM_PROMPT = `# РОЛЬ И ЗАДАЧА
 
 Ты Senior WB Performance Manager. Анализируешь ONE артикул. Цель: найти скрытые проблемы через причинно-следственные цепочки и выдать конкретные действия с расчётом чистого эффекта в рублях.
 
@@ -52,7 +26,7 @@ function buildSystemPrompt(): string {
 Чистый эффект = (Δвыкупы × маржа/шт) − Δрасходы на рекламу
 Показывай оба слагаемых явно.
 
-Статистика WB и Реклама — строго за последние 7 дней (${last7DaysRu()}).
+Статистика WB и Реклама — строго за последние 7 дней (период указан в данных).
 
 **КРИТИЧЕСКИ ВАЖНО — ФОРМАТИРОВАНИЕ МАТЕМАТИКИ:**
 - ЗАПРЕЩЕНО писать: \\times, \\div, \\geq, \\leq, \\cdot, скобки вокруг расчётов ( A \\times B = C )
@@ -438,8 +412,8 @@ function buildSystemPrompt(): string {
 
 # НАЧИНАЙ АНАЛИЗ С ЭТАПА 1: СБОР ФАКТОВ
 
-Помни: используй обычный текст без LaTeX-символов!`;
-}
+**ЛИМИТ ОТВЕТА: максимум 1200 слов.** Без воды и повторений. Каждое предложение — число или вывод.
+Используй обычный текст без LaTeX-символов!`;
 
 // ─── Rate limit tracker ───────────────────────────────────────────────────────
 
@@ -534,7 +508,7 @@ async function* yandexStream(
 // ─── Streaming ────────────────────────────────────────────────────────────────
 
 export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<string> {
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = SYSTEM_PROMPT;
 
   // ── Yandex AI (приоритет) ──────────────────────────────────────────────────
   if (process.env.YANDEX_API_KEY?.trim()) {
@@ -543,7 +517,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
       yield '\n> *Анализирует: Qwen 3.6 35B (Yandex AI)*\n\n';
       yield* yandexStream(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
-        16000,
+        6000,
       );
       return;
     } catch (err) {
