@@ -41,9 +41,12 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'black-forest-labs/FLUX.1-Kontext-pro',
+        model: 'Qwen/Qwen-Image-Edit',
         prompt,
         image: imageData,
+        image_size: '1056x1584',
+        num_inference_steps: 25,
+        guidance_scale: 7.5,
       }),
     });
     clearTimeout(timer);
