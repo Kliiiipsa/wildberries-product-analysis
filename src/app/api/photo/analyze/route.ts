@@ -76,6 +76,10 @@ export async function POST(req: NextRequest) {
         model: `gpt://${folderId}/qwen3.6-35b-a3b/latest`,
         messages: [
           {
+            role: 'system',
+            content: '/nothink',
+          },
+          {
             role: 'user',
             content: [
               { type: 'text', text: PROMPT },
@@ -83,7 +87,7 @@ export async function POST(req: NextRequest) {
             ],
           },
         ],
-        max_tokens: 2000,
+        max_tokens: 4000,
         temperature: 0.3,
       }),
     });
@@ -95,7 +99,8 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content ?? null;
+    const msg = data?.choices?.[0]?.message;
+    const content = msg?.content ?? msg?.reasoning_content ?? null;
 
     if (!content) {
       return Response.json({ error: `Пустой ответ: ${JSON.stringify(data)}` }, { status: 500 });
