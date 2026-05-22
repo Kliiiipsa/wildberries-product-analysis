@@ -470,7 +470,7 @@ async function yandexAsync(
     const modelUri = `gpt://${folderId}/yandexgpt-5-lite/latest`;
 
     // 1. Отправляем задачу
-    const submitResp = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
+    const submitResp = await fetch('https://ai.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
       method: 'POST',
       headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -497,7 +497,7 @@ async function yandexAsync(
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       try {
-        const pollResp = await fetch(`https://operation.api.cloud.yandex.net/operations/${operationId}`, {
+        const pollResp = await fetch(`https://ai.api.cloud.yandex.net/operations/${operationId}`, {
           headers: { 'Authorization': `Api-Key ${apiKey}` },
         });
         if (!pollResp.ok) continue;
