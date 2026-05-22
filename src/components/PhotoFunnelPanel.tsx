@@ -81,7 +81,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [article, setArticle] = useState('');
   const [articleInput, setArticleInput] = useState('');
   const [wbPhotoUrls, setWbPhotoUrls] = useState<string[]>([]);
-  const [loadedIndices, setLoadedIndices] = useState<Set<number>>(new Set());
+  const [failedIndices, setFailedIndices] = useState<Set<number>>(new Set());
   const [loadingPhotos, setLoadingPhotos] = useState(false);
 
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState('');
@@ -112,7 +112,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     if (!nmId || isNaN(nmId)) { setError('Введите корректный артикул'); return; }
     setArticle(articleInput.trim());
     setWbPhotoUrls([]);
-    setLoadedIndices(new Set());
+    setFailedIndices(new Set());
     setLoadingPhotos(true);
     setError('');
     setAppMode('gallery');
@@ -129,7 +129,6 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         return;
       }
       setWbPhotoUrls(data.photos);
-      setLoadedIndices(new Set(data.photos.map((_: string, i: number) => i)));
     } catch {
       setError('Ошибка загрузки фото');
     } finally {
@@ -331,7 +330,10 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   // GALLERY MODE
   // ══════════════════════════════════════════════════════════════════════════
   if (appMode === 'gallery') {
-    const visible = wbPhotoUrls.filter((_, i) => loadedIndices.has(i));
+    const visibleCount = wbPhotoUrls.length - failedIndices.size;
+    const allFailed = !loadingPhotos && wbPhotoUrls.length > 0 && failedIndices.size === wbPhotoUrls.length;
+    const isEmpty = !loadingPhotos && wbPhotoUrls.length === 0;
+
     return (
       <div className="w-full">
         <div className="flex items-center gap-3 mb-6">
@@ -341,47 +343,56 @@ export function PhotoFunnelPanel({ onBack }: Props) {
           <div className="h-4 w-px bg-slate-700" />
           <Camera className="h-4 w-4 text-rose-400" />
           <h2 className="text-base font-semibold text-white">Артикул {article}</h2>
-          {visible.length > 0 && (
+          {visibleCount > 0 && (
             <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded-full">
-              Все фото ({visible.length})
+              Все фото ({visibleCount})
             </span>
           )}
           <span className="text-xs text-slate-600 ml-auto">Нажмите «Улучшить» для редактирования</span>
         </div>
 
-        {loadingPhotos && visible.length === 0 && (
+        {loadingPhotos && (
           <div className="flex items-center justify-center py-24">
             <Loader2 className="h-6 w-6 animate-spin text-slate-600 mr-2" />
             <span className="text-slate-500 text-sm">Загружаем фото...</span>
           </div>
         )}
 
-        {!loadingPhotos && visible.length === 0 && (
+        {(isEmpty || allFailed) && (
           <div className="flex items-center justify-center py-24 text-slate-500 text-sm">
-            Фото не найдены. Проверьте артикул.
+            {error || 'Фото не найдены. Проверьте артикул.'}
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {wbPhotoUrls.map((url, i) => (
-            <div key={i} className="group flex flex-col rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 hover:border-slate-600 transition-all">
-              <div className="relative aspect-[3/4] overflow-hidden">
-                <img src={url} alt={`Фото ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                <div className="absolute top-2 left-2">
-                  <span className="text-xs text-white/80 bg-black/50 px-2 py-0.5 rounded-full">Фото {i + 1}</span>
+        {!loadingPhotos && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {wbPhotoUrls.map((url, i) => (
+              !failedIndices.has(i) && (
+                <div key={i} className="group flex flex-col rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 hover:border-slate-600 transition-all">
+                  <div className="relative aspect-[3/4] overflow-hidden">
+                    <img
+                      src={url}
+                      alt={`Фото ${i + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={() => setFailedIndices(prev => new Set([...prev, i]))}
+                    />
+                    <div className="absolute top-2 left-2">
+                      <span className="text-xs text-white/80 bg-black/50 px-2 py-0.5 rounded-full">Фото {i + 1}</span>
+                    </div>
+                  </div>
+                  <div className="p-2">
+                    <button
+                      onClick={() => openEditor(url)}
+                      className="w-full text-xs font-semibold text-white bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 rounded-xl py-2 transition-opacity"
+                    >
+                      Улучшить
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="p-2">
-                <button
-                  onClick={() => openEditor(url)}
-                  className="w-full text-xs font-semibold text-white bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 rounded-xl py-2 transition-opacity"
-                >
-                  Улучшить
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+              )
+            ))}
+          </div>
+        )}
       </div>
     );
   }

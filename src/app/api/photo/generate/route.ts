@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
     // Convert to base64 — FLUX Kontext requires it (URL alone is treated as text-to-image)
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
 
+    // FLUX.1-Kontext-pro expects raw base64 without the "data:mime;base64," prefix
+    const fluxImage = imageData.startsWith('data:') ? imageData.split(',')[1] : imageData;
+
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-pro',
         prompt,
-        image: imageData,
+        image: fluxImage,
         prompt_enhancement: false,
       }),
     });
