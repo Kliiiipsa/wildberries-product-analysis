@@ -3,18 +3,6 @@ import { NextRequest } from 'next/server';
 export const runtime = 'edge';
 export const maxDuration = 60;
 
-async function toBase64DataUrl(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Не удалось загрузить изображение: ${res.status}`);
-  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-  const mimeType = contentType.split(';')[0].trim();
-  const buffer = await res.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  return `data:${mimeType};base64,${btoa(binary)}`;
-}
-
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const imageUrl: string = body?.imageUrl ?? '';
@@ -33,8 +21,6 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
-
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
@@ -45,7 +31,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'Qwen/Qwen-Image-Edit',
         prompt,
-        image: imageData,
+        image: imageUrl,
         image_size: '1056x1584',
         num_inference_steps: 25,
         guidance_scale: 7.5,
