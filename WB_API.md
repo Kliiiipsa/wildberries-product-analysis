@@ -44,6 +44,39 @@ Content-Type: application/json
 
 ---
 
+## ✅ Структура photos в ответе /content/v2/get/cards/list
+
+**Структура массива `photos` в карточке товара (май 2026):**
+```json
+"photos": [
+  {
+    "photoId": 112345678,
+    "sortOrder": 1,
+    "isMain": true,
+    "url": "https://basket-01.wbbasket.ru/vol123/part456/785628816/images/big/1.jpg",
+    "smallUrl": "https://basket-01.wbbasket.ru/.../tm/1.jpg",
+    "midUrl": "https://basket-01.wbbasket.ru/.../mid/1.jpg"
+  },
+  {
+    "photoId": 112345679,
+    "sortOrder": 2,
+    "isMain": false,
+    "url": "https://basket-01.wbbasket.ru/vol123/part456/785628816/images/big/2.jpg"
+  }
+]
+```
+
+**Правила извлечения:**
+- `url` — основная ссылка (big, ~516×688). Использовать в первую очередь.
+- `midUrl`, `smallUrl` — дополнительные размеры, присутствуют не всегда.
+- `sortOrder` — порядок отображения. Сортировать массив по этому полю.
+- `isMain` — флаг главного фото.
+- Полей `big`, `c516x688`, `tm` нет — это устаревшие имена.
+
+**Подтверждено:** май 2026 ✅
+
+---
+
 ## ✅ Цены и скидки товаров
 
 **Вопрос:** Какой эндпоинт для получения цен и скидок по всем товарам кабинета?

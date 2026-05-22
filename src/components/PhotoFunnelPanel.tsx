@@ -405,10 +405,11 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         {article && <span className="text-xs text-slate-500">Артикул: {article}</span>}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
-        {/* ── LEFT: photo + controls ── */}
+      {/* 3-column layout: original | controls | result */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_1fr] gap-6">
+
+        {/* ── COL 1: Original photo ── */}
         <div className="space-y-3">
-          {/* Original */}
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Исходное фото</p>
           <div
             className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 aspect-[3/4] group cursor-pointer"
@@ -419,15 +420,15 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             {imagePreview ? (
               <>
                 <img src={imagePreview} alt="preview" className="w-full h-full object-cover" onError={() => setImagePreview('')} />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center">
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center gap-1 text-white">
                     <Upload className="h-6 w-6" />
-                    <span className="text-xs font-medium">Заменить фото</span>
+                    <span className="text-xs font-medium">Заменить</span>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-600">
+              <div className="flex flex-col items-center justify-center h-full text-slate-600 p-4 text-center">
                 <Upload className="h-8 w-8 mb-2" />
                 <p className="text-xs">Перетащите или нажмите</p>
               </div>
@@ -435,11 +436,9 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
           </div>
-
           {error && (
-            <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-xs text-red-400">{error}</div>
+            <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-3 py-2.5 text-xs text-red-400">{error}</div>
           )}
-
           <Button
             onClick={handleAnalyze}
             disabled={isAnalyzing || !effectiveUrl}
@@ -447,39 +446,12 @@ export function PhotoFunnelPanel({ onBack }: Props) {
           >
             {isAnalyzing
               ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Анализирую...</>
-              : <><Sparkles className="h-4 w-4 mr-2" />Анализировать фото</>}
+              : <><Sparkles className="h-4 w-4 mr-2" />Анализировать</>}
           </Button>
-
-          {/* Generated result */}
-          {(isGenerating || generatedImage || generateError) && (
-            <div className="space-y-2">
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Результат</p>
-              {isGenerating && (
-                <div className="rounded-2xl border border-slate-700 bg-slate-800/30 flex items-center justify-center py-16">
-                  <Loader2 className="h-6 w-6 animate-spin text-violet-400 mr-2" />
-                  <span className="text-sm text-slate-400">Генерирую ~30-50 сек...</span>
-                </div>
-              )}
-              {generateError && (
-                <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-xs text-red-400">{generateError}</div>
-              )}
-              {generatedImage && (
-                <div className="rounded-2xl overflow-hidden border border-violet-700/40 bg-slate-800/30 aspect-[3/4]">
-                  <img src={generatedImage} alt="Generated" className="w-full h-full object-cover" />
-                </div>
-              )}
-              {generatedImage && (
-                <a href={generatedImage} target="_blank" rel="noopener noreferrer"
-                  className="block text-center text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                  Открыть в полном размере ↗
-                </a>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* ── RIGHT: analysis tabs ── */}
-        <div>
+        {/* ── COL 2: Controls / analysis tabs ── */}
+        <div className="min-w-0">
           {!analysis && !isAnalyzing && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center h-full min-h-[320px]">
               <div className="text-center text-slate-600 p-8">
@@ -695,6 +667,46 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             </Tabs>
           )}
         </div>
+
+        {/* ── COL 3: Result ── */}
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Результат</p>
+          <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 aspect-[3/4] flex items-center justify-center">
+            {isGenerating && (
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-violet-400 mx-auto mb-3" />
+                <p className="text-sm text-slate-400">Генерирую...</p>
+                <p className="text-xs text-slate-600 mt-1">~30-60 секунд</p>
+              </div>
+            )}
+            {!isGenerating && generateError && (
+              <div className="p-4 text-center">
+                <p className="text-xs text-red-400">{generateError}</p>
+              </div>
+            )}
+            {!isGenerating && !generateError && generatedImage && (
+              <img src={generatedImage} alt="Результат" className="w-full h-full object-cover" />
+            )}
+            {!isGenerating && !generateError && !generatedImage && (
+              <div className="text-center text-slate-700 p-8">
+                <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Здесь появится результат</p>
+              </div>
+            )}
+          </div>
+          {generatedImage && !isGenerating && (
+            <a
+              href={generatedImage}
+              download="generated.jpg"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 w-full rounded-xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 text-xs text-slate-400 hover:text-white transition-all py-2.5"
+            >
+              Скачать
+            </a>
+          )}
+        </div>
+
       </div>
     </div>
   );

@@ -2,6 +2,18 @@ import { NextRequest } from 'next/server';
 
 export const maxDuration = 60;
 
+async function toBase64(url: string): Promise<string> {
+  const res = await fetch(url, { headers: { 'Referer': 'https://www.wildberries.ru/' } });
+  if (!res.ok) throw new Error(`Не удалось загрузить изображение: ${res.status}`);
+  const mime = (res.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim();
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.byteLength; i += 8192)
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)));
+  return `data:${mime};base64,${btoa(chunks.join(''))}`;
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const imageUrl: string = body?.imageUrl ?? '';
@@ -20,8 +32,9 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // Try FLUX.1-Kontext-pro first (better quality, photorealistic)
-    // Falls back to Qwen-Image-Edit if Kontext-pro fails
+    // Convert to base64 — FLUX Kontext requires it (URL alone is treated as text-to-image)
+    const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
+
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
@@ -32,7 +45,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-pro',
         prompt,
-        image: imageUrl,
+        image: imageData,
         prompt_enhancement: false,
       }),
     });
@@ -40,34 +53,27 @@ export async function POST(req: NextRequest) {
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => resp.statusText);
-      // Fallback to Qwen if Kontext-pro not available
+      // Fallback to Qwen-Image-Edit
       if (resp.status === 400) {
         const ac2 = new AbortController();
-        const timer2 = setTimeout(() => ac2.abort(), 55_000);
-        const resp2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
-          method: 'POST',
-          signal: ac2.signal,
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
+        const t2 = setTimeout(() => ac2.abort(), 50_000);
+        const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
+          method: 'POST', signal: ac2.signal,
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'Qwen/Qwen-Image-Edit',
-            prompt,
-            image: imageUrl,
-            image_size: '1056x1584',
-            num_inference_steps: 30,
-            guidance_scale: 12,
+            prompt, image: imageData,
+            image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12,
           }),
         });
-        clearTimeout(timer2);
-        if (!resp2.ok) {
-          const t = await resp2.text().catch(() => resp2.statusText);
-          return Response.json({ error: `SiliconFlow ${resp2.status}: ${t}` }, { status: 500 });
+        clearTimeout(t2);
+        if (!r2.ok) {
+          const t = await r2.text().catch(() => r2.statusText);
+          return Response.json({ error: `SiliconFlow ${r2.status}: ${t}` }, { status: 500 });
         }
-        const d2 = await resp2.json();
+        const d2 = await r2.json();
         const u2 = d2?.images?.[0]?.url ?? null;
-        if (!u2) return Response.json({ error: `Нет URL в ответе: ${JSON.stringify(d2)}` }, { status: 500 });
+        if (!u2) return Response.json({ error: `Нет URL: ${JSON.stringify(d2)}` }, { status: 500 });
         return Response.json({ imageUrl: u2, model: 'qwen' });
       }
       return Response.json({ error: `SiliconFlow ${resp.status}: ${errText}` }, { status: 500 });
@@ -75,10 +81,7 @@ export async function POST(req: NextRequest) {
 
     const data = await resp.json();
     const url = data?.images?.[0]?.url ?? null;
-
-    if (!url) {
-      return Response.json({ error: `Нет URL в ответе: ${JSON.stringify(data)}` }, { status: 500 });
-    }
+    if (!url) return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
 
     return Response.json({ imageUrl: url, model: 'flux-kontext-pro' });
   } catch (e) {
