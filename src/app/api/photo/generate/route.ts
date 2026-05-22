@@ -32,8 +32,14 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // Convert to base64 — FLUX Kontext requires it (URL alone is treated as text-to-image)
+    // For data: URLs (client-uploaded files) — send as-is.
+    // For external URLs — pass directly so FLUX can fetch them (avoids size issues with large base64).
+    // Server-side base64 conversion is only used as last resort for Qwen fallback.
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
+
+    // Log image field size to help debug
+    const imageSizeKb = Math.round(imageData.length / 1024);
+    console.log(`[generate] image size: ${imageSizeKb}KB, model: FLUX.1-Kontext-pro`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
@@ -54,36 +60,36 @@ export async function POST(req: NextRequest) {
     });
     clearTimeout(timer);
 
+    const respText = await resp.text();
+    console.log(`[generate] FLUX status: ${resp.status}, body: ${respText.slice(0, 300)}`);
+
     if (!resp.ok) {
-      const errText = await resp.text().catch(() => resp.statusText);
       // Fallback to Qwen-Image-Edit
-      if (resp.status === 400) {
-        const ac2 = new AbortController();
-        const t2 = setTimeout(() => ac2.abort(), 50_000);
-        const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
-          method: 'POST', signal: ac2.signal,
-          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'Qwen/Qwen-Image-Edit',
-            prompt, image: imageData,
-            image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12,
-          }),
-        });
-        clearTimeout(t2);
-        if (!r2.ok) {
-          const t = await r2.text().catch(() => r2.statusText);
-          return Response.json({ error: `SiliconFlow ${r2.status}: ${t}` }, { status: 500 });
-        }
-        const d2 = await r2.json();
-        const u2 = d2?.images?.[0]?.url ?? null;
-        if (!u2) return Response.json({ error: `Нет URL: ${JSON.stringify(d2)}` }, { status: 500 });
-        return Response.json({ imageUrl: u2, model: 'qwen' });
+      const ac2 = new AbortController();
+      const t2 = setTimeout(() => ac2.abort(), 50_000);
+      const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
+        method: 'POST', signal: ac2.signal,
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'Qwen/Qwen-Image-Edit',
+          prompt, image: imageData,
+          image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12,
+        }),
+      });
+      clearTimeout(t2);
+      if (!r2.ok) {
+        const t = await r2.text().catch(() => r2.statusText);
+        return Response.json({ error: `FLUX ${resp.status}: ${respText.slice(0,200)} | Qwen ${r2.status}: ${t}` }, { status: 500 });
       }
-      return Response.json({ error: `SiliconFlow ${resp.status}: ${errText}` }, { status: 500 });
+      const d2 = await r2.json();
+      const u2 = d2?.images?.[0]?.url ?? null;
+      if (!u2) return Response.json({ error: `Нет URL от Qwen: ${JSON.stringify(d2)}` }, { status: 500 });
+      return Response.json({ imageUrl: u2, model: 'qwen' });
     }
 
-    const data = await resp.json();
-    const url = data?.images?.[0]?.url ?? null;
+    let data: Record<string, unknown> = {};
+    try { data = JSON.parse(respText); } catch { return Response.json({ error: `Не JSON: ${respText.slice(0,200)}` }, { status: 500 }); }
+    const url = (data?.images as Array<{url:string}>)?.[0]?.url ?? null;
     if (!url) return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
 
     return Response.json({ imageUrl: url, model: 'flux-kontext-pro' });

@@ -149,17 +149,32 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setAppMode('editor');
   };
 
-  // ── File upload ─────────────────────────────────────────────────────────────
+  // ── File upload — compress to max 1024px before storing as base64 ──────────
   const handleFileSelect = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const b64 = e.target?.result as string;
-      setImageBase64(b64);
-      setImagePreview(b64);
-      setSelectedPhotoUrl('');
-      setAnalysis(null);
-      setGeneratedImage('');
-      setAppMode('editor');
+      const src = e.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+        const b64 = canvas.toDataURL('image/jpeg', 0.88);
+        setImageBase64(b64);
+        setImagePreview(b64);
+        setSelectedPhotoUrl('');
+        setAnalysis(null);
+        setGeneratedImage('');
+        setAppMode('editor');
+      };
+      img.src = src;
     };
     reader.readAsDataURL(file);
   };
