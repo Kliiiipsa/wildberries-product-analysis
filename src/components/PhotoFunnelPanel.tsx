@@ -73,7 +73,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         body: JSON.stringify({ imageUrl: src }),
       });
       const text = await res.text();
-      let data: Record<string, unknown>;
+      let data: Record<string, unknown> = {};
       try { data = JSON.parse(text); } catch { throw new Error(`Ошибка сервера: ${text.slice(0, 120)}`); }
       if (!res.ok) {
         const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
@@ -112,7 +112,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         body: JSON.stringify({ imageUrl: src, prompt: generatePrompt }),
       });
       const text = await res.text();
-      let data: Record<string, unknown>;
+      let data: Record<string, unknown> = {};
       try { data = JSON.parse(text); } catch { throw new Error(`Ошибка сервера: ${text.slice(0, 120)}`); }
       if (!res.ok) throw new Error((data.error as string) || 'Ошибка генерации');
       setGeneratedImage(data.imageUrl as string);

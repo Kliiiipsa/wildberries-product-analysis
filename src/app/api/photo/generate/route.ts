@@ -16,12 +16,9 @@ async function toBase64DataUrl(url: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  let imageUrl: string, prompt: string;
-  try {
-    ({ imageUrl, prompt } = await req.json());
-  } catch {
-    return Response.json({ error: 'Невалидный JSON в теле запроса' }, { status: 400 });
-  }
+  const body = await req.json().catch(() => null);
+  const imageUrl: string = body?.imageUrl ?? '';
+  const prompt: string = body?.prompt ?? '';
 
   if (!imageUrl || !prompt) {
     return Response.json({ error: 'imageUrl и prompt обязательны' }, { status: 400 });
