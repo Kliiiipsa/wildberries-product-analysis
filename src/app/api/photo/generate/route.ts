@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    const resp = await fetch('https://api.siliconflow.cn/v1/images/generations', {
+    const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
       headers: {
