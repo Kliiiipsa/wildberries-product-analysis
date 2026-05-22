@@ -31,6 +31,19 @@ const PROMPT = `Ты эксперт по визуальному контенту
 - generatePrompt: конкретный английский промпт что улучшить, начинать с действия (например: "Change background to clean white studio...")
 - Все пункты — конкретные, без воды`;
 
+async function toBase64DataUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Не удалось загрузить изображение: ${res.status}`);
+  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+  const mimeType = contentType.split(';')[0].trim();
+  const buffer = await res.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+  return `data:${mimeType};base64,${base64}`;
+}
+
 export async function POST(req: NextRequest) {
   const { imageUrl } = await req.json();
 
@@ -46,9 +59,12 @@ export async function POST(req: NextRequest) {
   }
 
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 50_000);
+  const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
+    // Yandex requires base64 data URL, not external URLs
+    const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
+
     const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
       method: 'POST',
       signal: ac.signal,
@@ -63,7 +79,7 @@ export async function POST(req: NextRequest) {
             role: 'user',
             content: [
               { type: 'text', text: PROMPT },
-              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'image_url', image_url: { url: imageData } },
             ],
           },
         ],

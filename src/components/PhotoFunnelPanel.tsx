@@ -66,12 +66,6 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setAnalysis(null);
     setGeneratedImage('');
 
-    if (src.startsWith('data:')) {
-      setError('Загрузка файла не поддерживается — вставьте URL фото (например, ссылку с WB)');
-      setIsAnalyzing(false);
-      return;
-    }
-
     try {
       const res = await fetch('/api/photo/analyze', {
         method: 'POST',
@@ -164,8 +158,8 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             ) : (
               <div className="flex flex-col items-center justify-center h-60 p-6 text-center">
                 <Upload className="h-8 w-8 text-slate-600 mb-2" />
-                <p className="text-sm text-slate-500">Предпросмотр (вставьте URL ниже)</p>
-                <p className="text-xs text-slate-600 mt-1">Для анализа нужна ссылка на фото</p>
+                <p className="text-sm text-slate-500">Перетащите фото или нажмите</p>
+                <p className="text-xs text-slate-600 mt-1">Или вставьте URL фото ниже</p>
               </div>
             )}
             <input
