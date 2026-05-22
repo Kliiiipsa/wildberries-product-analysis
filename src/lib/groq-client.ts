@@ -513,15 +513,23 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
   // ── Yandex AI (приоритет) ──────────────────────────────────────────────────
   if (process.env.YANDEX_API_KEY?.trim()) {
     try {
-      console.log('[AI] Пробую Yandex AI (Qwen 3.6 35B)...');
-      yield '\n> *Анализирует: Qwen3-8B (Yandex AI)*\n\n';
-      yield* yandexStream(
+      console.log('[AI] Пробую Yandex AI (Qwen3-8B)...');
+      let firstChunk = true;
+      for await (const chunk of yandexStream(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
         8000,
-      );
+      )) {
+        if (firstChunk) {
+          yield '\n> *Анализирует: Qwen3-8B (Yandex AI)*\n\n';
+          firstChunk = false;
+        }
+        yield chunk;
+      }
       return;
     } catch (err) {
-      console.warn('[Yandex AI] ошибка, переключаюсь на Groq:', err);
+      const msg = String(err);
+      console.error('[Yandex AI] ошибка:', msg);
+      yield `\n> ⚠️ Yandex AI ошибка: ${msg}\n\n`;
     }
   }
 
