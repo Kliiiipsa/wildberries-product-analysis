@@ -49,7 +49,9 @@ function getWbBasket(vol: number): string {
   if (vol <= 3485) return '20';
   if (vol <= 3701) return '21';
   if (vol <= 3917) return '22';
-  return '23';
+  // Baskets 23+ follow a regular 216-vol-per-basket pattern
+  const n = 23 + Math.floor((vol - 3918) / 216);
+  return String(n).padStart(2, '0');
 }
 
 function getWbPhotoUrls(nmId: number): string[] {
@@ -411,22 +413,30 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         <div className="space-y-3">
           {/* Original */}
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Исходное фото</p>
-          <div className="rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 aspect-[3/4]">
+          <div
+            className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 aspect-[3/4] group cursor-pointer"
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) handleFileSelect(f); }}
+            onClick={() => fileInputRef.current?.click()}
+          >
             {imagePreview ? (
-              <img src={imagePreview} alt="preview" className="w-full h-full object-cover" onError={() => setImagePreview('')} />
+              <>
+                <img src={imagePreview} alt="preview" className="w-full h-full object-cover" onError={() => setImagePreview('')} />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center gap-1 text-white">
+                    <Upload className="h-6 w-6" />
+                    <span className="text-xs font-medium">Заменить фото</span>
+                  </div>
+                </div>
+              </>
             ) : (
-              <div
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) handleFileSelect(f); }}
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center h-full cursor-pointer text-slate-600"
-              >
+              <div className="flex flex-col items-center justify-center h-full text-slate-600">
                 <Upload className="h-8 w-8 mb-2" />
-                <p className="text-xs">Загрузите фото</p>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
+                <p className="text-xs">Перетащите или нажмите</p>
               </div>
             )}
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
           </div>
 
           {error && (
