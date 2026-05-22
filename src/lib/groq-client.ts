@@ -493,9 +493,9 @@ async function yandexAsync(
     const operationId: string = operation?.id;
     if (!operationId) { console.warn('[YandexGPT] нет operation ID'); return null; }
 
-    // 2. Polling каждые 3 секунды, максимум 90 секунд
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 3000));
+    // 2. Polling каждые 2 секунды, максимум 20 секунд
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
       try {
         const pollResp = await fetch(`https://ai.api.cloud.yandex.net/operations/${operationId}`, {
           headers: { 'Authorization': `Api-Key ${apiKey}` },
@@ -529,7 +529,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
       yield content;
       return;
     }
-    console.log('[AI] YandexGPT не дал результат, переключаюсь на Groq');
+    yield '\n> ⚠️ YandexGPT не ответил за 20 сек — переключаюсь на Groq\n\n';
   }
 
   // ── Groq ──────────────────────────────────────────────────────────────────
