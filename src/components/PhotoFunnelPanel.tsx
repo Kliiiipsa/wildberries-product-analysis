@@ -17,7 +17,7 @@ interface PhotoAnalysis {
     technique: string[] | string;
     styling: string[] | string;
   };
-  ideas: Array<{ title: string; description: string; tag?: string | null }>;
+  ideas: Array<{ title: string; description: string; tag?: string | null; promptEn?: string }>;
   generatePrompt?: string;
 }
 
@@ -245,8 +245,10 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     }
   };
 
-  const handleIdeaClick = (idea: { title: string; description: string }) => {
-    const prompt = `${idea.description}. Professional Wildberries product photography, high quality, studio setup.`;
+  const handleIdeaClick = (idea: { title: string; description: string; promptEn?: string }) => {
+    // Use the English prompt from AI, or fall back to the main generatePrompt
+    const prompt = idea.promptEn || generatePrompt;
+    if (!prompt) return;
     setGeneratePrompt(prompt);
     handleGenerate(prompt);
   };

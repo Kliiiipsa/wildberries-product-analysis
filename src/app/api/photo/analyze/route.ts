@@ -23,12 +23,11 @@ const PROMPT = `Ты эксперт по визуальному контенту
     "styling": ["конкретное действие: что изменить в подаче, аксессуарах, модели, раскладке"]
   },
   "ideas": [
-    {"title": "Студийный белый фон", "description": "Модель в полный рост на чистом белом фоне, равномерный студийный свет, товар в фокусе", "tag": "Главная"},
-    {"title": "Акцент на выгоде", "description": "Крупный план с инфографикой: ключевые характеристики товара поверх фото, не перекрывая товар", "tag": "Выгода"},
-    {"title": "Название идеи", "description": "Детальное описание как именно снять, что должно быть в кадре", "tag": null},
-    {"title": "Название идеи", "description": "Детальное описание", "tag": null},
-    {"title": "Название идеи", "description": "Детальное описание", "tag": null},
-    {"title": "Название идеи", "description": "Детальное описание", "tag": null}
+    {"title": "Студийный белый фон", "description": "Модель в полный рост на чистом белом фоне, равномерный студийный свет, товар в фокусе", "tag": "Главная", "promptEn": "Replace background with clean white seamless studio backdrop. Add even soft studio lighting. Keep the model, clothing and pose exactly the same."},
+    {"title": "Акцент на выгоде", "description": "Крупный план с инфографикой: ключевые характеристики товара поверх фото, не перекрывая товар", "tag": "Выгода", "promptEn": "Change to close-up shot highlighting fabric texture and details. Clean light grey background. Keep the clothing exactly the same."},
+    {"title": "Название идеи", "description": "Детальное описание", "tag": null, "promptEn": "English edit instructions: what exactly to change. Keep the model and clothing exactly the same."},
+    {"title": "Название идеи", "description": "Детальное описание", "tag": null, "promptEn": "English edit instructions."},
+    {"title": "Название идеи", "description": "Детальное описание", "tag": null, "promptEn": "English edit instructions."}
   ],
   "generatePrompt": "FLUX Kontext edit instructions in English: describe ONLY the specific changes to make, not the full image. Example: 'Replace the background with a clean white seamless studio backdrop. Remove the chair and table from the scene. Keep the model and clothing exactly as is.'"
 }
@@ -37,7 +36,8 @@ const PROMPT = `Ты эксперт по визуальному контенту
 - good/improve: 3 конкретных пункта каждый (не общих слова, а конкретные наблюдения по этому фото)
 - recommendations: по 1-2 конкретных действия в каждом разделе
 - ideas: 5-7 идей. tag "Главная" — лучшая концепция для главного фото WB, "Выгода" — показывает выгоду покупки, null — дополнительные
-- generatePrompt: ОБЯЗАТЕЛЬНО на английском. Стиль FLUX Kontext — описывай только ИЗМЕНЕНИЯ (что убрать, что заменить, что добавить). Начни с конкретных изменений фона/освещения/реквизита. В конце добавь: "Keep the model pose, clothing, and composition exactly the same."`;
+- generatePrompt: ОБЯЗАТЕЛЬНО на английском. Стиль FLUX Kontext — описывай только ИЗМЕНЕНИЯ (что убрать, что заменить, что добавить). НИКОГДА не пиши слово "Wildberries" — пиши "marketplace" или "e-commerce". В конце добавь: "Keep the model pose, clothing, and composition exactly the same."
+- ideas[].promptEn: для каждой идеи напиши конкретный английский промпт в стиле FLUX Kontext (только изменения, без слова Wildberries). В конце каждого: "Keep the model and clothing exactly the same."`;
 
 async function toBase64DataUrl(url: string): Promise<string> {
   const res = await fetch(url);
