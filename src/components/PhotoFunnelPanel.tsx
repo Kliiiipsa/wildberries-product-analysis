@@ -72,7 +72,9 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: src }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(text); } catch { throw new Error(`Ошибка сервера: ${text.slice(0, 120)}`); }
       if (!res.ok) {
         const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
         throw new Error(errMsg || 'Ошибка анализа');
@@ -109,9 +111,11 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: src, prompt: generatePrompt }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
-      setGeneratedImage(data.imageUrl);
+      const text = await res.text();
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(text); } catch { throw new Error(`Ошибка сервера: ${text.slice(0, 120)}`); }
+      if (!res.ok) throw new Error((data.error as string) || 'Ошибка генерации');
+      setGeneratedImage(data.imageUrl as string);
     } catch (e) {
       setGenerateError(String(e));
     } finally {
