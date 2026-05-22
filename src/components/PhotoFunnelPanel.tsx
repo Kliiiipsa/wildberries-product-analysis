@@ -85,7 +85,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         const clean = data.analysis.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         parsed = JSON.parse(clean);
       } else {
-        parsed = data.analysis;
+        parsed = data.analysis as PhotoAnalysis;
       }
 
       setAnalysis(parsed);
