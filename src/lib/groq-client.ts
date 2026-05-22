@@ -555,7 +555,9 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
         return;
       }
     } catch (err8b) {
-      console.warn('[Yandex 8B] ошибка, переключаюсь на Groq:', String(err8b));
+      const msg = String(err8b);
+      console.warn('[Yandex 8B] ошибка:', msg);
+      yield `\n> ⚠️ Yandex 8B: ${msg}\n\n`;
     }
   }
 
