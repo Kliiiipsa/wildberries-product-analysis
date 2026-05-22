@@ -477,9 +477,9 @@ async function yandexSync(
         method: 'POST',
         signal: ac.signal,
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type':  'application/json',
-          'x-folder-id':   folderId,
+          'Authorization':  `Bearer ${apiKey}`,
+          'Content-Type':   'application/json',
+          'OpenAI-Project': folderId,
         },
         body: JSON.stringify({
           model,
