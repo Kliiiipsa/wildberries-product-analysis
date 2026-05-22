@@ -474,7 +474,7 @@ async function* yandexStream(
       'Content-Type':  'application/json',
       'x-folder-id':   folderId,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens, stream: true }),
+    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens, stream: true, enable_thinking: false }),
   });
 
   if (!resp.ok) {
@@ -517,7 +517,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
       yield '\n> *Анализирует: Qwen 3.6 35B (Yandex AI)*\n\n';
       yield* yandexStream(
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
-        6000,
+        8000,
       );
       return;
     } catch (err) {
