@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { Search, Loader2, AlertCircle, LayoutDashboard, Users, Zap } from 'lucide-react';
+import { Search, Loader2, AlertCircle, LayoutDashboard, Users, Zap, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingState } from '@/components/LoadingState';
@@ -9,11 +9,12 @@ import { AnalysisResult } from '@/components/AnalysisResult';
 import { DashboardPanel } from '@/components/DashboardPanel';
 import { ComparisonView } from '@/components/ComparisonView';
 import { WhatIfSimulator } from '@/components/WhatIfSimulator';
+import { PhotoFunnelPanel } from '@/components/PhotoFunnelPanel';
 import type { AnalysisData, StreamEvent, DashboardData } from '@/types';
 
 type AnalysisPhase = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 type DashboardPhase = 'idle' | 'loading' | 'loaded' | 'error';
-type Mode = 'analysis' | 'dashboard' | 'comparison' | 'simulator';
+type Mode = 'analysis' | 'dashboard' | 'comparison' | 'simulator' | 'photo';
 
 export function AnalyzeForm() {
   // ── Analysis state ──
@@ -276,6 +277,13 @@ export function AnalyzeForm() {
   }
 
   // ══════════════════════════════════════════════════════
+  // RENDER: Photo funnel mode
+  // ══════════════════════════════════════════════════════
+  if (mode === 'photo') {
+    return <PhotoFunnelPanel onBack={() => setMode('analysis')} />;
+  }
+
+  // ══════════════════════════════════════════════════════
   // RENDER: Analysis mode
   // ══════════════════════════════════════════════════════
   return (
@@ -315,7 +323,7 @@ export function AnalyzeForm() {
           )}
 
           {/* Action cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
             <button
               type="button"
               onClick={() => loadDashboard()}
@@ -355,6 +363,20 @@ export function AnalyzeForm() {
               <div>
                 <div className="font-semibold text-white text-sm leading-tight">Симулятор</div>
                 <div className="text-xs text-slate-500 mt-0.5">Сценарии и прогнозы</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode('photo')}
+              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-rose-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-rose-500/10 hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="h-12 w-12 rounded-xl bg-rose-500/10 flex items-center justify-center shrink-0">
+                <Camera className="h-6 w-6 text-rose-400" />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-sm leading-tight">Фото</div>
+                <div className="text-xs text-slate-500 mt-0.5">Улучшение карточки</div>
               </div>
             </button>
           </div>

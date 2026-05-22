@@ -470,23 +470,24 @@ async function yandexSync(
     const model = `gpt://${folderId}/yandexgpt-5-lite/latest`;
 
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 30_000);
+    const timer = setTimeout(() => ac.abort(), 50_000);
     let resp: Response;
     try {
-      resp = await fetch('https://ai.api.cloud.yandex.net/v1/responses', {
+      resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
         method: 'POST',
         signal: ac.signal,
         headers: {
-          'Authorization':  `Bearer ${apiKey}`,
+          'Authorization':  `Api-Key ${apiKey}`,
           'Content-Type':   'application/json',
-          'OpenAI-Project': folderId,
         },
         body: JSON.stringify({
           model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userPrompt },
+          ],
           temperature: 0.3,
-          instructions: systemPrompt,
-          input: userPrompt,
-          max_output_tokens: maxTokens,
+          max_tokens: maxTokens,
         }),
       });
     } catch (e) {
@@ -503,7 +504,7 @@ async function yandexSync(
     }
 
     const data = await resp.json().catch(() => null);
-    const result = data?.output_text ?? data?.output?.[0]?.content?.[0]?.text ?? null;
+    const result = data?.choices?.[0]?.message?.content ?? null;
     if (!result) console.warn('[YandexGPT] пустой ответ:', JSON.stringify(data));
     return result as string | null;
   } catch (err) {
