@@ -465,7 +465,7 @@ async function* yandexStream(
   const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
   if (!apiKey) throw new Error('YANDEX_API_KEY не задан');
 
-  const model = `gpt://${folderId}/qwen3-8b/latest`;
+  const model = `gpt://${folderId}/qwen3.6-35b-a3b/latest`;
 
   const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
     method: 'POST',
@@ -520,7 +520,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
         8000,
       )) {
         if (firstChunk) {
-          yield '\n> *Анализирует: Qwen3-8B (Yandex AI)*\n\n';
+          yield '\n> *Анализирует: Qwen 3.6 35B (Yandex AI)*\n\n';
           firstChunk = false;
         }
         yield chunk;
@@ -529,7 +529,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
     } catch (err) {
       const msg = String(err);
       console.error('[Yandex AI] ошибка:', msg);
-      yield `\n> ⚠️ Yandex AI ошибка: ${msg}\n\n`;
+      console.warn('[Yandex AI] переключаюсь на Groq:', msg);
     }
   }
 
