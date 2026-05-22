@@ -455,10 +455,65 @@ function isModelUnavailableError(err: unknown): boolean {
   );
 }
 
+// ─── Yandex Alice AI LLM Flash (синхронный, /v1/responses) ───────────────────
+
+async function aliceFlash(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens = 8000,
+): Promise<string> {
+  const apiKey   = (process.env.YANDEX_API_KEY   ?? '').trim();
+  const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
+  if (!apiKey) throw new Error('YANDEX_API_KEY не задан');
+
+  const model = `gpt://${folderId}/aliceai-llm-flash/latest`;
+
+  const resp = await fetch('https://ai.api.cloud.yandex.net/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type':  'application/json',
+      'x-folder-id':   folderId,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      instructions: systemPrompt,
+      input: userPrompt,
+      max_output_tokens: maxTokens,
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => resp.statusText);
+    throw new Error(`Alice Flash ${resp.status}: ${text}`);
+  }
+
+  const data = await resp.json();
+  return (data.output_text ?? data.output?.[0]?.content?.[0]?.text ?? '') as string;
+}
+
 // ─── Streaming ────────────────────────────────────────────────────────────────
 
 export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<string> {
   const systemPrompt = SYSTEM_PROMPT;
+
+  // ── Alice AI LLM Flash (приоритет) ────────────────────────────────────────
+  if (process.env.YANDEX_API_KEY?.trim()) {
+    try {
+      console.log('[AI] Пробую Alice AI LLM Flash...');
+      const content = await aliceFlash(systemPrompt, prompt, 8000);
+      if (content) {
+        yield '\n> *Анализирует: Alice AI LLM Flash (Yandex)*\n\n';
+        yield content;
+        return;
+      }
+    } catch (err) {
+      const msg = String(err);
+      console.warn('[Alice Flash] ошибка, переключаюсь на Groq:', msg);
+      yield `\n> ⚠️ Alice Flash: ${msg}\n\n`;
+    }
+  }
 
   // ── Groq ──────────────────────────────────────────────────────────────────
   const groq = getGroqClient();
