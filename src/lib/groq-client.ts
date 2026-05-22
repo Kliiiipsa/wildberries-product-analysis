@@ -461,57 +461,59 @@ async function yandexAsync(
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 8000,
-): Promise<string> {
-  const apiKey   = (process.env.YANDEX_API_KEY   ?? '').trim();
-  const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
-  if (!apiKey) throw new Error('YANDEX_API_KEY не задан');
+): Promise<string | null> {
+  try {
+    const apiKey   = (process.env.YANDEX_API_KEY   ?? '').trim();
+    const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
+    if (!apiKey) return null;
 
-  const modelUri = `gpt://${folderId}/yandexgpt-5-lite/latest`;
+    const modelUri = `gpt://${folderId}/yandexgpt-5-lite/latest`;
 
-  // 1. Отправляем задачу
-  const submitResp = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Api-Key ${apiKey}`,
-      'Content-Type':  'application/json',
-    },
-    body: JSON.stringify({
-      modelUri,
-      completionOptions: { stream: false, temperature: 0.3, maxTokens: String(maxTokens) },
-      messages: [
-        { role: 'system', text: systemPrompt },
-        { role: 'user',   text: userPrompt },
-      ],
-    }),
-  });
-
-  if (!submitResp.ok) {
-    const text = await submitResp.text().catch(() => submitResp.statusText);
-    throw new Error(`YandexGPT async ${submitResp.status}: ${text}`);
-  }
-
-  const operation = await submitResp.json();
-  const operationId: string = operation.id;
-  if (!operationId) throw new Error('YandexGPT: не получен operation ID');
-
-  // 2. Polling каждые 2 секунды, максимум 2 минуты
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-
-    const pollResp = await fetch(`https://operation.api.cloud.yandex.net/operations/${operationId}`, {
-      headers: { 'Authorization': `Api-Key ${apiKey}` },
+    // 1. Отправляем задачу
+    const submitResp = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
+      method: 'POST',
+      headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelUri,
+        completionOptions: { stream: false, temperature: 0.3, maxTokens: String(maxTokens) },
+        messages: [
+          { role: 'system', text: systemPrompt },
+          { role: 'user',   text: userPrompt },
+        ],
+      }),
     });
 
-    if (!pollResp.ok) continue;
+    if (!submitResp.ok) {
+      const text = await submitResp.text().catch(() => submitResp.statusText);
+      console.warn(`[YandexGPT] submit ${submitResp.status}: ${text}`);
+      return null;
+    }
 
-    const result = await pollResp.json();
-    if (!result.done) continue;
-    if (result.error) throw new Error(`YandexGPT operation error: ${JSON.stringify(result.error)}`);
+    const operation = await submitResp.json().catch(() => null);
+    const operationId: string = operation?.id;
+    if (!operationId) { console.warn('[YandexGPT] нет operation ID'); return null; }
 
-    return (result.response?.alternatives?.[0]?.message?.text ?? '') as string;
+    // 2. Polling каждые 3 секунды, максимум 90 секунд
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const pollResp = await fetch(`https://operation.api.cloud.yandex.net/operations/${operationId}`, {
+          headers: { 'Authorization': `Api-Key ${apiKey}` },
+        });
+        if (!pollResp.ok) continue;
+        const result = await pollResp.json();
+        if (!result.done) continue;
+        if (result.error) { console.warn('[YandexGPT] operation error:', result.error); return null; }
+        return (result.response?.alternatives?.[0]?.message?.text ?? null) as string | null;
+      } catch { continue; }
+    }
+
+    console.warn('[YandexGPT] таймаут polling');
+    return null;
+  } catch (err) {
+    console.warn('[YandexGPT] неожиданная ошибка:', String(err));
+    return null;
   }
-
-  throw new Error('YandexGPT async: таймаут 2 минуты');
 }
 
 // ─── Streaming ────────────────────────────────────────────────────────────────
@@ -521,19 +523,13 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
 
   // ── YandexGPT 5 Lite async (приоритет, 0.1 ₽/1К) ─────────────────────────
   if (process.env.YANDEX_API_KEY?.trim()) {
-    try {
-      console.log('[AI] Пробую YandexGPT 5 Lite (async)...');
-      const content = await yandexAsync(systemPrompt, prompt, 8000);
-      if (content) {
-        yield '\n> *Анализирует: YandexGPT 5 Lite*\n\n';
-        yield content;
-        return;
-      }
-    } catch (err) {
-      const msg = String(err);
-      console.warn('[YandexGPT] ошибка, переключаюсь на Groq:', msg);
-      yield `\n> ⚠️ YandexGPT: ${msg}\n\n`;
+    const content = await yandexAsync(systemPrompt, prompt, 8000);
+    if (content) {
+      yield '\n> *Анализирует: YandexGPT 5 Lite*\n\n';
+      yield content;
+      return;
     }
+    console.log('[AI] YandexGPT не дал результат, переключаюсь на Groq');
   }
 
   // ── Groq ──────────────────────────────────────────────────────────────────
