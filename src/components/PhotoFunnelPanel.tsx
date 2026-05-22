@@ -66,6 +66,12 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setAnalysis(null);
     setGeneratedImage('');
 
+    if (src.startsWith('data:')) {
+      setError('Загрузка файла не поддерживается — вставьте URL фото (например, ссылку с WB)');
+      setIsAnalyzing(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/photo/analyze', {
         method: 'POST',
@@ -73,7 +79,10 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         body: JSON.stringify({ imageUrl: src }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка анализа');
+      if (!res.ok) {
+        const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+        throw new Error(errMsg || 'Ошибка анализа');
+      }
 
       let parsed: PhotoAnalysis;
       if (typeof data.analysis === 'string') {
@@ -155,8 +164,8 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             ) : (
               <div className="flex flex-col items-center justify-center h-60 p-6 text-center">
                 <Upload className="h-8 w-8 text-slate-600 mb-2" />
-                <p className="text-sm text-slate-500">Перетащите фото или нажмите</p>
-                <p className="text-xs text-slate-600 mt-1">JPG, PNG, WebP</p>
+                <p className="text-sm text-slate-500">Предпросмотр (вставьте URL ниже)</p>
+                <p className="text-xs text-slate-600 mt-1">Для анализа нужна ссылка на фото</p>
               </div>
             )}
             <input
