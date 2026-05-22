@@ -474,7 +474,7 @@ async function yandexBatch(
       'Content-Type':  'application/json',
       'x-folder-id':   folderId,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens, enable_thinking: false }),
+    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens }),
   });
 
   if (!resp.ok) {
@@ -505,7 +505,7 @@ async function* yandexStream(
       'Content-Type':  'application/json',
       'x-folder-id':   folderId,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens, stream: true, enable_thinking: false }),
+    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: maxTokens, stream: true }),
   });
 
   if (!resp.ok) {
