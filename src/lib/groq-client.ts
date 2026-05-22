@@ -555,26 +555,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
         return;
       }
     } catch (err8b) {
-      console.warn('[Yandex 8B] ошибка, пробую 35B:', String(err8b));
-    }
-
-    // ── Yandex 35B streaming (запасной) ─────────────────────────────────────
-    try {
-      console.log('[AI] Пробую Yandex Qwen 35B (stream)...');
-      let firstChunk = true;
-      for await (const chunk of yandexStream(
-        [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
-        8000,
-      )) {
-        if (firstChunk) {
-          yield '\n> *Анализирует: Qwen 3.6 35B (Yandex AI)*\n\n';
-          firstChunk = false;
-        }
-        yield chunk;
-      }
-      return;
-    } catch (err35b) {
-      console.warn('[Yandex 35B] ошибка, переключаюсь на Groq:', String(err35b));
+      console.warn('[Yandex 8B] ошибка, переключаюсь на Groq:', String(err8b));
     }
   }
 
