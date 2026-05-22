@@ -469,19 +469,30 @@ async function yandexAsync(
 
     const modelUri = `gpt://${folderId}/yandexgpt-5-lite/latest`;
 
-    // 1. Отправляем задачу
-    const submitResp = await fetch('https://ai.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
-      method: 'POST',
-      headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        modelUri,
-        completionOptions: { stream: false, temperature: 0.3, maxTokens: String(maxTokens) },
-        messages: [
-          { role: 'system', text: systemPrompt },
-          { role: 'user',   text: userPrompt },
-        ],
-      }),
-    });
+    // 1. Отправляем задачу (таймаут 8 сек)
+    const submitAc = new AbortController();
+    const submitTimer = setTimeout(() => submitAc.abort(), 8_000);
+    let submitResp: Response;
+    try {
+      submitResp = await fetch('https://ai.api.cloud.yandex.net/foundationModels/v1/completionAsync', {
+        method: 'POST',
+        signal: submitAc.signal,
+        headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modelUri,
+          completionOptions: { stream: false, temperature: 0.3, maxTokens: String(maxTokens) },
+          messages: [
+            { role: 'system', text: systemPrompt },
+            { role: 'user',   text: userPrompt },
+          ],
+        }),
+      });
+    } catch (e) {
+      clearTimeout(submitTimer);
+      console.warn('[YandexGPT] submit timeout/error:', String(e));
+      return null;
+    }
+    clearTimeout(submitTimer);
 
     if (!submitResp.ok) {
       const text = await submitResp.text().catch(() => submitResp.statusText);
