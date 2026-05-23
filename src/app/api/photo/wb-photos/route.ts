@@ -76,32 +76,62 @@ export async function POST(req: NextRequest) {
     : null;
 
   if (!card) {
-    // Article not found in this account's catalog — use basket CDN fallback.
-    // Try both webp (newer products) and jpg (older products); client hides failed images.
-    console.log(`[wb-photos] nmId=${nmId} not in returned cards, using basket fallback`);
+    console.log(`[wb-photos] nmId=${nmId} not in returned cards, trying card.wb.ru`);
     const vol = Math.floor(nmId / 100000);
     const part = Math.floor(nmId / 1000);
     const basket = getWbBasket(vol);
+
+    // Try public WB API to get title, brand, exact photos count
+    let title = '';
+    let brand = '';
+    let pics = 15;
+    try {
+      const cardResp = await fetch(
+        `https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-1257786&nm=${nmId}`,
+        { headers: { 'Referer': 'https://www.wildberries.ru/' }, signal: AbortSignal.timeout(5000) }
+      );
+      if (cardResp.ok) {
+        const cardData = await cardResp.json();
+        const product = cardData?.data?.products?.[0];
+        if (product) {
+          title = product.name ?? '';
+          brand = product.brand ?? '';
+          pics = product.pics ?? 15;
+          console.log(`[wb-photos] card.wb.ru ok: title="${title}", brand="${brand}", pics=${pics}`);
+        }
+      }
+    } catch (e) {
+      console.log(`[wb-photos] card.wb.ru failed: ${e}`);
+    }
+
+    // Generate URLs for calculated basket + neighbours (client hides 404s via onError)
+    const basketNum = parseInt(basket, 10);
+    const baskets = [basket];
+    if (basketNum > 1) baskets.push(String(basketNum - 1).padStart(2, '0'));
+    baskets.push(String(basketNum + 1).padStart(2, '0'));
+
     const fallbackPhotos: string[] = [];
-    for (let i = 1; i <= 15; i++) {
-      fallbackPhotos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.webp`);
+    for (const b of baskets) {
+      for (let i = 1; i <= pics; i++) {
+        fallbackPhotos.push(`https://basket-${b}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.webp`);
+      }
     }
-    for (let i = 1; i <= 15; i++) {
-      fallbackPhotos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.jpg`);
-    }
-    console.log(`[wb-photos] basket fallback: vol=${vol}, part=${part}, basket=${basket}, ${fallbackPhotos.length} urls`);
-    return Response.json({ photos: fallbackPhotos, title: '', brand: '', nmId, fallback: true });
+    console.log(`[wb-photos] basket fallback: baskets=[${baskets}], pics=${pics}, total=${fallbackPhotos.length} urls`);
+    return Response.json({ photos: fallbackPhotos, title, brand, nmId, fallback: true });
   }
 
   console.log(`[wb-photos] found card nmID=${card.nmID}, title="${card.title}", photos_raw=${JSON.stringify(card.photos).slice(0, 300)}`);
 
-  // Real photo structure from WB API: { big, hq, c516x688, c246x328 }
-  // (NOT url/midUrl/smallUrl as documented — actual field names confirmed from logs)
+  // WB API photos structure (confirmed May 2026): { url, smallUrl, midUrl, sortOrder, isMain }
+  // Legacy fields big/hq/c516x688 kept as fallback for older API responses
   const photos: string[] = [];
 
   if (Array.isArray(card.photos)) {
-    for (const p of card.photos) {
-      const url = p?.big || p?.hq || p?.['c516x688'] || p?.['c246x328'] || p?.url || null;
+    const sorted = [...card.photos].sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
+      ((a.sortOrder as number) ?? 0) - ((b.sortOrder as number) ?? 0)
+    );
+    for (const p of sorted) {
+      const url = (p as Record<string, string>)?.url || p?.big || p?.hq || p?.['c516x688'] || p?.['c246x328'] || null;
       if (url) photos.push(url as string);
     }
     console.log(`[wb-photos] extracted from card.photos: ${photos.length} urls`);
