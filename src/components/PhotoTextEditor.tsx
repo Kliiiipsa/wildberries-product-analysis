@@ -30,15 +30,26 @@ const STYLE_COLORS = {
   accent: { bg: 'rgba(220,38,38,0.92)', text: '#ffffff', sub: 'rgba(255,255,255,0.9)', border: 'rgba(255,255,255,0.3)' },
 };
 
+// Spread blocks vertically so they don't overlap when multiple share the same row
 const POSITION_TO_XY: Record<string, [number, number]> = {
-  'top': [0.5, 0.08],
-  'bottom': [0.5, 0.88],
-  'top-left': [0.12, 0.1],
-  'top-right': [0.88, 0.1],
-  'bottom-left': [0.12, 0.88],
-  'bottom-right': [0.88, 0.88],
+  'top': [0.5, 0.07],
+  'bottom': [0.5, 0.87],
+  'top-left': [0.15, 0.1],
+  'top-right': [0.85, 0.1],
+  'bottom-left': [0.15, 0.76],
+  'bottom-right': [0.85, 0.76],
   'center': [0.5, 0.5],
 };
+
+// Strip emoji and other non-BMP characters that canvas fonts can't render reliably
+function stripEmoji(str: string): string {
+  return str
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(' ');
@@ -64,7 +75,6 @@ export default function PhotoTextEditor({ imageUrl, analysis, onExport }: PhotoT
   const [blocks, setBlocks] = useState<TextBlock[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<TextBlock | null>(null);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [canvasSize, setCanvasSize] = useState({ w: 600, h: 800 });
 
@@ -98,11 +108,11 @@ export default function PhotoTextEditor({ imageUrl, analysis, onExport }: PhotoT
       const titleSize = block.type === 'badge' ? 22 : block.type === 'headline' ? 28 : 20;
       const subSize = 14;
       ctx.font = `700 ${titleSize}px Inter, system-ui, sans-serif`;
-      const titleLines = wrapText(ctx, block.title, maxW - pad * 2);
+      const titleLines = wrapText(ctx, stripEmoji(block.title), maxW - pad * 2);
       const titleH = titleLines.length * (titleSize + 4);
 
       ctx.font = `400 ${subSize}px Inter, system-ui, sans-serif`;
-      const subLines = block.subtitle ? wrapText(ctx, block.subtitle, maxW - pad * 2) : [];
+      const subLines = block.subtitle ? wrapText(ctx, stripEmoji(block.subtitle), maxW - pad * 2) : [];
       const subH = subLines.length * (subSize + 3);
 
       const boxW = Math.min(maxW, Math.max(
