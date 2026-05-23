@@ -3,11 +3,12 @@
 import { useState, useRef } from 'react';
 import {
   ArrowLeft, Upload, Loader2, Sparkles, ImageIcon,
-  Camera, User, Search, Hash,
+  Camera, User, Search, Hash, Type,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import PhotoTextEditor from '@/components/PhotoTextEditor';
 
 interface PhotoAnalysis {
   good: string[] | string;
@@ -17,6 +18,7 @@ interface PhotoAnalysis {
     technique: string[] | string;
     styling: string[] | string;
   };
+  bestAction?: { title: string; promptEn: string };
   ideas: Array<{ title: string; description: string; tag?: string | null; promptEn?: string }>;
   generatePrompt?: string;
 }
@@ -506,11 +508,12 @@ export function PhotoFunnelPanel({ onBack }: Props) {
 
       {analysis && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-4 w-full bg-slate-800/60 rounded-xl mb-5 h-10">
+          <TabsList className="grid grid-cols-5 w-full bg-slate-800/60 rounded-xl mb-5 h-10">
             <TabsTrigger value="assessment" className="text-xs rounded-lg">Оценка</TabsTrigger>
             <TabsTrigger value="ideas" className="text-xs rounded-lg">Идеи</TabsTrigger>
             <TabsTrigger value="generate" className="text-xs rounded-lg">Генерация</TabsTrigger>
             <TabsTrigger value="character" className="text-xs rounded-lg">Персонаж</TabsTrigger>
+            <TabsTrigger value="text" className="text-xs rounded-lg flex items-center gap-1"><Type className="h-3 w-3" />Текст</TabsTrigger>
           </TabsList>
 
           {/* ── ASSESSMENT ── */}
@@ -574,16 +577,23 @@ export function PhotoFunnelPanel({ onBack }: Props) {
               </div>
             </div>
 
-            {generatePrompt && (
-              <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4">
-                <p className="text-xs text-slate-500 mb-2 font-medium">AI промпт для генерации</p>
-                <p className="text-xs text-slate-300 leading-relaxed">{generatePrompt}</p>
+            {analysis.bestAction && (
+              <div className="rounded-xl border border-violet-700/50 bg-violet-900/10 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="h-4 w-4 text-violet-400 shrink-0" />
+                  <span className="text-sm font-semibold text-violet-300">Лучшее действие</span>
+                </div>
+                <p className="text-sm text-white font-medium mb-1">{analysis.bestAction.title}</p>
+                <p className="text-xs text-slate-400 leading-relaxed mb-3 font-mono">{analysis.bestAction.promptEn}</p>
                 <Button
-                  onClick={() => handleGenerate()}
-                  disabled={isGenerating}
-                  className="mt-3 bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white text-xs rounded-xl h-9 px-4"
+                  onClick={() => {
+                    setGeneratePrompt(analysis.bestAction!.promptEn);
+                    handleGenerate(analysis.bestAction!.promptEn);
+                  }}
+                  disabled={isGenerating || !effectiveUrl}
+                  className="bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white text-xs rounded-xl h-9 px-4"
                 >
-                  <Sparkles className="h-3 w-3 mr-1.5" />Применить рекомендации
+                  <Sparkles className="h-3 w-3 mr-1.5" />Применить — {analysis.bestAction.title}
                 </Button>
               </div>
             )}
@@ -687,6 +697,25 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                 ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую...</>
                 : <><User className="h-4 w-4 mr-2" />Применить персонажа</>}
             </Button>
+          </TabsContent>
+          {/* ── TEXT EDITOR ── */}
+          <TabsContent value="text" className="mt-0">
+            {imagePreview ? (
+              <PhotoTextEditor
+                imageUrl={imagePreview}
+                analysis={{ good: toArr(analysis.good), improve: toArr(analysis.improve) }}
+                onExport={(dataUrl) => {
+                  setGeneratedImage(dataUrl);
+                }}
+              />
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center py-16 text-center text-slate-600">
+                <div>
+                  <Type className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">Загрузите фото чтобы добавить текст</p>
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       )}
