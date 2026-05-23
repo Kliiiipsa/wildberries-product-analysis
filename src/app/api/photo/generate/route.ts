@@ -32,38 +32,52 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // FLUX.1-Kontext-pro: image field with data: prefix required, strength controls source fidelity
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
     const sizekb = Math.round(imageData.length / 1024);
-    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-max`);
+    const mimeMatch = imageData.match(/^data:([^;]+);base64,/);
+    const mime = mimeMatch?.[1] ?? 'unknown';
+    const hasDataPrefix = imageData.startsWith('data:');
+    console.log(`[generate] image: ${sizekb}KB, mime=${mime}, hasDataPrefix=${hasDataPrefix}`);
+    console.log(`[generate] prompt (${prompt.length} chars): ${prompt.slice(0, 300)}`);
+    console.log(`[generate] params: model=FLUX.1-Kontext-max, strength=0.82, guidance=3.2, steps=40`);
+
+    const fluxBody = {
+      model: 'black-forest-labs/FLUX.1-Kontext-max',
+      prompt,
+      image: imageData,
+      num_outputs: 1,
+      guidance_scale: 3.2,
+      num_inference_steps: 40,
+      strength: 0.82,
+    };
+    console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'black-forest-labs/FLUX.1-Kontext-max',
-        prompt,
-        image: imageData,
-        num_outputs: 1,
-        guidance_scale: 3.2,
-        num_inference_steps: 40,
-        strength: 0.82,
-      }),
+      body: JSON.stringify(fluxBody),
     });
     clearTimeout(timer);
 
     const respText = await resp.text();
-    let inference = '?';
-    try { inference = String(JSON.parse(respText)?.timings?.inference ?? '?'); } catch { /* */ }
+    let parsedResp: Record<string, unknown> = {};
+    try { parsedResp = JSON.parse(respText); } catch { /* */ }
+    const inference = String((parsedResp?.timings as Record<string, unknown>)?.inference ?? '?');
     console.log(`[generate] FLUX status=${resp.status} inference=${inference}s`);
+    if (!resp.ok) {
+      console.log(`[generate] FLUX error body: ${respText.slice(0, 500)}`);
+    } else {
+      const resultUrl = (parsedResp?.images as Array<{ url: string }>)?.[0]?.url ?? null;
+      console.log(`[generate] FLUX ok, result url present=${!!resultUrl}`);
+      const seed = parsedResp?.seed ?? parsedResp?.metadata;
+      if (seed !== undefined) console.log(`[generate] seed/metadata: ${JSON.stringify(seed)}`);
+    }
 
     if (resp.ok) {
-      let data: Record<string, unknown> = {};
-      try { data = JSON.parse(respText); } catch { return Response.json({ error: `Не JSON: ${respText.slice(0, 200)}` }, { status: 500 }); }
-      const url = (data?.images as Array<{ url: string }>)?.[0]?.url ?? null;
+      const url = (parsedResp?.images as Array<{ url: string }>)?.[0]?.url ?? null;
       if (url) return Response.json({ imageUrl: url, model: 'flux-kontext-max' });
-      return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
+      return Response.json({ error: `Нет URL: ${JSON.stringify(parsedResp)}` }, { status: 500 });
     }
 
     // Fallback: Qwen-Image-Edit
