@@ -70,20 +70,26 @@ G) ИНФОГРАФИКА/ТЕКСТ НА ФОТО: нет | да — умере
     "styling": ["конкретное действие: что изменить в подаче, аксессуарах, модели, раскладке"]
   },
   "ideas": [
-    {"title": "Название отражающее суть", "description": "Детально: что снять, как, почему это усилит продажи для этого конкретного товара", "tag": "Главная", "promptEn": "FLUX Kontext: describe only changes. Example: Replace background with deep charcoal seamless backdrop. Remove chair from scene. Keep model pose and white clothing exactly the same."},
+    {"title": "Название отражающее суть", "description": "Детально: что снять, как, почему это усилит продажи для этого конкретного товара", "tag": "Главная", "promptEn": "..."},
     {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "..."},
     {"title": "...", "description": "...", "tag": null, "promptEn": "..."},
     {"title": "...", "description": "...", "tag": null, "promptEn": "..."},
     {"title": "...", "description": "...", "tag": null, "promptEn": "..."}
   ],
-  "generatePrompt": "FLUX Kontext edit prompt in English for the single most impactful improvement"
+  "generatePrompt": "..."
 }
 
 Правила JSON:
 - good/improve: ровно 3 пункта, конкретные наблюдения по ЭТОМУ фото — не шаблонные фразы
 - recommendations: 1–2 конкретных действия в каждом разделе
 - ideas: 5–7 идей, каждая — принципиально другой тип контента. tag "Главная" — лучший вариант для позиции 1 в поиске с учётом цвета товара, tag "Выгода" — усиливает ценность, null — дополнительные позиции воронки
-- generatePrompt и ideas[].promptEn: строго на английском, стиль FLUX Kontext — только ИЗМЕНЕНИЯ (не описание всего фото). НИКОГДА не пиши слово "Wildberries". Заканчивай каждый: "Keep the [model/product/composition] exactly the same."`;
+- generatePrompt и ideas[].promptEn: строго на английском для FLUX.1-Kontext-pro.
+
+КРИТИЧЕСКИ ВАЖНЫЙ ФОРМАТ промптов (generatePrompt и promptEn):
+Модель редактирует исходное фото — промпт ОБЯЗАН явно удерживать всё что нельзя менять.
+Структура: [ЧТО ИЗМЕНИТЬ], keep the exact same [список всего что сохранить], same lighting, same pose, same [детали товара], realistic photo, professional product photography.
+Пример правильного промпта: "Replace the white background with deep charcoal seamless studio backdrop. Keep the exact same woman, exact same white linen suit, exact same standing pose, exact same lighting direction, same facial expression, realistic photo, professional product photography."
+НИКОГДА: не пиши слово "Wildberries". Не описывай всё фото целиком — только изменение + якоря сохранения.`;
 
 
 async function toBase64DataUrl(url: string): Promise<string> {

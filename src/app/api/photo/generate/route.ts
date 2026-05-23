@@ -51,8 +51,9 @@ export async function POST(req: NextRequest) {
         prompt,
         image: imageData,
         num_outputs: 1,
-        guidance_scale: 3.5,
-        num_inference_steps: 30,
+        guidance_scale: 3.0,
+        num_inference_steps: 35,
+        strength: 0.75,
       }),
     });
     clearTimeout(timer);
