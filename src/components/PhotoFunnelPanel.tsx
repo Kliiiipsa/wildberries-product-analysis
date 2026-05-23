@@ -114,14 +114,14 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setAppMode('editor');
   };
 
-  // ── File upload — resize to max 1536px, JPEG 0.95 for best FLUX quality ────
+  // ── File upload — resize to max 1024px JPEG 0.92 (confirmed working with FLUX) ─
   const handleFileSelect = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
       const src = e.target?.result as string;
       const img = new Image();
       img.onload = () => {
-        const MAX = 1536;
+        const MAX = 1024;
         let { width, height } = img;
         if (width > MAX || height > MAX) {
           if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
@@ -131,7 +131,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
-        const b64 = canvas.toDataURL('image/jpeg', 0.95);
+        const b64 = canvas.toDataURL('image/jpeg', 0.92);
         setImageBase64(b64);
         setImagePreview(b64);
         setSelectedPhotoUrl('');
