@@ -105,6 +105,8 @@ export function PhotoFunnelPanel({ onBack }: Props) {
 
 
   // ── Select photo → editor ───────────────────────────────────────────────────
+  // Load through server proxy so WebP (WB CDN) can be drawn on canvas without CORS issues,
+  // then export as JPEG base64 — required by Yandex API which rejects WebP.
   const openEditor = (url: string) => {
     setSelectedPhotoUrl(url);
     setImageBase64('');
@@ -114,6 +116,24 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setGenerateError('');
     setError('');
     setAppMode('editor');
+
+    const proxyUrl = `/api/photo/proxy?url=${encodeURIComponent(url)}`;
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1024;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      const b64 = canvas.toDataURL('image/jpeg', 0.92);
+      setImageBase64(b64);
+      setImagePreview(b64);
+    };
+    img.src = proxyUrl;
   };
 
   // ── File upload — resize to max 1024px JPEG 0.92 (confirmed working with FLUX) ─
