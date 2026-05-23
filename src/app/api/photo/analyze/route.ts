@@ -58,7 +58,7 @@ G) ИНФОГРАФИКА/ТЕКСТ НА ФОТО: нет | да — умере
 ═══════════════════════════════════════
 ФОРМАТ ОТВЕТА
 ═══════════════════════════════════════
-ВАЖНО: Все текстовые значения в JSON пиши ТОЛЬКО на русском языке (кроме promptEn и generatePrompt — они строго на английском).
+ЯЗЫК ОТВЕТА: все поля JSON — на русском языке. ИСКЛЮЧЕНИЕ: поля promptEn и generatePrompt — ТОЛЬКО на английском языке (English). Писать их на русском — ЗАПРЕЩЕНО.
 
 Верни ТОЛЬКО валидный JSON без markdown-блоков и без лишнего текста:
 {
@@ -70,25 +70,25 @@ G) ИНФОГРАФИКА/ТЕКСТ НА ФОТО: нет | да — умере
     "styling": ["конкретное действие: что изменить в подаче, аксессуарах, модели, раскладке"]
   },
   "ideas": [
-    {"title": "Название отражающее суть", "description": "Детально: что снять, как, почему это усилит продажи для этого конкретного товара", "tag": "Главная", "promptEn": "..."},
-    {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "..."}
+    {"title": "Название отражающее суть", "description": "Детально: что снять, как, почему это усилит продажи для этого конкретного товара", "tag": "Главная", "promptEn": "Replace the [X] with [Y]. Keep the exact same [product details], same lighting, same pose, realistic photo, professional product photography."},
+    {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "English only prompt here..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "English only prompt here..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "English only prompt here..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "English only prompt here..."}
   ],
-  "generatePrompt": "..."
+  "generatePrompt": "Replace the [X] with [Y]. Keep the exact same [product/model details], same lighting, same pose, realistic photo, professional product photography."
 }
 
 Правила JSON:
 - good/improve: ровно 3 пункта, конкретные наблюдения по ЭТОМУ фото — не шаблонные фразы
 - recommendations: 1–2 конкретных действия в каждом разделе
 - ideas: 5–7 идей, каждая — принципиально другой тип контента. tag "Главная" — лучший вариант для позиции 1 в поиске с учётом цвета товара, tag "Выгода" — усиливает ценность, null — дополнительные позиции воронки
-- generatePrompt и ideas[].promptEn: строго на английском для FLUX.1-Kontext-pro.
+- generatePrompt и ideas[].promptEn: ТОЛЬКО английский язык (English only). Любой кириллический символ в этих полях — ошибка.
 
-КРИТИЧЕСКИ ВАЖНЫЙ ФОРМАТ промптов (generatePrompt и promptEn):
+КРИТИЧЕСКИ ВАЖНЫЙ ФОРМАТ промптов (generatePrompt и promptEn) — ТОЛЬКО НА АНГЛИЙСКОМ:
 Модель редактирует исходное фото — промпт ОБЯЗАН явно удерживать всё что нельзя менять.
-Структура: [ЧТО ИЗМЕНИТЬ], keep the exact same [список всего что сохранить], same lighting, same pose, same [детали товара], realistic photo, professional product photography.
-Пример правильного промпта: "Replace the white background with deep charcoal seamless studio backdrop. Keep the exact same woman, exact same white linen suit, exact same standing pose, exact same lighting direction, same facial expression, realistic photo, professional product photography."
+Структура: [WHAT TO CHANGE], keep the exact same [list of everything to preserve], same lighting, same pose, same [product details], realistic photo, professional product photography.
+Правильный пример (именно такой формат, именно на английском): "Replace the white background with deep charcoal seamless studio backdrop. Keep the exact same woman, exact same white linen suit, exact same standing pose, exact same lighting direction, same facial expression, realistic photo, professional product photography."
 НИКОГДА: не пиши слово "Wildberries". Не описывай всё фото целиком — только изменение + якоря сохранения.`;
 
 

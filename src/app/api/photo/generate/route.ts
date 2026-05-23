@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
     const mime = mimeMatch?.[1] ?? 'unknown';
     const hasDataPrefix = imageData.startsWith('data:');
     console.log(`[generate] image: ${sizekb}KB, mime=${mime}, hasDataPrefix=${hasDataPrefix}`);
-    console.log(`[generate] prompt (${prompt.length} chars): ${prompt.slice(0, 300)}`);
+    const hasCyrillic = /[а-яёА-ЯЁ]/.test(prompt);
+    console.log(`[generate] prompt (${prompt.length} chars, cyrillic=${hasCyrillic}): ${prompt.slice(0, 300)}`);
+    if (hasCyrillic) console.log(`[generate] WARNING: prompt contains Russian — FLUX may ignore source image`);
     console.log(`[generate] params: model=FLUX.1-Kontext-max, strength=0.82, guidance=3.2, steps=40`);
 
     const fluxBody = {
