@@ -32,11 +32,11 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
+    // FLUX.1-Kontext-pro: image field with data: prefix required, strength controls source fidelity
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
     const sizekb = Math.round(imageData.length / 1024);
     console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-pro`);
 
-    // Try "input_image" — BFL native field name (SiliconFlow may not map "image" → BFL correctly)
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
@@ -44,10 +44,10 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-pro',
         prompt,
-        input_image: imageData,
+        image: imageData,
         num_outputs: 1,
         guidance_scale: 3.0,
-        num_inference_steps: 35,
+        num_inference_steps: 50,
         strength: 0.75,
       }),
     });
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     const respText = await resp.text();
     let inference = '?';
     try { inference = String(JSON.parse(respText)?.timings?.inference ?? '?'); } catch { /* */ }
-    console.log(`[generate] FLUX input_image: status=${resp.status} inference=${inference}s body=${respText.slice(0, 300)}`);
+    console.log(`[generate] FLUX status=${resp.status} inference=${inference}s`);
 
     if (resp.ok) {
       let data: Record<string, unknown> = {};
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
     }
 
-    // FLUX failed — use Qwen-Image-Edit (explicit image editing model)
+    // Fallback: Qwen-Image-Edit
     console.log(`[generate] FLUX failed (${resp.status}), trying Qwen-Image-Edit`);
     const ac2 = new AbortController();
     const t2 = setTimeout(() => ac2.abort(), 50_000);

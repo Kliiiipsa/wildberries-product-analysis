@@ -26,41 +26,6 @@ const toArr = (v: string | string[] | undefined): string[] => {
   return Array.isArray(v) ? v : [v];
 };
 
-function getWbBasket(vol: number): string {
-  if (vol <= 143) return '01';
-  if (vol <= 287) return '02';
-  if (vol <= 431) return '03';
-  if (vol <= 719) return '04';
-  if (vol <= 1007) return '05';
-  if (vol <= 1061) return '06';
-  if (vol <= 1115) return '07';
-  if (vol <= 1169) return '08';
-  if (vol <= 1313) return '09';
-  if (vol <= 1601) return '10';
-  if (vol <= 1655) return '11';
-  if (vol <= 1919) return '12';
-  if (vol <= 2045) return '13';
-  if (vol <= 2189) return '14';
-  if (vol <= 2405) return '15';
-  if (vol <= 2621) return '16';
-  if (vol <= 2837) return '17';
-  if (vol <= 3053) return '18';
-  if (vol <= 3269) return '19';
-  if (vol <= 3485) return '20';
-  if (vol <= 3701) return '21';
-  if (vol <= 3917) return '22';
-  // Baskets 23+ follow a regular 216-vol-per-basket pattern
-  const n = 23 + Math.floor((vol - 3918) / 216);
-  return String(n).padStart(2, '0');
-}
-
-function getWbPhotoUrls(nmId: number): string[] {
-  const vol = Math.floor(nmId / 100000);
-  const part = Math.floor(nmId / 1000);
-  const basket = getWbBasket(vol);
-  const base = `https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/`;
-  return Array.from({ length: 20 }, (_, i) => `${base}${i + 1}.jpg`);
-}
 
 interface ModelAppearance {
   gender: string;
@@ -149,14 +114,14 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setAppMode('editor');
   };
 
-  // ── File upload — compress to max 1024px before storing as base64 ──────────
+  // ── File upload — resize to max 1536px, JPEG 0.95 for best FLUX quality ────
   const handleFileSelect = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
       const src = e.target?.result as string;
       const img = new Image();
       img.onload = () => {
-        const MAX = 1024;
+        const MAX = 1536;
         let { width, height } = img;
         if (width > MAX || height > MAX) {
           if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
@@ -166,7 +131,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
-        const b64 = canvas.toDataURL('image/jpeg', 0.88);
+        const b64 = canvas.toDataURL('image/jpeg', 0.95);
         setImageBase64(b64);
         setImagePreview(b64);
         setSelectedPhotoUrl('');
