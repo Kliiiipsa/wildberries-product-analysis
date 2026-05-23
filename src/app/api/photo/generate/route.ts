@@ -76,7 +76,11 @@ export async function POST(req: NextRequest) {
 
     if (resp.ok) {
       const url = (parsedResp?.images as Array<{ url: string }>)?.[0]?.url ?? null;
-      if (url) return Response.json({ imageUrl: url, model: 'flux-kontext-max' });
+      if (url) {
+        // Download server-side → return data URL so client needs no CORS proxy
+        const dataUrl = await toBase64DataUrl(url).catch(() => null);
+        return Response.json({ imageUrl: dataUrl ?? url, model: 'flux-kontext-max' });
+      }
       return Response.json({ error: `Нет URL: ${JSON.stringify(parsedResp)}` }, { status: 500 });
     }
 
@@ -101,7 +105,8 @@ export async function POST(req: NextRequest) {
     const d2 = await r2.json();
     const u2 = d2?.images?.[0]?.url ?? null;
     if (!u2) return Response.json({ error: `Нет URL от Qwen: ${JSON.stringify(d2)}` }, { status: 500 });
-    return Response.json({ imageUrl: u2, model: 'qwen' });
+    const dataUrl2 = await toBase64DataUrl(u2).catch(() => null);
+    return Response.json({ imageUrl: dataUrl2 ?? u2, model: 'qwen' });
   } catch (e) {
     clearTimeout(timer);
     return Response.json({ error: String(e) }, { status: 500 });
