@@ -111,17 +111,37 @@ I) СВОБОДНОЕ МЕСТО НА ФОТО: слева | справа | св
 - Структура каждого промпта: [что изменить] + [keep exact same face/pose/clothing] + [quality terms]`;
 
 
-async function toBase64DataUrl(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Не удалось загрузить изображение: ${res.status}`);
-  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-  const mimeType = contentType.split(';')[0].trim();
+async function fetchAsJpeg(url: string): Promise<{ buffer: ArrayBuffer; mime: string }> {
+  const headers: Record<string, string> = { 'Referer': 'https://www.wildberries.ru/' };
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const mime = (res.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim();
   const buffer = await res.arrayBuffer();
+  return { buffer, mime };
+}
+
+async function toBase64DataUrl(url: string): Promise<string> {
+  let { buffer, mime } = await fetchAsJpeg(url);
+
+  // Yandex API does not support WebP — fall back to .jpg version if available
+  if (mime === 'image/webp' || url.endsWith('.webp')) {
+    const jpgUrl = url.replace(/\.webp(\?.*)?$/, '.jpg$1');
+    if (jpgUrl !== url) {
+      try {
+        const jpg = await fetchAsJpeg(jpgUrl);
+        buffer = jpg.buffer;
+        mime = jpg.mime;
+      } catch {
+        // keep webp — Yandex will reject it, but we tried
+      }
+    }
+  }
+
   const bytes = new Uint8Array(buffer);
   const chunks: string[] = [];
   for (let i = 0; i < bytes.byteLength; i += 8192)
     chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)));
-  return `data:${mimeType};base64,${btoa(chunks.join(''))}`;
+  return `data:${mime};base64,${btoa(chunks.join(''))}`;
 }
 
 export async function POST(req: NextRequest) {
