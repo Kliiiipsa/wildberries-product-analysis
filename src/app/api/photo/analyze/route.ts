@@ -108,6 +108,28 @@ All field values in Russian EXCEPT all promptEn fields (English only, NO Cyrilli
 }`;
 
 
+function repairTruncatedJson(s: string): string {
+  let inString = false, escaped = false;
+  let openBraces = 0, openBrackets = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === '\\' && inString) { escaped = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') openBraces++;
+    else if (c === '}') openBraces--;
+    else if (c === '[') openBrackets++;
+    else if (c === ']') openBrackets--;
+  }
+  // Strip trailing incomplete field (comma or colon without value)
+  let result = s.replace(/,\s*$/, '').replace(/:\s*$/, ': null');
+  if (inString) result += '"';
+  for (let i = 0; i < openBrackets; i++) result += ']';
+  for (let i = 0; i < openBraces; i++) result += '}';
+  return result;
+}
+
 async function toBase64DataUrl(url: string): Promise<string> {
   const res = await fetch(url, { headers: { 'Referer': 'https://www.wildberries.ru/' } });
   if (!res.ok) throw new Error(`Не удалось загрузить изображение: ${res.status}`);
@@ -163,7 +185,7 @@ export async function POST(req: NextRequest) {
             ],
           },
         ],
-        max_tokens: 8000,
+        max_tokens: 16000,
         temperature: 0.3,
       }),
     });
@@ -187,9 +209,15 @@ export async function POST(req: NextRequest) {
       const jsonStart = content.indexOf('{');
       const jsonEnd = content.lastIndexOf('}');
       if (jsonStart === -1 || jsonEnd === -1) throw new Error('no JSON object found');
-      analysis = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
-    } catch {
-      analysis = content;
+      let jsonStr = content.slice(jsonStart, jsonEnd + 1);
+      try {
+        analysis = JSON.parse(jsonStr);
+      } catch {
+        // JSON was truncated by token limit — repair open strings/arrays/objects
+        analysis = JSON.parse(repairTruncatedJson(jsonStr));
+      }
+    } catch (e) {
+      return Response.json({ error: `JSON parse error: ${String(e).slice(0, 200)}` }, { status: 500 });
     }
 
     return Response.json({ analysis });
