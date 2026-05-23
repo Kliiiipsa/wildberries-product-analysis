@@ -42,18 +42,15 @@ export async function POST(req: NextRequest) {
     console.log(`[generate] prompt (${prompt.length} chars, cyrillic=${hasCyrillic}): ${prompt.slice(0, 300)}`);
     if (hasCyrillic) console.log(`[generate] WARNING: prompt contains Russian — FLUX may ignore source image`);
 
+    console.log(`[generate] image prefix (first 60 chars): ${imageData.slice(0, 60)}`);
+
     const fluxBody = {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
       prompt,
       image: imageData,
       aspect_ratio: '2:3',
       output_format: 'jpeg',
-      num_outputs: 1,
-      guidance_scale: 3.5,
-      num_inference_steps: 45,
-      strength: 0.88,
     };
-    console.log(`[generate] params: strength=${fluxBody.strength}, guidance=${fluxBody.guidance_scale}, steps=${fluxBody.num_inference_steps}`);
     console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
