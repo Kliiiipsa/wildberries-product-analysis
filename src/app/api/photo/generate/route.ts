@@ -14,6 +14,9 @@ async function toBase64DataUrl(url: string): Promise<string> {
   return `data:${mime};base64,${btoa(chunks.join(''))}`;
 }
 
+// Quality suffix appended to every FLUX prompt for maximum photorealism
+const QUALITY_SUFFIX = ', shot on Sony A7R V, 85mm f/1.4 lens, professional studio lighting, ultra-sharp fabric texture, 8K resolution, photorealistic, commercial fashion photography, hyperdetailed';
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const imageUrl: string = body?.imageUrl ?? '';
@@ -34,12 +37,17 @@ export async function POST(req: NextRequest) {
   try {
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
     const sizekb = Math.round(imageData.length / 1024);
-    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-max`);
+
+    // Append quality terms if not already present
+    const qualityPrompt = prompt.includes('Sony A7R') || prompt.includes('photorealistic')
+      ? prompt
+      : prompt + QUALITY_SUFFIX;
+    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-max, prompt_len=${qualityPrompt.length}`);
 
     // Kontext-max/pro: field is "input_image" (not "image" like Kontext-dev)
     const fluxBody = {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
-      prompt,
+      prompt: qualityPrompt,
       input_image: imageData,
       output_format: 'jpeg',
     };
@@ -81,7 +89,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'Qwen/Qwen-Image-Edit',
-        prompt, image: imageData,
+        prompt: qualityPrompt, image: imageData,
         image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12,
       }),
     });
