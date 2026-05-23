@@ -44,10 +44,11 @@ export async function POST(req: NextRequest) {
 
     console.log(`[generate] image prefix (first 100 chars): ${imageData.slice(0, 100)}`);
 
+    // Kontext-max/pro: field is "input_image" (not "image" like Kontext-dev)
     const fluxBody = {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
       prompt,
-      image: imageData,
+      input_image: imageData,
       output_format: 'jpeg',
     };
     console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
