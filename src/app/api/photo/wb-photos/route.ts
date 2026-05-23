@@ -72,8 +72,16 @@ export async function POST(req: NextRequest) {
   const card = data?.cards?.[0];
 
   if (!card) {
-    console.log(`[wb-photos] no card found. Full response: ${JSON.stringify(data).slice(0, 500)}`);
-    return Response.json({ error: 'Артикул не найден в вашем кабинете' }, { status: 404 });
+    console.log(`[wb-photos] no card found via API, falling back to basket formula. Full response: ${JSON.stringify(data).slice(0, 300)}`);
+    const vol = Math.floor(nmId / 100000);
+    const part = Math.floor(nmId / 1000);
+    const basket = getWbBasket(vol);
+    const fallbackPhotos: string[] = [];
+    for (let i = 1; i <= 15; i++) {
+      fallbackPhotos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.jpg`);
+    }
+    console.log(`[wb-photos] basket fallback: vol=${vol}, part=${part}, basket=${basket}, ${fallbackPhotos.length} urls`);
+    return Response.json({ photos: fallbackPhotos, title: '', brand: '', nmId, fallback: true });
   }
 
   console.log(`[wb-photos] card nmID=${card.nmID}, title="${card.title}", photos_raw=${JSON.stringify(card.photos).slice(0, 300)}`);

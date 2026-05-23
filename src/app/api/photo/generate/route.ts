@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // For data: URLs (client-uploaded files) — send as-is.
-    // For external URLs — pass directly so FLUX can fetch them (avoids size issues with large base64).
-    // Server-side base64 conversion is only used as last resort for Qwen fallback.
-    const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
+    // For data: URLs (client-uploaded) — pass as-is.
+    // For external URLs — pass the URL string directly; FLUX fetches it on their side (smaller payload).
+    const imageForFlux = imageUrl;
 
-    // Log image field size to help debug
-    const imageSizeKb = Math.round(imageData.length / 1024);
-    console.log(`[generate] image size: ${imageSizeKb}KB, model: FLUX.1-Kontext-pro`);
+    // Log what we're sending
+    const isDataUrl = imageUrl.startsWith('data:');
+    const imageSizeKb = isDataUrl ? Math.round(imageUrl.length / 1024) : 0;
+    console.log(`[generate] type=${isDataUrl ? 'base64' : 'url'}, size=${imageSizeKb}KB, prefix="${imageUrl.slice(0, 60)}", model: FLUX.1-Kontext-pro`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
@@ -51,20 +51,19 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-pro',
         prompt,
-        image: imageData,
-        num_outputs: 1,
+        image: imageForFlux,
         guidance_scale: 3.5,
         num_inference_steps: 28,
-        prompt_enhancement: false,
       }),
     });
     clearTimeout(timer);
 
     const respText = await resp.text();
-    console.log(`[generate] FLUX status: ${resp.status}, body: ${respText.slice(0, 300)}`);
+    console.log(`[generate] FLUX status: ${resp.status}, body: ${respText.slice(0, 600)}`);
 
     if (!resp.ok) {
-      // Fallback to Qwen-Image-Edit
+      // Fallback to Qwen-Image-Edit (needs base64)
+      const imageForQwen = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
       const ac2 = new AbortController();
       const t2 = setTimeout(() => ac2.abort(), 50_000);
       const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
@@ -72,7 +71,7 @@ export async function POST(req: NextRequest) {
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'Qwen/Qwen-Image-Edit',
-          prompt, image: imageData,
+          prompt, image: imageForQwen,
           image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12,
         }),
       });
