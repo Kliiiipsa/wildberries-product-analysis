@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const reqBody = {
     settings: {
-      cursor: { limit: 10, offset: 0 },
+      cursor: { limit: 100, offset: 0 },
       filter: { nmIds: [nmId], withPhoto: -1 },
     },
   };
@@ -76,39 +76,47 @@ export async function POST(req: NextRequest) {
     : null;
 
   if (!card) {
-    console.log(`[wb-photos] nmId=${nmId} not in returned cards, trying card.wb.ru`);
+    console.log(`[wb-photos] nmId=${nmId} not in WB API cards, trying card.wb.ru public API`);
     const vol = Math.floor(nmId / 100000);
     const part = Math.floor(nmId / 1000);
     const basket = getWbBasket(vol);
+    console.log(`[wb-photos] basket formula: vol=${vol}, part=${part}, basket=${basket}`);
 
     // Try public WB API to get title, brand, exact photos count
     let title = '';
     let brand = '';
     let pics = 15;
     try {
-      const cardResp = await fetch(
-        `https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-1257786&nm=${nmId}`,
-        { headers: { 'Referer': 'https://www.wildberries.ru/' }, signal: AbortSignal.timeout(5000) }
-      );
+      const cardUrl = `https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-1257786&nm=${nmId}`;
+      console.log(`[wb-photos] fetching card.wb.ru: ${cardUrl}`);
+      const cardResp = await fetch(cardUrl, {
+        headers: { 'Referer': 'https://www.wildberries.ru/', 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(6000),
+      });
+      console.log(`[wb-photos] card.wb.ru status=${cardResp.status}`);
       if (cardResp.ok) {
         const cardData = await cardResp.json();
         const product = cardData?.data?.products?.[0];
+        console.log(`[wb-photos] card.wb.ru products count=${cardData?.data?.products?.length ?? 0}, product keys=${product ? Object.keys(product).join(',') : 'none'}`);
         if (product) {
           title = product.name ?? '';
           brand = product.brand ?? '';
           pics = product.pics ?? 15;
           console.log(`[wb-photos] card.wb.ru ok: title="${title}", brand="${brand}", pics=${pics}`);
+        } else {
+          console.log(`[wb-photos] card.wb.ru: product not found in response, raw=${JSON.stringify(cardData).slice(0, 300)}`);
         }
+      } else {
+        const errText = await cardResp.text().catch(() => '');
+        console.log(`[wb-photos] card.wb.ru error: status=${cardResp.status}, body=${errText.slice(0, 200)}`);
       }
     } catch (e) {
-      console.log(`[wb-photos] card.wb.ru failed: ${e}`);
+      console.log(`[wb-photos] card.wb.ru exception: ${e}`);
     }
 
     // Generate URLs for calculated basket + neighbours (client hides 404s via onError)
     const basketNum = parseInt(basket, 10);
-    const baskets = [basket];
-    if (basketNum > 1) baskets.push(String(basketNum - 1).padStart(2, '0'));
-    baskets.push(String(basketNum + 1).padStart(2, '0'));
+    const baskets = [basket, String(basketNum + 1).padStart(2, '0'), String(basketNum - 1).padStart(2, '0')];
 
     const fallbackPhotos: string[] = [];
     for (const b of baskets) {
@@ -116,7 +124,8 @@ export async function POST(req: NextRequest) {
         fallbackPhotos.push(`https://basket-${b}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.webp`);
       }
     }
-    console.log(`[wb-photos] basket fallback: baskets=[${baskets}], pics=${pics}, total=${fallbackPhotos.length} urls`);
+    const first = fallbackPhotos[0];
+    console.log(`[wb-photos] basket fallback: baskets=[${baskets}], pics=${pics}, total=${fallbackPhotos.length}, first=${first}`);
     return Response.json({ photos: fallbackPhotos, title, brand, nmId, fallback: true });
   }
 
