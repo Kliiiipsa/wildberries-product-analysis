@@ -306,11 +306,25 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, generatePro
     }
   };
 
+  // ── Convert any URL to data URL (avoids CORS/canvas taint issues) ────────────
+  const toDataUrl = async (url: string): Promise<string> => {
+    if (url.startsWith('data:')) return url;
+    const res = await fetch(`/api/photo/proxy?url=${encodeURIComponent(url)}`);
+    if (!res.ok) throw new Error(`Не удалось загрузить изображение (${res.status})`);
+    const blob = await res.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target!.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
   // ── Render infographic onto a loaded image and return data URL ───────────────
+  // imgSrc MUST be a data URL (same-origin) — external URLs taint the canvas
   const renderOnImage = useCallback((imgSrc: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
       img.onload = () => {
         const canvas = canvasRef.current;
         if (!canvas) { reject(new Error('no canvas')); return; }
@@ -355,7 +369,8 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, generatePro
       }
 
       setGenStep('Накладываю инфографику...');
-      const final = await renderOnImage(fluxData.imageUrl);
+      const fluxDataUrl = await toDataUrl(fluxData.imageUrl);
+      const final = await renderOnImage(fluxDataUrl);
       setResultUrl(final);
       onExport?.(final);
     } catch (e) {
@@ -373,7 +388,8 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, generatePro
     setGenError('');
     setGenStep('Генерирую превью...');
     try {
-      const final = await renderOnImage(imageUrl);
+      const srcDataUrl = await toDataUrl(imageUrl);
+      const final = await renderOnImage(srcDataUrl);
       setResultUrl(final);
       onExport?.(final);
     } catch (e) {
@@ -417,7 +433,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, generatePro
 
         {/* Result area */}
         <div className="flex-1 min-w-0">
-          <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden aspect-[3/4] relative flex items-center justify-center">
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden max-h-[460px] min-h-[220px] relative flex items-center justify-center">
             {generating ? (
               <div className="text-center p-6">
                 <Loader2 className="h-10 w-10 animate-spin text-rose-400 mx-auto mb-3" />
