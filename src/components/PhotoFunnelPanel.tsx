@@ -24,6 +24,13 @@ interface PhotoAnalysis {
   generatePrompt?: string;
 }
 
+interface FunnelPhoto {
+  title: string;
+  description: string;
+  concept: 'studio' | 'closeup' | 'lifestyle' | 'silhouette';
+  promptEn: string;
+}
+
 const toArr = (v: string | string[] | undefined): string[] => {
   if (!v) return [];
   return Array.isArray(v) ? v : [v];
@@ -66,12 +73,20 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [generateError, setGenerateError] = useState('');
   const [activeTab, setActiveTab] = useState('assessment');
 
-  // Funnel generation
+  // Ideas funnel (from AI ideas tab)
   const [funnelImages, setFunnelImages] = useState<(string | null)[]>([]);
   const [funnelLoading, setFunnelLoading] = useState<boolean[]>([]);
   const [isFunnelGenerating, setIsFunnelGenerating] = useState(false);
 
-  // Russian prompt translation
+  // Воронка tab — 4 fixed concept photos
+  const [funnelPhotos, setFunnelPhotos] = useState<FunnelPhoto[]>([]);
+  const [isLoadingFunnelPrompts, setIsLoadingFunnelPrompts] = useState(false);
+  const [funnelPhotoImages, setFunnelPhotoImages] = useState<(string | null)[]>([null, null, null, null]);
+  const [funnelPhotoLoading, setFunnelPhotoLoading] = useState<boolean[]>([false, false, false, false]);
+  const [isFunnelPhotoGenerating, setIsFunnelPhotoGenerating] = useState(false);
+
+  // Russian prompt display (generatePrompt is English for AI, generatePromptRu is Russian for user)
+  const [generatePromptRu, setGeneratePromptRu] = useState('');
   const [ruPrompt, setRuPrompt] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
 
@@ -203,7 +218,17 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         parsed = raw as PhotoAnalysis;
       }
       setAnalysis(parsed);
-      if (parsed.generatePrompt) setGeneratePrompt(parsed.generatePrompt);
+      if (parsed.generatePrompt) {
+        setGeneratePrompt(parsed.generatePrompt);
+        // Auto-translate to Russian for display (fire-and-forget)
+        fetch('/api/photo/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: parsed.generatePrompt }),
+        }).then(r => r.json()).then(d => {
+          if (d.translated) setGeneratePromptRu(d.translated);
+        }).catch(() => {});
+      }
       setActiveTab('assessment');
     } catch (e) {
       setError(String(e));
@@ -230,10 +255,31 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     return parts.join(', ');
   };
 
+  // ── Translate prompt RU→EN if needed, then generate ────────────────────────
+  const resolveEnglishPrompt = async (ru: string, enFallback: string): Promise<string> => {
+    if (!/[а-яёА-ЯЁ]/.test(ru)) return ru; // already English
+    try {
+      const r = await fetch('/api/photo/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: ru }),
+      });
+      const d = await r.json();
+      return d.translated || enFallback;
+    } catch { return enFallback; }
+  };
+
   // ── Generate ────────────────────────────────────────────────────────────────
   const handleGenerate = async (customPrompt?: string) => {
     const src = effectiveUrl;
-    const prompt = customPrompt ?? generatePrompt;
+    // customPrompt is always English (from idea cards); display prompt may be Russian
+    let prompt: string;
+    if (customPrompt) {
+      prompt = customPrompt;
+    } else {
+      const displayPrompt = generatePromptRu || generatePrompt;
+      prompt = await resolveEnglishPrompt(displayPrompt, generatePrompt);
+    }
     if (!src || !prompt.trim()) return;
     setIsGenerating(true);
     setGenerateError('');
@@ -300,7 +346,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     setIsFunnelGenerating(false);
   };
 
-  // ── Translate Russian prompt to English ─────────────────────────────────────
+  // ── Translate custom Russian prompt to English ──────────────────────────────
   const handleTranslate = async () => {
     if (!ruPrompt.trim()) return;
     setIsTranslating(true);
@@ -311,9 +357,80 @@ export function PhotoFunnelPanel({ onBack }: Props) {
         body: JSON.stringify({ text: ruPrompt }),
       });
       const data = await res.json();
-      if (data.translated) setGeneratePrompt(data.translated);
+      if (data.translated) setGeneratePromptRu(data.translated);
     } catch { /* ignore */ } finally {
       setIsTranslating(false);
+    }
+  };
+
+  // ── Load funnel prompts (4 fixed concepts) ──────────────────────────────────
+  const handleLoadFunnelPrompts = async () => {
+    if (!analysis?.generatePrompt && !generatePrompt) return;
+    setIsLoadingFunnelPrompts(true);
+    setFunnelPhotos([]);
+    setFunnelPhotoImages([null, null, null, null]);
+    try {
+      const analysisText = analysis
+        ? `Что хорошо: ${toArr(analysis.good).join('; ')} | Улучшить: ${toArr(analysis.improve).join('; ')}`
+        : '';
+      const res = await fetch('/api/photo/funnel-prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generatePrompt: generatePrompt || '', analysisText }),
+      });
+      const data = await res.json();
+      if (data.funnelPhotos?.length) setFunnelPhotos(data.funnelPhotos);
+    } catch { /* ignore */ } finally {
+      setIsLoadingFunnelPrompts(false);
+    }
+  };
+
+  // ── Generate all 4 funnel photos ────────────────────────────────────────────
+  const handleGenerateFunnelPhotos = async () => {
+    const src = effectiveUrl;
+    if (!src || !funnelPhotos.length) return;
+    setIsFunnelPhotoGenerating(true);
+    setFunnelPhotoImages([null, null, null, null]);
+    setFunnelPhotoLoading([true, true, true, true]);
+
+    await Promise.allSettled(
+      funnelPhotos.map(async (photo, i) => {
+        try {
+          const res = await fetch('/api/photo/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl: src, prompt: buildPrompt(photo.promptEn) }),
+          });
+          const data = await res.json();
+          if (res.ok && data.imageUrl) {
+            setFunnelPhotoImages(prev => { const n = [...prev]; n[i] = data.imageUrl; return n; });
+          }
+        } catch { /* ignore */ } finally {
+          setFunnelPhotoLoading(prev => { const n = [...prev]; n[i] = false; return n; });
+        }
+      })
+    );
+    setIsFunnelPhotoGenerating(false);
+  };
+
+  // ── Generate single funnel photo ────────────────────────────────────────────
+  const handleGenerateSingleFunnelPhoto = async (photo: FunnelPhoto, i: number) => {
+    const src = effectiveUrl;
+    if (!src) return;
+    setFunnelPhotoLoading(prev => { const n = [...prev]; n[i] = true; return n; });
+    setFunnelPhotoImages(prev => { const n = [...prev]; n[i] = null; return n; });
+    try {
+      const res = await fetch('/api/photo/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: src, prompt: buildPrompt(photo.promptEn) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.imageUrl) {
+        setFunnelPhotoImages(prev => { const n = [...prev]; n[i] = data.imageUrl; return n; });
+      }
+    } catch { /* ignore */ } finally {
+      setFunnelPhotoLoading(prev => { const n = [...prev]; n[i] = false; return n; });
     }
   };
 
@@ -591,8 +708,9 @@ export function PhotoFunnelPanel({ onBack }: Props) {
 
       {analysis && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-5 w-full bg-slate-800/60 rounded-xl mb-5 h-10">
+          <TabsList className="grid grid-cols-6 w-full bg-slate-800/60 rounded-xl mb-5 h-10">
             <TabsTrigger value="assessment" className="text-xs rounded-lg">Оценка</TabsTrigger>
+            <TabsTrigger value="funnel" className="text-xs rounded-lg">Воронка</TabsTrigger>
             <TabsTrigger value="ideas" className="text-xs rounded-lg">Идеи</TabsTrigger>
             <TabsTrigger value="generate" className="text-xs rounded-lg">Генерация</TabsTrigger>
             <TabsTrigger value="character" className="text-xs rounded-lg">Персонаж</TabsTrigger>
@@ -682,9 +800,95 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             )}
           </TabsContent>
 
+          {/* ── ВОРОНКА ── */}
+          <TabsContent value="funnel" className="mt-0 space-y-5">
+            <div className="rounded-xl border border-slate-700/40 bg-slate-800/20 p-4">
+              <p className="text-sm text-slate-300 font-medium mb-1">Фотоворонка из 4 снимков</p>
+              <p className="text-xs text-slate-500 mb-4">
+                Студийное главное фото · Детали и качество · Лайфстайл в движении · Посадка и силуэт —
+                AI подберёт промпты под ваш товар на основе анализа фото.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  onClick={handleLoadFunnelPrompts}
+                  disabled={isLoadingFunnelPrompts || !generatePrompt}
+                  className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl h-10 px-4 text-sm"
+                >
+                  {isLoadingFunnelPrompts
+                    ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Формирую промпты...</>
+                    : <><Sparkles className="h-4 w-4 mr-2" />Сформировать промпты воронки</>}
+                </Button>
+                {funnelPhotos.length === 4 && (
+                  <Button
+                    onClick={handleGenerateFunnelPhotos}
+                    disabled={isFunnelPhotoGenerating || !effectiveUrl}
+                    className="bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white font-semibold rounded-xl h-10 px-4 text-sm"
+                  >
+                    {isFunnelPhotoGenerating
+                      ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую все 4...</>
+                      : '📸 Создать все 4 фото'}
+                  </Button>
+                )}
+              </div>
+              {!generatePrompt && (
+                <p className="text-xs text-amber-500/80 mt-2">Сначала нажмите «Анализировать» — нужен анализ фото</p>
+              )}
+            </div>
+
+            {/* 4 concept cards + results */}
+            {funnelPhotos.length === 4 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {funnelPhotos.map((photo, i) => {
+                  const conceptIcon = ['📸', '🔍', '🏃', '👗'][i];
+                  const img = funnelPhotoImages[i];
+                  const isLoading = funnelPhotoLoading[i];
+                  return (
+                    <div key={i} className="rounded-xl border border-slate-700/50 bg-slate-800/20 overflow-hidden">
+                      {/* Image area */}
+                      <div className="relative aspect-[3/4] bg-slate-900">
+                        {isLoading ? (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <Loader2 className="h-10 w-10 animate-spin text-rose-400 mb-2" />
+                            <p className="text-xs text-slate-500">Генерирую...</p>
+                          </div>
+                        ) : img ? (
+                          <img src={img} alt={photo.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
+                            <span className="text-4xl mb-2">{conceptIcon}</span>
+                            <p className="text-xs text-slate-500">{photo.description}</p>
+                          </div>
+                        )}
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                          <span className="text-xs bg-black/70 text-white px-2 py-0.5 rounded-full font-medium">{i + 1}</span>
+                          <span className="text-xs bg-black/70 text-white px-2 py-0.5 rounded-full">{photo.title}</span>
+                        </div>
+                        {img && (
+                          <a href={img} download={`funnel-${i + 1}.jpg`} target="_blank" rel="noreferrer"
+                            className="absolute bottom-2 right-2 text-xs bg-black/70 text-white px-2 py-1 rounded-lg hover:bg-black">⬇ Скачать</a>
+                        )}
+                      </div>
+                      {/* Card info */}
+                      <div className="p-3">
+                        <p className="text-xs text-slate-400 mb-2 leading-relaxed">{photo.description}</p>
+                        <Button
+                          onClick={() => handleGenerateSingleFunnelPhoto(photo, i)}
+                          disabled={isLoading || isFunnelPhotoGenerating || !effectiveUrl}
+                          size="sm"
+                          className="w-full bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs h-8"
+                        >
+                          {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : '↻ Перегенерировать'}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
           {/* ── IDEAS ── */}
           <TabsContent value="ideas" className="mt-0 space-y-5">
-            {/* Funnel generation button */}
             <div className="flex items-center gap-3 flex-wrap">
               <Button
                 onClick={handleFunnelGenerate}
@@ -692,13 +896,13 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                 className="bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white font-semibold rounded-xl h-10 px-5"
               >
                 {isFunnelGenerating
-                  ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую воронку...</>
-                  : <><Sparkles className="h-4 w-4 mr-2" />Создать воронку ({analysis.ideas?.length ?? 6} фото)</>}
+                  ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую...</>
+                  : <><Sparkles className="h-4 w-4 mr-2" />Сгенерировать все {analysis.ideas?.length ?? 6} идей</>}
               </Button>
               <p className="text-xs text-slate-500">или нажмите на идею для одного фото</p>
             </div>
 
-            {/* Funnel grid (2 columns, variable rows) */}
+            {/* Ideas funnel grid */}
             {(isFunnelGenerating || funnelImages.some(img => img !== null)) && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {funnelImages.map((img, i) => {
@@ -772,42 +976,48 @@ export function PhotoFunnelPanel({ onBack }: Props) {
 
           {/* ── GENERATE ── */}
           <TabsContent value="generate" className="mt-0 space-y-4">
-            {/* Russian input with translate */}
-            <div className="rounded-xl border border-slate-700/50 bg-slate-800/20 p-3 space-y-2">
-              <label className="text-xs text-slate-400 font-medium block">Опишите на русском — что хотите изменить</label>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-slate-400 font-medium">Промпт для генерации (на русском)</label>
+                {generatePromptRu && (
+                  <span className="text-xs text-emerald-500/80">✓ переведён AI после анализа</span>
+                )}
+              </div>
               <textarea
-                value={ruPrompt}
-                onChange={e => setRuPrompt(e.target.value)}
-                placeholder="Например: замени фон на тёмный бетон, добавь мягкое боковое освещение..."
-                rows={3}
-                className="w-full rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
+                value={generatePromptRu || generatePrompt}
+                onChange={e => setGeneratePromptRu(e.target.value)}
+                placeholder="Опишите что изменить, или нажмите «Анализировать» — AI заполнит автоматически..."
+                rows={6}
+                className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
               />
-              <Button
-                onClick={handleTranslate}
-                disabled={isTranslating || !ruPrompt.trim()}
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs h-8 px-3"
-              >
-                {isTranslating
-                  ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Перевожу...</>
-                  : '🌐 Перевести в промпт'}
-              </Button>
+              <p className="text-xs text-slate-600 mt-1">Текст на русском — при генерации автоматически переведётся в английский для AI</p>
             </div>
 
-            {/* English prompt (editable) */}
-            <div>
-              <label className="text-xs text-slate-400 mb-2 block">Промпт для AI (английский) — редактируйте вручную или используйте перевод выше</label>
-              <textarea
-                value={generatePrompt}
-                onChange={e => setGeneratePrompt(e.target.value)}
-                placeholder="Describe what to change in English..."
-                rows={5}
-                className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none font-mono"
-              />
+            {/* Custom Russian input */}
+            <div className="rounded-xl border border-slate-700/40 bg-slate-800/20 p-3 space-y-2">
+              <label className="text-xs text-slate-500 font-medium block">Или добавьте свои правки на русском:</label>
+              <div className="flex gap-2">
+                <input
+                  value={ruPrompt}
+                  onChange={e => setRuPrompt(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && ruPrompt.trim()) handleTranslate(); }}
+                  placeholder="замени фон на тёмный бетон..."
+                  className="flex-1 rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-1.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60"
+                />
+                <Button
+                  onClick={handleTranslate}
+                  disabled={isTranslating || !ruPrompt.trim()}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs h-9 px-3 shrink-0"
+                >
+                  {isTranslating ? <Loader2 className="h-3 w-3 animate-spin" /> : '→ В промпт'}
+                </Button>
+              </div>
             </div>
+
             <Button
               onClick={() => handleGenerate()}
-              disabled={isGenerating || !generatePrompt.trim() || !effectiveUrl}
+              disabled={isGenerating || !(generatePromptRu || generatePrompt).trim() || !effectiveUrl}
               className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
             >
               {isGenerating
@@ -886,6 +1096,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                   <PhotoInfographicEditor
                     imageUrl={imagePreview}
                     analysis={{ good: toArr(analysis.good), improve: toArr(analysis.improve) }}
+                    generatePrompt={generatePrompt}
                     onExport={dataUrl => setGeneratedImage(dataUrl)}
                   />
                 ) : (

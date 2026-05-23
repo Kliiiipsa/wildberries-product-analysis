@@ -20,6 +20,7 @@ type TemplateStyle = 'light' | 'dark' | 'beige' | 'black';
 interface Props {
   imageUrl: string;
   analysis?: { good?: string[]; improve?: string[] } | null;
+  generatePrompt?: string;
   onExport?: (dataUrl: string) => void;
 }
 
@@ -343,13 +344,15 @@ function drawInfographic(
   }
 }
 
-export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }: Props) {
+export default function PhotoInfographicEditor({ imageUrl, analysis, generatePrompt, onExport }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ w: 500, h: 700 });
   const [data, setData] = useState<InfographicData>(DEFAULT_DATA);
   const [template, setTemplate] = useState<TemplateStyle>('light');
   const [loading, setLoading] = useState(false);
+  const [fluxLoading, setFluxLoading] = useState(false);
+  const [activeImageUrl, setActiveImageUrl] = useState(imageUrl);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -360,8 +363,10 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     drawInfographic(ctx, img, canvas.width, canvas.height, data, template);
   }, [data, template]);
 
+  useEffect(() => { setActiveImageUrl(imageUrl); }, [imageUrl]);
+
   useEffect(() => {
-    if (!imageUrl) return;
+    if (!activeImageUrl) return;
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
@@ -370,8 +375,32 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
       const h = Math.round(img.naturalHeight * scale);
       setCanvasSize({ w: maxW, h });
     };
-    img.src = imageUrl;
-  }, [imageUrl]);
+    img.src = activeImageUrl;
+  }, [activeImageUrl]);
+
+  // ── Generate infographic background via FLUX ────────────────────────────────
+  const generateFluxBackground = async () => {
+    if (!imageUrl) return;
+    setFluxLoading(true);
+    try {
+      // Extract [PRESERVE] from existing prompt or build a generic one
+      const preserveSection = generatePrompt
+        ? (generatePrompt.split(/\[CHANGE\]|\[SCENE\]|\[QUALITY\]/)[0] ?? '')
+        : '';
+
+      const fluxPrompt = `${preserveSection} [CHANGE] Change only: recompose the shot for a WB marketplace product card — position the model/product to the RIGHT half of the frame, keep the LEFT 45% clean with a smooth studio background (no model, no props). [SCENE] Clean bright studio, smooth gradient background (white fading to soft light grey), soft wrap lighting from the left, product sharp and well-lit, left panel area completely empty and clean for text overlay. WB Premium Card Style, commercial e-commerce product photography. [QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural studio light, no AI artifacts, real film grain.`;
+
+      const res = await fetch('/api/photo/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl, prompt: fluxPrompt }),
+      });
+      const json = await res.json();
+      if (json.imageUrl) setActiveImageUrl(json.imageUrl);
+    } catch { /* ignore */ } finally {
+      setFluxLoading(false);
+    }
+  };
 
   useEffect(() => { redraw(); }, [redraw, canvasSize]);
 
@@ -429,11 +458,27 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
         <div className="flex gap-2 flex-wrap items-center">
           <button
             onClick={generateAI}
-            disabled={loading}
+            disabled={loading || fluxLoading}
             className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2"
           >
-            {loading ? '⏳ Генерирую...' : '✨ Заполнить текст (AI)'}
+            {loading ? '⏳ Генерирую...' : '✨ Текст (AI)'}
           </button>
+          <button
+            onClick={generateFluxBackground}
+            disabled={fluxLoading || loading}
+            title="FLUX перекомпонует фото: товар вправо, левая половина чистая — идеально для инфографики"
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+          >
+            {fluxLoading ? '⏳ FLUX...' : '🎨 Улучшить фон (FLUX)'}
+          </button>
+          {activeImageUrl !== imageUrl && (
+            <button
+              onClick={() => setActiveImageUrl(imageUrl)}
+              className="px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs"
+            >
+              ↩ Оригинал
+            </button>
+          )}
           <div className="flex gap-1 ml-auto">
             {TEMPLATE_LABELS.map(([t, label, cls]) => (
               <button
