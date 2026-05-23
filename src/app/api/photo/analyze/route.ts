@@ -169,8 +169,10 @@ export async function POST(req: NextRequest) {
 
     let analysis;
     try {
-      const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      analysis = JSON.parse(clean);
+      const jsonStart = content.indexOf('{');
+      const jsonEnd = content.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error('no JSON object found');
+      analysis = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
     } catch {
       analysis = content;
     }
