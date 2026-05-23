@@ -66,10 +66,14 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [generateError, setGenerateError] = useState('');
   const [activeTab, setActiveTab] = useState('assessment');
 
-  // Funnel generation — 4 photos in parallel
-  const [funnelImages, setFunnelImages] = useState<(string | null)[]>([null, null, null, null]);
-  const [funnelLoading, setFunnelLoading] = useState<boolean[]>([false, false, false, false]);
+  // Funnel generation
+  const [funnelImages, setFunnelImages] = useState<(string | null)[]>([]);
+  const [funnelLoading, setFunnelLoading] = useState<boolean[]>([]);
   const [isFunnelGenerating, setIsFunnelGenerating] = useState(false);
+
+  // Russian prompt translation
+  const [ruPrompt, setRuPrompt] = useState('');
+  const [isTranslating, setIsTranslating] = useState(false);
 
   const [modelAppearance, setModelAppearance] = useState<ModelAppearance>({
     gender: '', age: '', bodyType: '', hairColor: '', extra: '',
@@ -260,14 +264,15 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     handleGenerate(prompt);
   };
 
-  // ── Generate full funnel (4 photos in parallel) ─────────────────────────────
+  // ── Generate full funnel (all ideas in parallel) ────────────────────────────
   const handleFunnelGenerate = async () => {
     const src = effectiveUrl;
     if (!src || !analysis?.ideas?.length) return;
-    const ideas = analysis.ideas.slice(0, 4);
+    const ideas = analysis.ideas;
+    const count = ideas.length;
     setIsFunnelGenerating(true);
-    setFunnelImages([null, null, null, null]);
-    setFunnelLoading([true, true, true, true]);
+    setFunnelImages(Array(count).fill(null));
+    setFunnelLoading(Array(count).fill(true));
     setActiveTab('ideas');
 
     await Promise.allSettled(
@@ -293,6 +298,23 @@ export function PhotoFunnelPanel({ onBack }: Props) {
       })
     );
     setIsFunnelGenerating(false);
+  };
+
+  // ── Translate Russian prompt to English ─────────────────────────────────────
+  const handleTranslate = async () => {
+    if (!ruPrompt.trim()) return;
+    setIsTranslating(true);
+    try {
+      const res = await fetch('/api/photo/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: ruPrompt }),
+      });
+      const data = await res.json();
+      if (data.translated) setGeneratePrompt(data.translated);
+    } catch { /* ignore */ } finally {
+      setIsTranslating(false);
+    }
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -671,14 +693,14 @@ export function PhotoFunnelPanel({ onBack }: Props) {
               >
                 {isFunnelGenerating
                   ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую воронку...</>
-                  : <><Sparkles className="h-4 w-4 mr-2" />Создать фотоворонку (4 фото)</>}
+                  : <><Sparkles className="h-4 w-4 mr-2" />Создать воронку ({analysis.ideas?.length ?? 6} фото)</>}
               </Button>
               <p className="text-xs text-slate-500">или нажмите на идею для одного фото</p>
             </div>
 
-            {/* Funnel 2×2 grid */}
+            {/* Funnel grid (2 columns, variable rows) */}
             {(isFunnelGenerating || funnelImages.some(img => img !== null)) && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {funnelImages.map((img, i) => {
                   const idea = analysis.ideas?.[i];
                   return (
@@ -750,14 +772,37 @@ export function PhotoFunnelPanel({ onBack }: Props) {
 
           {/* ── GENERATE ── */}
           <TabsContent value="generate" className="mt-0 space-y-4">
+            {/* Russian input with translate */}
+            <div className="rounded-xl border border-slate-700/50 bg-slate-800/20 p-3 space-y-2">
+              <label className="text-xs text-slate-400 font-medium block">Опишите на русском — что хотите изменить</label>
+              <textarea
+                value={ruPrompt}
+                onChange={e => setRuPrompt(e.target.value)}
+                placeholder="Например: замени фон на тёмный бетон, добавь мягкое боковое освещение..."
+                rows={3}
+                className="w-full rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
+              />
+              <Button
+                onClick={handleTranslate}
+                disabled={isTranslating || !ruPrompt.trim()}
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs h-8 px-3"
+              >
+                {isTranslating
+                  ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Перевожу...</>
+                  : '🌐 Перевести в промпт'}
+              </Button>
+            </div>
+
+            {/* English prompt (editable) */}
             <div>
-              <label className="text-xs text-slate-400 mb-2 block">Промпт (английский) — AI заполнил автоматически, можно редактировать</label>
+              <label className="text-xs text-slate-400 mb-2 block">Промпт для AI (английский) — редактируйте вручную или используйте перевод выше</label>
               <textarea
                 value={generatePrompt}
                 onChange={e => setGeneratePrompt(e.target.value)}
-                placeholder="Describe what to change..."
+                placeholder="Describe what to change in English..."
                 rows={5}
-                className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
+                className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none font-mono"
               />
             </div>
             <Button

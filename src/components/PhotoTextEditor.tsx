@@ -207,7 +207,7 @@ export default function PhotoTextEditor({ imageUrl, analysis, onExport }: PhotoT
   const loadAISuggestions = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/photo/text', {
+      const res = await fetch('/api/photo/text-blocks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ analysis }),

@@ -15,7 +15,7 @@ interface InfographicData {
   bottomText: string;
 }
 
-type TemplateStyle = 'light' | 'dark' | 'beige';
+type TemplateStyle = 'light' | 'dark' | 'beige' | 'black';
 
 interface Props {
   imageUrl: string;
@@ -35,27 +35,55 @@ const DEFAULT_DATA: InfographicData = {
   bottomText: 'подпись внизу',
 };
 
-const TEMPLATES: Record<TemplateStyle, { overlayBg: string; textColor: string; subtitleColor: string; accentColor: string; circleStroke: string }> = {
+const TEMPLATES: Record<TemplateStyle, {
+  overlayBg: string;
+  textColor: string;
+  subtitleColor: string;
+  accentColor: string;
+  circleStroke: string;
+  tagBg: string;
+  tagText: string;
+  bottomBg: string;
+}> = {
   light: {
-    overlayBg: 'rgba(255,252,248,0.94)',
+    overlayBg: 'rgba(252,249,244,0.96)',
     textColor: '#1a1a1a',
-    subtitleColor: 'rgba(30,30,30,0.55)',
+    subtitleColor: 'rgba(30,30,30,0.5)',
     accentColor: '#7a5c2a',
-    circleStroke: '#b8922e',
+    circleStroke: '#c49a3c',
+    tagBg: 'rgba(122,92,42,0.12)',
+    tagText: '#7a5c2a',
+    bottomBg: 'rgba(122,92,42,0.06)',
   },
   dark: {
-    overlayBg: 'rgba(12,12,14,0.91)',
+    overlayBg: 'rgba(10,10,12,0.93)',
     textColor: '#f0ede8',
-    subtitleColor: 'rgba(240,237,232,0.55)',
+    subtitleColor: 'rgba(240,237,232,0.5)',
     accentColor: '#c9a96e',
     circleStroke: '#c9a96e',
+    tagBg: 'rgba(201,169,110,0.15)',
+    tagText: '#c9a96e',
+    bottomBg: 'rgba(201,169,110,0.06)',
   },
   beige: {
-    overlayBg: 'rgba(243,236,224,0.96)',
+    overlayBg: 'rgba(240,232,218,0.97)',
     textColor: '#2c1f0e',
-    subtitleColor: 'rgba(44,31,14,0.5)',
-    accentColor: '#8b6030',
-    circleStroke: '#a07040',
+    subtitleColor: 'rgba(44,31,14,0.45)',
+    accentColor: '#8b5e30',
+    circleStroke: '#a0723e',
+    tagBg: 'rgba(139,94,48,0.12)',
+    tagText: '#8b5e30',
+    bottomBg: 'rgba(139,94,48,0.07)',
+  },
+  black: {
+    overlayBg: 'rgba(0,0,0,0.97)',
+    textColor: '#ffffff',
+    subtitleColor: 'rgba(255,255,255,0.45)',
+    accentColor: '#e0c97a',
+    circleStroke: '#e0c97a',
+    tagBg: 'rgba(224,201,122,0.14)',
+    tagText: '#e0c97a',
+    bottomBg: 'rgba(224,201,122,0.07)',
   },
 };
 
@@ -72,6 +100,20 @@ function wrapTextCanvas(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
   return lines;
 }
 
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 function drawInfographic(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -81,135 +123,223 @@ function drawInfographic(
   style: TemplateStyle
 ) {
   const t = TEMPLATES[style];
-  const overlayW = Math.round(w * 0.52);
-  const pad = Math.round(w * 0.038);
+  const panelW = Math.round(w * 0.50);
+  const stripeW = Math.round(w * 0.013);
+  const pad = stripeW + Math.round(w * 0.038);
+  const fadeW = Math.round(w * 0.055);
+  const maxTextW = panelW - pad - Math.round(w * 0.018);
 
-  // Photo background
+  // ── Photo background ──
   ctx.drawImage(img, 0, 0, w, h);
 
-  // Left overlay — solid rect
+  // ── Left panel solid ──
   ctx.fillStyle = t.overlayBg;
-  ctx.fillRect(0, 0, overlayW, h);
+  ctx.fillRect(0, 0, panelW, h);
 
-  // Soft gradient fade on right edge of overlay
-  const fadeW = Math.round(w * 0.04);
-  const grad = ctx.createLinearGradient(overlayW - fadeW, 0, overlayW, 0);
+  // ── Gradient fade on right edge ──
+  const grad = ctx.createLinearGradient(panelW - fadeW, 0, panelW, 0);
   grad.addColorStop(0, t.overlayBg);
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
-  ctx.fillRect(overlayW - fadeW, 0, fadeW, h);
+  ctx.fillRect(panelW - fadeW, 0, fadeW, h);
 
-  const maxTextW = overlayW - pad * 2 - fadeW;
-
-  let y = Math.round(h * 0.06);
-
-  // ── Tagline (small italic, accent color) ──
-  ctx.font = `italic ${Math.round(h * 0.018)}px Georgia, 'Times New Roman', serif`;
+  // ── Left accent stripe ──
   ctx.fillStyle = t.accentColor;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(data.tagline, pad, y);
-  y += Math.round(h * 0.035);
+  ctx.fillRect(0, 0, stripeW, h);
 
-  // ── Product name (large bold) ──
-  const nameSize = Math.round(h * 0.068);
+  // ── Subtle dot grid in top-right corner of panel ──
+  const dotArea = Math.round(w * 0.10);
+  const dotR = 1.2;
+  const dotStep = Math.round(w * 0.022);
+  for (let dx = 0; dx <= dotArea; dx += dotStep) {
+    for (let dy = 0; dy <= dotArea; dy += dotStep) {
+      ctx.beginPath();
+      ctx.arc(panelW - fadeW - 4 - (dotArea - dx), Math.round(h * 0.032) + dy, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = t.circleStroke;
+      ctx.globalAlpha = 0.18;
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  let y = Math.round(h * 0.058);
+
+  // ── Tagline pill ──
+  const tagSize = Math.round(h * 0.017);
+  ctx.font = `600 ${tagSize}px Arial, Helvetica, sans-serif`;
+  const tagText = data.tagline.toUpperCase();
+  const tagTextW = ctx.measureText(tagText).width;
+  const tagPadH = Math.round(tagSize * 0.5);
+  const tagPadV = Math.round(tagSize * 0.35);
+  const tagW = tagTextW + tagPadH * 2;
+  const tagH = tagSize + tagPadV * 2;
+  const tagR = tagH / 2;
+
+  // pill background
+  roundRect(ctx, pad, y, tagW, tagH, tagR);
+  ctx.fillStyle = t.tagBg;
+  ctx.fill();
+  // pill border
+  roundRect(ctx, pad, y, tagW, tagH, tagR);
+  ctx.strokeStyle = t.accentColor;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.5;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // pill text
+  ctx.fillStyle = t.tagText;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(tagText, pad + tagPadH, y + tagH / 2);
+  ctx.textBaseline = 'top';
+
+  y += tagH + Math.round(h * 0.02);
+
+  // ── Product name ──
+  const nameSize = Math.round(h * 0.074);
   ctx.font = `900 ${nameSize}px Arial, Helvetica, sans-serif`;
   ctx.fillStyle = t.textColor;
+  ctx.textAlign = 'left';
   const nameLines = wrapTextCanvas(ctx, data.productName.toUpperCase(), maxTextW);
   for (const line of nameLines) {
     ctx.fillText(line, pad, y);
-    y += Math.round(nameSize * 1.1);
+    y += Math.round(nameSize * 1.06);
   }
 
-  // ── Product subtitle (italic, muted) ──
-  const subSize = Math.round(h * 0.024);
+  // ── Subtitle italic ──
+  const subSize = Math.round(h * 0.022);
   ctx.font = `italic ${subSize}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = t.subtitleColor;
   ctx.fillText(data.productSubtitle, pad, y);
-  y += Math.round(h * 0.03);
+  y += subSize + Math.round(h * 0.022);
 
-  // ── Accent line ──
+  // ── Divider line with center diamond ──
+  const lineY = y + 2;
+  const lineX1 = pad;
+  const lineX2 = panelW - pad - fadeW;
+  const midX = (lineX1 + lineX2) / 2;
+  const dSize = 4;
+
   ctx.beginPath();
-  ctx.moveTo(pad, y);
-  ctx.lineTo(overlayW - pad - fadeW, y);
+  ctx.moveTo(lineX1, lineY);
+  ctx.lineTo(midX - dSize * 1.6, lineY);
   ctx.strokeStyle = t.circleStroke;
   ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.4;
   ctx.stroke();
-  y += Math.round(h * 0.035);
+
+  ctx.beginPath();
+  ctx.moveTo(midX + dSize * 1.6, lineY);
+  ctx.lineTo(lineX2, lineY);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Diamond center
+  ctx.beginPath();
+  ctx.moveTo(midX, lineY - dSize);
+  ctx.lineTo(midX + dSize, lineY);
+  ctx.lineTo(midX, lineY + dSize);
+  ctx.lineTo(midX - dSize, lineY);
+  ctx.closePath();
+  ctx.fillStyle = t.circleStroke;
+  ctx.fill();
+
+  y += Math.round(h * 0.036);
+
+  // ── "ХАРАКТЕРИСТИКИ" label ──
+  const sectionLabelSize = Math.round(h * 0.014);
+  ctx.font = `600 ${sectionLabelSize}px Arial, Helvetica, sans-serif`;
+  ctx.fillStyle = t.subtitleColor;
+  ctx.textBaseline = 'top';
+  ctx.fillText('ХАРАКТЕРИСТИКИ', pad, y);
+  y += sectionLabelSize + Math.round(h * 0.016);
 
   // ── Characteristics ──
   const chars = data.characteristics.slice(0, 3);
-  const circleR = Math.round(h * 0.034);
-  const charTitleSize = Math.round(h * 0.02);
-  const charValSize = Math.round(h * 0.016);
-  const charSpacing = Math.round(h * 0.145);
+  const charTitleSize = Math.round(h * 0.019);
+  const charValSize = Math.round(h * 0.015);
+  const badgeSize = Math.round(h * 0.036);
+  const charSpacing = Math.round(h * 0.118);
 
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
-    const cx = pad + circleR;
-    const cy = y + circleR;
+    const bx = pad;
+    const by = y;
 
-    // Circle
-    ctx.beginPath();
-    ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
+    // Badge background
+    roundRect(ctx, bx, by, badgeSize, badgeSize, 5);
+    ctx.fillStyle = t.tagBg;
+    ctx.fill();
+    roundRect(ctx, bx, by, badgeSize, badgeSize, 5);
     ctx.strokeStyle = t.circleStroke;
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Number inside circle
-    ctx.font = `bold ${Math.round(circleR * 0.9)}px Arial, sans-serif`;
+    // Number in badge
+    ctx.font = `bold ${Math.round(badgeSize * 0.52)}px Arial, Helvetica, sans-serif`;
     ctx.fillStyle = t.accentColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), cx, cy);
+    ctx.fillText(String(i + 1), bx + badgeSize / 2, by + badgeSize / 2 + 0.5);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
-    const tx = cx + circleR + Math.round(w * 0.018);
-    const tMaxW = maxTextW - circleR * 2 - Math.round(w * 0.02);
+    const tx = bx + badgeSize + Math.round(w * 0.018);
+    const tMaxW = maxTextW - badgeSize - Math.round(w * 0.02);
+    const titleY = by + (badgeSize - charTitleSize) / 2 - 1;
 
-    // Title
-    ctx.font = `bold ${charTitleSize}px Arial, Helvetica, sans-serif`;
+    // Char title
+    ctx.font = `700 ${charTitleSize}px Arial, Helvetica, sans-serif`;
     ctx.fillStyle = t.textColor;
-    ctx.fillText(ch.title.toUpperCase(), tx, y + 4);
+    ctx.fillText(ch.title.toUpperCase(), tx, titleY);
 
-    // Value
+    // Char value
     if (ch.value) {
       ctx.font = `${charValSize}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = t.subtitleColor;
       const valLines = wrapTextCanvas(ctx, ch.value, tMaxW);
-      let vy = y + charTitleSize + 8;
+      let vy = titleY + charTitleSize + 3;
       for (const vl of valLines) {
         ctx.fillText(vl, tx, vy);
-        vy += charValSize + 3;
+        vy += charValSize + 2;
       }
     }
 
     y += charSpacing;
   }
 
-  // ── Bottom text ──
+  // ── Bottom section ──
+  const bottomH = Math.round(h * 0.09);
+  const bottomY = h - bottomH;
+
+  // Bottom tinted strip
+  ctx.fillStyle = t.bottomBg;
+  ctx.fillRect(0, bottomY, panelW, bottomH);
+
+  // Thin top line of bottom
+  ctx.beginPath();
+  ctx.moveTo(pad, bottomY + 8);
+  ctx.lineTo(panelW - pad - fadeW, bottomY + 8);
+  ctx.strokeStyle = t.circleStroke;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.3;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
   if (data.bottomText) {
-    const btSize = Math.round(h * 0.018);
-    const btY = h - Math.round(h * 0.06);
-
-    // Small accent line above
-    ctx.beginPath();
-    ctx.moveTo(pad, btY - 10);
-    ctx.lineTo(pad + Math.round(w * 0.06), btY - 10);
-    ctx.strokeStyle = t.circleStroke;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
+    const btSize = Math.round(h * 0.017);
     ctx.font = `italic ${btSize}px Georgia, 'Times New Roman', serif`;
     ctx.fillStyle = t.subtitleColor;
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'middle';
     const btLines = wrapTextCanvas(ctx, data.bottomText, maxTextW);
-    let by = btY;
+    const totalBtH = btLines.length * (btSize + 4);
+    let by = bottomY + (bottomH - totalBtH) / 2 + 4;
     for (const bl of btLines) {
       ctx.fillText(bl, pad, by);
       by += btSize + 4;
     }
+    ctx.textBaseline = 'top';
   }
 }
 
@@ -230,7 +360,6 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     drawInfographic(ctx, img, canvas.width, canvas.height, data, template);
   }, [data, template]);
 
-  // Load image
   useEffect(() => {
     if (!imageUrl) return;
     const img = new Image();
@@ -244,7 +373,6 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     img.src = imageUrl;
   }, [imageUrl]);
 
-  // Redraw on data/template change or size change
   useEffect(() => { redraw(); }, [redraw, canvasSize]);
 
   const generateAI = async () => {
@@ -273,7 +401,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
   const exportImage = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const url = canvas.toDataURL('image/jpeg', 0.95);
+    const url = canvas.toDataURL('image/jpeg', 0.96);
     onExport?.(url);
     const a = document.createElement('a');
     a.href = url; a.download = 'infographic.jpg'; a.click();
@@ -287,10 +415,17 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     });
   };
 
+  const TEMPLATE_LABELS: [TemplateStyle, string, string][] = [
+    ['light', 'Светлый', 'bg-amber-50 text-amber-900 border border-amber-200'],
+    ['dark', 'Тёмный', 'bg-zinc-900 text-zinc-100 border border-zinc-700'],
+    ['beige', 'Бежевый', 'bg-amber-100 text-amber-950 border border-amber-300'],
+    ['black', 'Чёрный', 'bg-black text-yellow-300 border border-yellow-700'],
+  ];
+
   return (
     <div className="flex gap-4">
       {/* Canvas */}
-      <div className="flex-1 flex flex-col gap-3">
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
         <div className="flex gap-2 flex-wrap items-center">
           <button
             onClick={generateAI}
@@ -299,13 +434,12 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
           >
             {loading ? '⏳ Генерирую...' : '✨ Заполнить текст (AI)'}
           </button>
-          {/* Template selector */}
           <div className="flex gap-1 ml-auto">
-            {([['light', 'Светлый'], ['dark', 'Тёмный'], ['beige', 'Бежевый']] as const).map(([t, label]) => (
+            {TEMPLATE_LABELS.map(([t, label, cls]) => (
               <button
                 key={t}
                 onClick={() => setTemplate(t)}
-                className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${template === t ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-90'} ${t === 'dark' ? 'bg-zinc-900 text-white' : t === 'beige' ? 'bg-amber-100 text-amber-900' : 'bg-white text-zinc-900'}`}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${cls} ${template === t ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-90'}`}
               >
                 {label}
               </button>
@@ -319,7 +453,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
           </button>
         </div>
 
-        <div className="border border-zinc-700 rounded-xl overflow-hidden" style={{ lineHeight: 0 }}>
+        <div className="border border-zinc-700 rounded-xl overflow-hidden bg-zinc-900" style={{ lineHeight: 0 }}>
           <canvas
             ref={canvasRef}
             width={canvasSize.w}
@@ -332,7 +466,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
       {/* Editor panel */}
       <div className="w-60 shrink-0 flex flex-col gap-3">
         <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
-          <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-0.5">Название</div>
+          <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-0.5">Заголовок</div>
           <input
             value={data.tagline}
             onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}

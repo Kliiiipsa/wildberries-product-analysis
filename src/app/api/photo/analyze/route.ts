@@ -43,24 +43,26 @@ ONE change with maximum conversion impact. Priority:
 4. Generic studio → add lifestyle context matching the product
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 4 — 4 FUNNEL IDEAS (smart lifestyle selection)
+STEP 4 — 6 FUNNEL IDEAS (smart lifestyle selection)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Generate EXACTLY 4 ideas. ideas[1] and ideas[3] MUST be TWO DIFFERENT LIFESTYLE LOCATIONS chosen based on the product category and gender:
+Generate EXACTLY 6 ideas. ideas[1], ideas[3], ideas[5] MUST be THREE DIFFERENT LIFESTYLE LOCATIONS chosen based on the product category and gender:
 
 LIFESTYLE LOCATION GUIDE (choose from these, match to item):
-  Men's shorts/sweatpants  →  [A] urban concrete plaza or skate park (midday hard light)  [B] sports park / outdoor basketball court (golden hour)
-  Men's jeans/pants        →  [A] city street with architecture (overcast soft light)  [B] cafe terrace or industrial loft (warm evening light)
-  Men's jacket/coat        →  [A] autumn park, fallen leaves, misty morning  [B] city metro entrance, evening blue hour
-  Women's dress/sundress   →  [A] café terrace with warm terracotta tones  [B] beach promenade or botanical garden (golden hour)
-  Women's shorts/skirt     →  [A] cobblestone European street (summer afternoon)  [B] rooftop bar or vintage market
-  Women's blazer/coat      →  [A] modern glass office district  [B] evening city street with warm light pools
-  Any dark item            →  prefer bright/light environments (white building walls, sandy beach)
-  Any light/grey item      →  prefer dark/contrasty environments (dark concrete, shadow areas, green trees)
+  Men's shorts/sweatpants  →  [A] urban concrete plaza or skate park (midday hard light)  [B] sports park / outdoor basketball court (golden hour)  [C] rooftop terrace at dusk, warm string lights, dark city silhouette
+  Men's jeans/pants        →  [A] city street with architecture (overcast soft light)  [B] cafe terrace or industrial loft (warm evening light)  [C] subway entrance or underground passage (cool blue shadows)
+  Men's jacket/coat        →  [A] autumn park, fallen leaves, misty morning  [B] city metro entrance, evening blue hour  [C] modern glass office district, cold grey morning
+  Women's dress/sundress   →  [A] café terrace with warm terracotta tones  [B] beach promenade or botanical garden (golden hour)  [C] cobblestone European street, summer afternoon, warm shadows
+  Women's shorts/skirt     →  [A] cobblestone European street (summer afternoon)  [B] rooftop bar or vintage market  [C] park path lined with green trees, dappled light
+  Women's blazer/coat      →  [A] modern glass office district  [B] evening city street with warm light pools  [C] library or gallery interior, natural window light
+  Any dark item            →  prefer bright/light environments (white building walls, sandy beach, snow)
+  Any light/grey item      →  prefer dark/contrasty environments (dark concrete, shadow areas, dark green trees)
 
-ideas[0] tag "Главная":  studio, MAXIMUM thumbnail contrast using color rule
-ideas[1] tag "Выгода":   FIRST lifestyle location (from guide above, specific)
-ideas[2] tag null:       EXTREME CLOSE-UP of unique product detail (fabric texture / lace / stitching / hardware)
+ideas[0] tag "Главная":  studio shot, MAXIMUM thumbnail contrast (use color rule above — pick background that makes item pop in 130×130px thumbnail)
+ideas[1] tag "Выгода":   FIRST lifestyle location (specific, from guide above)
+ideas[2] tag null:       EXTREME CLOSE-UP of the most unique product detail (fabric texture / lace / stitching / logo / hardware)
 ideas[3] tag null:       SECOND lifestyle location (DIFFERENT from ideas[1], from guide above)
+ideas[4] tag null:       THIRD lifestyle location (DIFFERENT from ideas[1] and ideas[3], from guide above)
+ideas[5] tag null:       ALTERNATIVE studio — flat-lay OR hanging shot OR detail mosaic (3 angles in one frame), contrasting surface
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PROMPT ENGINEERING — EXACT FORMAT REQUIRED
@@ -97,6 +99,8 @@ All field values in Russian EXCEPT all promptEn fields (English only, NO Cyrilli
   "ideas": [
     {"title": "...", "description": "...", "tag": "Главная", "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
     {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
     {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
     {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."}
   ],
