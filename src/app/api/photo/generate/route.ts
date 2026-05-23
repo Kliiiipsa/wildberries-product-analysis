@@ -32,14 +32,22 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // For data: URLs (client-uploaded) — pass as-is.
-    // For external URLs — pass the URL string directly; FLUX fetches it on their side (smaller payload).
-    const imageForFlux = imageUrl;
+    // BFL FLUX.1-Kontext-pro expects raw base64 WITHOUT the data: prefix.
+    // SiliconFlow passes the image field directly to BFL — if it includes the
+    // data: prefix, BFL fails to parse it and falls back to text-to-image.
+    let imageForFlux: string;
+    if (imageUrl.startsWith('data:')) {
+      // Strip "data:<mime>;base64," prefix → raw base64
+      const commaIdx = imageUrl.indexOf(',');
+      imageForFlux = commaIdx >= 0 ? imageUrl.slice(commaIdx + 1) : imageUrl;
+    } else {
+      // External URL — pass directly (BFL can fetch it)
+      imageForFlux = imageUrl;
+    }
 
-    // Log what we're sending
     const isDataUrl = imageUrl.startsWith('data:');
     const imageSizeKb = isDataUrl ? Math.round(imageUrl.length / 1024) : 0;
-    console.log(`[generate] type=${isDataUrl ? 'base64' : 'url'}, size=${imageSizeKb}KB, prefix="${imageUrl.slice(0, 60)}", model: FLUX.1-Kontext-pro`);
+    console.log(`[generate] type=${isDataUrl ? 'base64_stripped' : 'url'}, size=${imageSizeKb}KB, model: FLUX.1-Kontext-pro`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
