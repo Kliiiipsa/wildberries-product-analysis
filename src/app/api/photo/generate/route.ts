@@ -43,14 +43,14 @@ export async function POST(req: NextRequest) {
     if (hasCyrillic) console.log(`[generate] WARNING: prompt contains Russian — FLUX may ignore source image`);
     console.log(`[generate] params: model=FLUX.1-Kontext-max, strength=0.82, guidance=3.2, steps=40`);
 
+    // Kontext-max supports: prompt, image, aspect_ratio, output_format, seed
+    // num_outputs/guidance_scale/num_inference_steps/strength are NOT supported — sending them breaks image conditioning
     const fluxBody = {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
       prompt,
       image: imageData,
-      num_outputs: 1,
-      guidance_scale: 3.2,
-      num_inference_steps: 40,
-      strength: 0.82,
+      aspect_ratio: '2:3',
+      output_format: 'jpeg',
     };
     console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
 
