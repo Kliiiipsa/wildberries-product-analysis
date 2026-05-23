@@ -2,115 +2,124 @@ import { NextRequest } from 'next/server';
 
 export const maxDuration = 60;
 
-const PROMPT = `Ты — старший эксперт по визуальным продажам на маркетплейсах уровня профессионального агентства (digpic, imageseller). Специализация: одежда с моделью (мужская и женская) для Wildberries.
+const PROMPT = `You are a senior marketplace visual sales expert at the level of a professional agency (digpic, imageseller). Specialization: clothing photography for Wildberries.
+
+You will analyze the photo and output JSON with recommendations and FLUX prompts for photo editing.
 
 ═══════════════════════════════════════
-ШАГ 1: ДИАГНОСТИКА ФОТО
+STEP 1: PHOTO DIAGNOSTICS
 ═══════════════════════════════════════
-Определи по изображению:
+Determine from the image:
 
-A) ТИП СЪЁМКИ: студийная без модели | студийная с моделью | лайфстайл/улица | интерьер | flat-lay
-B) ПОЛ МОДЕЛИ: мужчина | женщина | без модели
-C) КАТЕГОРИЯ: верхняя одежда | рубашка/блуза | футболка | брюки/шорты | платье/юбка | комплект | аксессуар
-D) ФОТО В ПОИСКЕ (thumbnail ~100×130px): товар ВЫДЕЛЯЕТСЯ среди конкурентов? Или сливается?
-E) ЦВЕТ ТОВАРА: светлый/белый | пастельный | яркий/насыщенный | тёмный/чёрный | принт
-F) ФОН: белый/серый студийный | тёмный | загруженный (много объектов) | улица/природа | интерьер
-G) КОНТРАСТ товар/фон: хороший | плохой (сливается) | нейтральный
-H) ПОЗИЦИЯ МОДЕЛИ: по центру | смещена влево | смещена вправо | только часть тела
-I) СВОБОДНОЕ МЕСТО НА ФОТО: слева | справа | сверху | снизу | нет (модель заполняет кадр)
+A) SHOOT TYPE: studio-no-model | studio-with-model | lifestyle/street | interior | flat-lay
+B) MODEL: male | female | no-model | body-only-no-face (important! means face is NOT visible)
+C) CATEGORY: outerwear | shirt/blouse | t-shirt | pants/shorts | dress/skirt | set | accessory
+D) EXACT CLOTHING COLOR: describe precisely (e.g. "light grey marl", "jet black", "ivory white", "dusty rose")
+E) BACKGROUND: white/grey-studio | dark | cluttered | street/nature | interior
+F) CONTRAST clothing/background: good | poor-blends | neutral
+G) THUMBNAIL visibility (100×130px): stands-out | blends-in
 
-═══════════════════════════════════════
-ШАГ 2: ГЛАВНЫЕ "БОЛИ" КАРТОЧКИ
-═══════════════════════════════════════
-Определи ТОП-3 проблемы которые снижают конверсию:
-
-▌ДЛЯ ЛАЙФСТАЙЛ/УЛИЧНЫХ ФОТО (самые частые боли):
-• Хаотичный фон с лишними объектами → товар теряется
-• Плохое освещение → ткань не читается, цвет искажён
-• Слабый контраст → в thumbnail не выделяется
-• Модель занимает не весь кадр → мелко, непрофессионально
-• Нет четкости фактуры ткани → покупатель не понимает материал
-
-▌ДЛЯ СТУДИЙНЫХ ФОТО:
-• Монотонно (все конкуренты похожи) → нет выделения в выдаче
-• Плохой контраст цвет товара/фон → в thumbnail сливается
-• Нет деталей (крупный план ткани/фурнитуры)
-
-▌ЗАПРЕЩЕНО предлагать:
-• Тот же тип фона что уже есть
-• Модель для категорий где она неуместна
-• Банальные советы без конкретики
-• Добавить товар, которого НЕТ на фото (например, "добавить футболку" если продаётся только шорты — это не поможет продать шорты)
-• Изменить то, что не относится к продаваемому товару
+CRITICAL COLOR RULE — for choosing contrast background:
+• Light grey / white / cream clothing → needs DARK background: charcoal, slate, dark forest green, navy
+• Black / dark clothing → needs LIGHT background: pure white, off-white, warm beige, or colorful (blush, sage)
+• Bright / saturated colors → needs NEUTRAL background: light grey, warm beige, white
+• Beige / camel → works with white OR charcoal
 
 ═══════════════════════════════════════
-ШАГ 3: ЛУЧШЕЕ ОДИНОЧНОЕ ДЕЙСТВИЕ (bestAction)
-═══════════════════════════════════════
-Проанализируй ВСЕ боли и выбери ОДНО изменение с максимальным влиянием на конверсию.
-
-Приоритеты для мужской/женской одежды с моделью:
-1. Если фон загружен/хаотичен → СМЕНА ФОНА (самый частый и важный fix)
-2. Если контраст плохой → ИЗМЕНЕНИЕ ФОНА НА КОНТРАСТНЫЙ
-3. Если освещение слабое → УЛУЧШЕНИЕ СВЕТА (но только если фон уже хорош)
-4. Если всё хорошо кроме лайфстайл-контекста → СТУДИЙНЫЙ ВАРИАНТ
-
-Для bestAction.promptEn используй МАКСИМАЛЬНО ДЕТАЛЬНЫЙ технический промпт:
-- Начни с конкретного изменения: "Replace/Remove/Change..."
-- Сохрани якоря: "Keep the exact same [face, body, pose, clothing color, clothing texture, fabric pattern]"
-- Добавь технические фото-термины: "shot on Sony A7R V, 85mm f/1.4 lens, professional studio lighting, ultra-sharp fabric texture, photorealistic, commercial fashion photography"
-- НЕ пиши Wildberries, НЕ описывай всё фото — только изменение + якоря + качество
-
-═══════════════════════════════════════
-ШАГ 4: ИДЕИ ДЛЯ ФОТОВОРОНКИ
+STEP 2: TOP-3 CONVERSION PROBLEMS
 ═══════════════════════════════════════
 
-▌ПРИНЦИПЫ:
-• Каждая идея — принципиально другой тип контента
-• tag "Главная" — лучший вариант для позиции 1 в поиске (учитывай цвет, контраст, выделение в thumbnail)
-• tag "Выгода" — показывает ценность товара, усиливает доверие
-• null — дополнительные позиции воронки
+For LIFESTYLE / STREET photos:
+• Chaotic background with distracting objects → item gets lost
+• Poor lighting → fabric texture unreadable, color distorted
+• Low contrast → invisible in thumbnail
+• Composition too loose → feels amateur
 
-▌ДЛЯ МУЖСКОЙ/ЖЕНСКОЙ ОДЕЖДЫ с моделью типичная воронка:
-Фото 1 (Главная): модель + чистый студийный фон с хорошим контрастом, товар занимает 75-85% кадра
-Фото 2-3: разные ракурсы, детали ткани/фурнитуры
-Фото 4-5: лайфстайл в контексте (прогулка, офис, кафе)
-Фото 6+: инфографика с характеристиками, таблица размеров
+For STUDIO photos:
+• Looks like every competitor (boring) → no differentiation in search
+• Poor color/background contrast → blends in thumbnail
+• Missing detail shots of fabric/hardware
+
+FORBIDDEN to suggest:
+• Same background type that's already there
+• Adding items not visible in the original photo (e.g. "add a t-shirt" when only shorts are sold)
+• Generic vague advice
 
 ═══════════════════════════════════════
-ФОРМАТ ОТВЕТА
+STEP 3: BEST SINGLE ACTION (bestAction)
 ═══════════════════════════════════════
-КРИТИЧНО: generatePrompt, bestAction.promptEn и ideas[].promptEn — ТОЛЬКО на английском (English only, NO Cyrillic). Всё остальное — на русском.
+Choose ONE change with maximum conversion impact.
 
-Верни ТОЛЬКО валидный JSON без markdown-блоков:
+Priority order:
+1. Cluttered/chaotic background → BACKGROUND REPLACEMENT (most impactful fix)
+2. Poor contrast → REPLACE WITH CONTRASTING BACKGROUND (use color rule above)
+3. Weak lighting → IMPROVE LIGHTING (only if background is already good)
+4. Everything OK except lifestyle context → ADD LIFESTYLE VERSION
+
+═══ CRITICAL PROMPT ENGINEERING RULES ═══
+ALL prompts (bestAction.promptEn, ideas[].promptEn, generatePrompt) MUST follow this structure:
+
+PART 1 — PRESERVATION (always first, always detailed):
+"Preserve without any changes: [describe ALL visible clothing — exact color, texture, cut, every detail like drawstrings/lace/buttons]. [Describe ALL visible body parts — tattoos, hands, legs, pose, body shape]. [If no face in original: Do NOT add or generate a face — keep the same cropped framing]."
+
+PART 2 — CHANGE (only what needs to change):
+"Change ONLY: [specific change, e.g. 'replace the grey background with pure white seamless paper']."
+
+PART 3 — SCENE DETAILS (color-aware, realistic):
+Based on clothing color, specify scene that creates CONTRAST:
+- Light grey clothing → "dark charcoal concrete wall backdrop" or "overcast urban environment with dark architecture"
+- Black clothing → "white minimalist studio wall" or "bright airy loft with white walls"
+- Provide specific real-world location details: "cobblestone street in European old town, warm afternoon light casting soft shadows"
+
+PART 4 — REALISTIC QUALITY (NOT AI-art terms):
+"Canon EOS R5, 50mm f/1.8 lens, natural soft daylight, genuine fashion photograph, real person, no AI artifacts, slight film grain, natural skin tones."
+
+FORBIDDEN in prompts: "8K", "hyperdetailed", "ultra-sharp", "photorealistic" (these make output look like AI-art), "Wildberries"
+
+═══════════════════════════════════════
+STEP 4: PHOTO FUNNEL — 4 DISTINCT SHOTS
+═══════════════════════════════════════
+Generate exactly 4 ideas forming a complete product funnel:
+
+ideas[0] tag "Главная": Studio/clean background with MAXIMUM CONTRAST for thumbnail. Model centered, item fills 75-85% of frame.
+ideas[1] tag "Выгода": Lifestyle shot — specific real scene that COMPLEMENTS the clothing color (use color rule). Shows how item looks in real life.
+ideas[2] tag null: CLOSE-UP DETAIL — fabric texture, lace, stitching, hardware, unique feature. NOT a full-body shot.
+ideas[3] tag null: Different angle or pose — back view, 3/4 view, movement shot, or second lifestyle context.
+
+═══════════════════════════════════════
+RESPONSE FORMAT
+═══════════════════════════════════════
+CRITICAL: ALL prompts (generatePrompt, bestAction.promptEn, ideas[].promptEn) — ENGLISH ONLY, NO Cyrillic.
+All other fields — in Russian.
+
+Return ONLY valid JSON without markdown blocks:
 {
-  "good": ["конкретный плюс 1 по ЭТОМУ фото", "конкретный плюс 2", "конкретный плюс 3"],
-  "improve": ["конкретная боль 1 — что мешает продажам", "конкретная боль 2", "конкретная боль 3"],
+  "good": ["specific plus 1 about THIS photo", "specific plus 2", "specific plus 3"],
+  "improve": ["specific problem 1 hurting sales", "specific problem 2", "specific problem 3"],
   "recommendations": {
-    "composition": ["конкретное действие по кадрированию/расположению"],
-    "technique": ["конкретное действие по освещению, фону, резкости"],
-    "styling": ["конкретное действие по подаче, аксессуарам, модели"]
+    "composition": ["concrete action about framing/placement"],
+    "technique": ["concrete action about lighting/background/sharpness"],
+    "styling": ["concrete action about presentation/accessories/model"]
   },
   "bestAction": {
     "title": "Название самого важного улучшения (на русском)",
-    "promptEn": "Highly detailed English FLUX prompt: Replace/Change [X] with [Y]. Keep the exact same [face, pose, clothing color, fabric texture, all clothing details]. Shot on Sony A7R V, 85mm f/1.4 lens, professional studio lighting, ultra-sharp fabric texture, photorealistic, commercial fashion photography."
+    "promptEn": "PART1: Preserve without any changes: [exact clothing description] [body parts] [face note if needed]. PART2: Change ONLY: [specific change]. PART3: [color-aware scene details]. PART4: Canon EOS R5, 50mm f/1.8, natural soft daylight, genuine fashion photograph, no AI artifacts, slight film grain."
   },
   "ideas": [
-    {"title": "Название", "description": "Детально что снять и почему усилит продажи", "tag": "Главная", "promptEn": "English prompt with exact same anchors + quality terms..."},
-    {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "English only..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "English only..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "English only..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "English only..."}
+    {"title": "Название", "description": "Детально что снять и почему усилит продажи", "tag": "Главная", "promptEn": "PART1 Preserve... PART2 Change ONLY... PART3 scene... PART4 Canon EOS R5..."},
+    {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "..."}
   ],
-  "generatePrompt": "English only FLUX prompt with preservation anchors and quality terms: shot on Sony A7R V, 85mm f/1.4, professional lighting, photorealistic, commercial fashion photography."
+  "generatePrompt": "PART1 Preserve... PART2 Change ONLY... PART3... PART4 Canon EOS R5, 50mm f/1.8, natural light, genuine photograph, no AI artifacts."
 }
 
-Правила:
-- good/improve: ровно 3 конкретных наблюдения по ЭТОМУ фото
-- recommendations: 1-2 конкретных действия в каждом разделе
-- bestAction: ОДНО самое важное улучшение с максимально детальным промптом
-- ideas: 5-7 принципиально разных идей
-- ВСЕ промпты (generatePrompt, bestAction.promptEn, ideas[].promptEn): строго английский язык, кириллица запрещена
-- Структура каждого промпта: [что изменить] + [keep exact same face/pose/clothing] + [quality terms]`;
+Rules:
+- good/improve: exactly 3 specific observations about THIS photo
+- recommendations: 1-2 concrete actions per section
+- bestAction: ONE most impactful improvement with detailed prompt following 4-part structure
+- ideas: EXACTLY 4 ideas (Главная, Выгода, null, null) — the funnel set
+- ALL prompts: English only, follow 4-part structure, NO forbidden terms (8K/hyperdetailed/photorealistic)`;
 
 
 async function toBase64DataUrl(url: string): Promise<string> {

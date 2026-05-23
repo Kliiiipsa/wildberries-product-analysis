@@ -14,8 +14,8 @@ async function toBase64DataUrl(url: string): Promise<string> {
   return `data:${mime};base64,${btoa(chunks.join(''))}`;
 }
 
-// Quality suffix appended to every FLUX prompt for maximum photorealism
-const QUALITY_SUFFIX = ', shot on Sony A7R V, 85mm f/1.4 lens, professional studio lighting, ultra-sharp fabric texture, 8K resolution, photorealistic, commercial fashion photography, hyperdetailed';
+// Quality suffix — realistic photography terms, NOT AI-art keywords (no 8K/hyperdetailed/photorealistic)
+const QUALITY_SUFFIX = ', Canon EOS R5, 50mm f/1.8 lens, natural soft daylight, genuine fashion photograph, real person, no AI artifacts, slight film grain, natural skin tones, professional fashion photography';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
     const sizekb = Math.round(imageData.length / 1024);
 
-    // Append quality terms if not already present
-    const qualityPrompt = prompt.includes('Sony A7R') || prompt.includes('photorealistic')
+    // Append quality terms if not already present (check for Canon/Sony/EOS markers)
+    const qualityPrompt = prompt.includes('Canon EOS') || prompt.includes('Sony A7') || prompt.includes('no AI artifacts')
       ? prompt
       : prompt + QUALITY_SUFFIX;
     console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-max, prompt_len=${qualityPrompt.length}`);

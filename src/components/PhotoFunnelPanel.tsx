@@ -65,6 +65,11 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [generateError, setGenerateError] = useState('');
   const [activeTab, setActiveTab] = useState('assessment');
 
+  // Funnel generation — 4 photos in parallel
+  const [funnelImages, setFunnelImages] = useState<(string | null)[]>([null, null, null, null]);
+  const [funnelLoading, setFunnelLoading] = useState<boolean[]>([false, false, false, false]);
+  const [isFunnelGenerating, setIsFunnelGenerating] = useState(false);
+
   const [modelAppearance, setModelAppearance] = useState<ModelAppearance>({
     gender: '', age: '', bodyType: '', hairColor: '', extra: '',
   });
@@ -247,11 +252,45 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   };
 
   const handleIdeaClick = (idea: { title: string; description: string; promptEn?: string }) => {
-    // Use the English prompt from AI, or fall back to the main generatePrompt
     const prompt = idea.promptEn || generatePrompt;
     if (!prompt) return;
     setGeneratePrompt(prompt);
     handleGenerate(prompt);
+  };
+
+  // ── Generate full funnel (4 photos in parallel) ─────────────────────────────
+  const handleFunnelGenerate = async () => {
+    const src = effectiveUrl;
+    if (!src || !analysis?.ideas?.length) return;
+    const ideas = analysis.ideas.slice(0, 4);
+    setIsFunnelGenerating(true);
+    setFunnelImages([null, null, null, null]);
+    setFunnelLoading([true, true, true, true]);
+    setActiveTab('ideas');
+
+    await Promise.allSettled(
+      ideas.map(async (idea, i) => {
+        const prompt = idea.promptEn || generatePrompt;
+        if (!prompt) {
+          setFunnelLoading(prev => { const n = [...prev]; n[i] = false; return n; });
+          return;
+        }
+        try {
+          const res = await fetch('/api/photo/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl: src, prompt: buildPrompt(prompt) }),
+          });
+          const data = await res.json();
+          if (res.ok && data.imageUrl) {
+            setFunnelImages(prev => { const n = [...prev]; n[i] = data.imageUrl; return n; });
+          }
+        } catch { /* ignore individual errors */ } finally {
+          setFunnelLoading(prev => { const n = [...prev]; n[i] = false; return n; });
+        }
+      })
+    );
+    setIsFunnelGenerating(false);
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -620,32 +659,90 @@ export function PhotoFunnelPanel({ onBack }: Props) {
           </TabsContent>
 
           {/* ── IDEAS ── */}
-          <TabsContent value="ideas" className="mt-0">
-            <p className="text-xs text-slate-500 mb-4">Нажмите на идею — AI сгенерирует фото по этой концепции</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {analysis.ideas?.map((idea, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleIdeaClick(idea)}
-                  disabled={isGenerating}
-                  className="text-left rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 hover:border-rose-500/50 hover:bg-slate-800/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <span className="font-semibold text-white text-sm group-hover:text-rose-300 transition-colors">{idea.title}</span>
-                    <div className="flex items-center gap-2 shrink-0">
+          <TabsContent value="ideas" className="mt-0 space-y-5">
+            {/* Funnel generation button */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                onClick={handleFunnelGenerate}
+                disabled={isFunnelGenerating || isGenerating || !effectiveUrl || !analysis.ideas?.length}
+                className="bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white font-semibold rounded-xl h-10 px-5"
+              >
+                {isFunnelGenerating
+                  ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую воронку...</>
+                  : <><Sparkles className="h-4 w-4 mr-2" />Создать фотоворонку (4 фото)</>}
+              </Button>
+              <p className="text-xs text-slate-500">или нажмите на идею для одного фото</p>
+            </div>
+
+            {/* Funnel 2×2 grid */}
+            {(isFunnelGenerating || funnelImages.some(img => img !== null)) && (
+              <div className="grid grid-cols-2 gap-3">
+                {funnelImages.map((img, i) => {
+                  const idea = analysis.ideas?.[i];
+                  return (
+                    <div key={i} className="rounded-xl overflow-hidden border border-slate-700/50 bg-slate-800/30">
+                      <div className="relative aspect-[3/4]">
+                        {funnelLoading[i] ? (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                            <Loader2 className="h-8 w-8 animate-spin text-rose-400 mb-2" />
+                            <p className="text-xs text-slate-500">{idea?.title ?? `Фото ${i + 1}`}</p>
+                          </div>
+                        ) : img ? (
+                          <img src={img} alt={idea?.title ?? `Фото ${i + 1}`} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <ImageIcon className="h-8 w-8 text-slate-700" />
+                          </div>
+                        )}
+                        {idea?.tag && (
+                          <span className={`absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full border ${
+                            idea.tag === 'Главная'
+                              ? 'bg-blue-500/80 text-white border-blue-400/50'
+                              : 'bg-amber-500/80 text-white border-amber-400/50'
+                          }`}>{idea.tag}</span>
+                        )}
+                      </div>
+                      <div className="p-2 flex items-center justify-between gap-2">
+                        <p className="text-xs text-slate-400 truncate">{idea?.title ?? `Фото ${i + 1}`}</p>
+                        {img && (
+                          <a href={img} download={`funnel-${i + 1}.jpg`} target="_blank" rel="noreferrer"
+                            className="text-xs text-slate-500 hover:text-white shrink-0">⬇</a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Individual idea cards */}
+            <div>
+              <p className="text-xs text-slate-500 mb-3">Идеи по отдельности</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {analysis.ideas?.map((idea, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleIdeaClick(idea)}
+                    disabled={isGenerating || isFunnelGenerating}
+                    className="text-left rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 hover:border-rose-500/50 hover:bg-slate-800/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <span className="font-semibold text-white text-sm group-hover:text-rose-300 transition-colors">{idea.title}</span>
                       {idea.tag && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                        <span className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${
                           idea.tag === 'Главная'
                             ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
                             : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
                         }`}>{idea.tag}</span>
                       )}
                     </div>
-                  </div>
-                  <p className="text-xs text-slate-400 leading-relaxed">{idea.description}</p>
-                  <p className="text-xs text-slate-600 group-hover:text-rose-400 transition-colors mt-2">{isGenerating ? '...' : '→ Генерировать'}</p>
-                </button>
-              ))}
+                    <p className="text-xs text-slate-400 leading-relaxed">{idea.description}</p>
+                    <p className="text-xs text-slate-600 group-hover:text-rose-400 transition-colors mt-2">
+                      {isGenerating || isFunnelGenerating ? '...' : '→ Генерировать одно фото'}
+                    </p>
+                  </button>
+                ))}
+              </div>
             </div>
           </TabsContent>
 
