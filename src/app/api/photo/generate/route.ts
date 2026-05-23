@@ -32,24 +32,19 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // FLUX.1-Kontext-pro требует data: префикс — без него игнорирует image.
-    // Для внешних URL конвертируем в base64 data URL на сервере.
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
-
     const sizekb = Math.round(imageData.length / 1024);
-    console.log(`[generate] image=${sizekb}KB prefix="${imageData.slice(0, 30)}", model: FLUX.1-Kontext-pro`);
+    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-pro`);
 
+    // Try "input_image" — BFL native field name (SiliconFlow may not map "image" → BFL correctly)
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-pro',
         prompt,
-        image: imageData,
+        input_image: imageData,
         num_outputs: 1,
         guidance_scale: 3.0,
         num_inference_steps: 35,
@@ -59,7 +54,9 @@ export async function POST(req: NextRequest) {
     clearTimeout(timer);
 
     const respText = await resp.text();
-    console.log(`[generate] FLUX status: ${resp.status}, body: ${respText.slice(0, 500)}`);
+    let inference = '?';
+    try { inference = String(JSON.parse(respText)?.timings?.inference ?? '?'); } catch { /* */ }
+    console.log(`[generate] FLUX input_image: status=${resp.status} inference=${inference}s body=${respText.slice(0, 300)}`);
 
     if (resp.ok) {
       let data: Record<string, unknown> = {};
@@ -69,8 +66,8 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
     }
 
-    // Fallback: Qwen-Image-Edit
-    console.log(`[generate] FLUX failed (${resp.status}), fallback to Qwen`);
+    // FLUX failed — use Qwen-Image-Edit (explicit image editing model)
+    console.log(`[generate] FLUX failed (${resp.status}), trying Qwen-Image-Edit`);
     const ac2 = new AbortController();
     const t2 = setTimeout(() => ac2.abort(), 50_000);
     const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
