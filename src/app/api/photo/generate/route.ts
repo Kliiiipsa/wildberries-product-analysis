@@ -48,7 +48,6 @@ export async function POST(req: NextRequest) {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
       prompt,
       image: imageData,
-      aspect_ratio: '2:3',
       output_format: 'jpeg',
     };
     console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
