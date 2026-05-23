@@ -32,74 +32,92 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => ac.abort(), 55_000);
 
   try {
-    // BFL FLUX.1-Kontext-pro expects raw base64 WITHOUT the data: prefix.
-    // SiliconFlow passes the image field directly to BFL — if it includes the
-    // data: prefix, BFL fails to parse it and falls back to text-to-image.
-    let imageForFlux: string;
+    // Convert source image to binary Blob for multipart upload
+    let imageBlob: Blob;
     if (imageUrl.startsWith('data:')) {
-      // Strip "data:<mime>;base64," prefix → raw base64
       const commaIdx = imageUrl.indexOf(',');
-      imageForFlux = commaIdx >= 0 ? imageUrl.slice(commaIdx + 1) : imageUrl;
+      const b64 = commaIdx >= 0 ? imageUrl.slice(commaIdx + 1) : imageUrl;
+      const mimeMatch = imageUrl.match(/^data:([^;]+);/);
+      const mime = mimeMatch?.[1] ?? 'image/jpeg';
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      imageBlob = new Blob([bytes], { type: mime });
     } else {
-      // External URL — pass directly (BFL can fetch it)
-      imageForFlux = imageUrl;
+      const imgRes = await fetch(imageUrl, { headers: { 'Referer': 'https://www.wildberries.ru/' } });
+      if (!imgRes.ok) throw new Error(`Не удалось загрузить фото: ${imgRes.status}`);
+      const buf = await imgRes.arrayBuffer();
+      const ct = (imgRes.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim();
+      imageBlob = new Blob([buf], { type: ct });
     }
 
-    const isDataUrl = imageUrl.startsWith('data:');
-    const imageSizeKb = isDataUrl ? Math.round(imageUrl.length / 1024) : 0;
-    console.log(`[generate] type=${isDataUrl ? 'base64_stripped' : 'url'}, size=${imageSizeKb}KB, model: FLUX.1-Kontext-pro`);
+    const sizekb = Math.round(imageBlob.size / 1024);
+    console.log(`[generate] multipart size=${sizekb}KB, model: FLUX.1-Kontext-pro`);
 
-    const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
+    // Try /v1/images/edits (multipart/form-data) — proper img2img endpoint
+    const formData = new FormData();
+    formData.append('model', 'black-forest-labs/FLUX.1-Kontext-pro');
+    formData.append('prompt', prompt);
+    formData.append('image', imageBlob, 'image.jpg');
+    formData.append('guidance_scale', '3.5');
+    formData.append('num_inference_steps', '28');
+
+    const resp = await fetch('https://api.siliconflow.com/v1/images/edits', {
       method: 'POST',
       signal: ac.signal,
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'black-forest-labs/FLUX.1-Kontext-pro',
-        prompt,
-        image: imageForFlux,
-        guidance_scale: 3.5,
-        num_inference_steps: 28,
-      }),
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: formData,
     });
     clearTimeout(timer);
 
     const respText = await resp.text();
-    console.log(`[generate] FLUX status: ${resp.status}, body: ${respText.slice(0, 600)}`);
+    console.log(`[generate] FLUX edits status: ${resp.status}, body: ${respText.slice(0, 600)}`);
 
-    if (!resp.ok) {
-      // Fallback to Qwen-Image-Edit (needs base64)
-      const imageForQwen = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
-      const ac2 = new AbortController();
-      const t2 = setTimeout(() => ac2.abort(), 50_000);
-      const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
-        method: 'POST', signal: ac2.signal,
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'Qwen/Qwen-Image-Edit',
-          prompt, image: imageForQwen,
-          image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12,
-        }),
-      });
-      clearTimeout(t2);
-      if (!r2.ok) {
-        const t = await r2.text().catch(() => r2.statusText);
-        return Response.json({ error: `FLUX ${resp.status}: ${respText.slice(0,200)} | Qwen ${r2.status}: ${t}` }, { status: 500 });
-      }
-      const d2 = await r2.json();
-      const u2 = d2?.images?.[0]?.url ?? null;
-      if (!u2) return Response.json({ error: `Нет URL от Qwen: ${JSON.stringify(d2)}` }, { status: 500 });
-      return Response.json({ imageUrl: u2, model: 'qwen' });
+    if (resp.ok) {
+      let data: Record<string, unknown> = {};
+      try { data = JSON.parse(respText); } catch { return Response.json({ error: `Не JSON: ${respText.slice(0,200)}` }, { status: 500 }); }
+      const url = (data?.images as Array<{url:string}>)?.[0]?.url ?? (data?.data as Array<{url:string}>)?.[0]?.url ?? null;
+      if (url) return Response.json({ imageUrl: url, model: 'flux-kontext-pro' });
     }
 
-    let data: Record<string, unknown> = {};
-    try { data = JSON.parse(respText); } catch { return Response.json({ error: `Не JSON: ${respText.slice(0,200)}` }, { status: 500 }); }
-    const url = (data?.images as Array<{url:string}>)?.[0]?.url ?? null;
-    if (!url) return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
+    // Fallback: /v1/images/generations with raw base64 (no data: prefix)
+    console.log(`[generate] edits failed (${resp.status}), trying generations endpoint`);
+    const commaIdx = imageUrl.startsWith('data:') ? imageUrl.indexOf(',') : -1;
+    const imageForGen = commaIdx >= 0 ? imageUrl.slice(commaIdx + 1) : imageUrl;
 
-    return Response.json({ imageUrl: url, model: 'flux-kontext-pro' });
+    const ac1b = new AbortController();
+    const t1b = setTimeout(() => ac1b.abort(), 50_000);
+    const resp2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
+      method: 'POST', signal: ac1b.signal,
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'black-forest-labs/FLUX.1-Kontext-pro', prompt, image: imageForGen, guidance_scale: 3.5, num_inference_steps: 28 }),
+    });
+    clearTimeout(t1b);
+    const resp2Text = await resp2.text();
+    console.log(`[generate] generations status: ${resp2.status}, body: ${resp2Text.slice(0, 400)}`);
+    if (resp2.ok) {
+      let d2: Record<string, unknown> = {};
+      try { d2 = JSON.parse(resp2Text); } catch { /* ignore */ }
+      const u2 = (d2?.images as Array<{url:string}>)?.[0]?.url ?? null;
+      if (u2) return Response.json({ imageUrl: u2, model: 'flux-kontext-pro' });
+    }
+
+    // Fallback to Qwen-Image-Edit
+    const imageForQwen = imageUrl.startsWith('data:') ? imageUrl : await toBase64(imageUrl);
+    const ac2 = new AbortController();
+    const t2 = setTimeout(() => ac2.abort(), 50_000);
+    const r2 = await fetch('https://api.siliconflow.com/v1/images/generations', {
+      method: 'POST', signal: ac2.signal,
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'Qwen/Qwen-Image-Edit', prompt, image: imageForQwen, image_size: '1056x1584', num_inference_steps: 30, guidance_scale: 12 }),
+    });
+    clearTimeout(t2);
+    if (!r2.ok) {
+      const t = await r2.text().catch(() => r2.statusText);
+      return Response.json({ error: `Все методы упали. edits=${resp.status}, gen=${resp2.status}, qwen=${r2.status}: ${t}` }, { status: 500 });
+    }
+    const d3 = await r2.json();
+    const u3 = d3?.images?.[0]?.url ?? null;
+    if (!u3) return Response.json({ error: `Нет URL от Qwen: ${JSON.stringify(d3)}` }, { status: 500 });
+    return Response.json({ imageUrl: u3, model: 'qwen' });
   } catch (e) {
     clearTimeout(timer);
     return Response.json({ error: String(e) }, { status: 500 });
