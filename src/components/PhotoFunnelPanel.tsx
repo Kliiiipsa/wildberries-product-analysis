@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import PhotoTextEditor from '@/components/PhotoTextEditor';
+import PhotoInfographicEditor from '@/components/PhotoInfographicEditor';
 
 interface PhotoAnalysis {
   good: string[] | string;
@@ -73,6 +74,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [modelAppearance, setModelAppearance] = useState<ModelAppearance>({
     gender: '', age: '', bodyType: '', hairColor: '', extra: '',
   });
+  const [textMode, setTextMode] = useState<'infographic' | 'overlay'>('infographic');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -815,16 +817,40 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                 : <><User className="h-4 w-4 mr-2" />Применить персонажа</>}
             </Button>
           </TabsContent>
-          {/* ── TEXT EDITOR ── */}
+          {/* ── TEXT / INFOGRAPHIC ── */}
           <TabsContent value="text" className="mt-0">
             {imagePreview ? (
-              <PhotoTextEditor
-                imageUrl={imagePreview}
-                analysis={{ good: toArr(analysis.good), improve: toArr(analysis.improve) }}
-                onExport={(dataUrl) => {
-                  setGeneratedImage(dataUrl);
-                }}
-              />
+              <div className="space-y-4">
+                {/* Mode toggle */}
+                <div className="flex gap-1 bg-zinc-800/60 rounded-xl p-1 w-fit">
+                  <button
+                    onClick={() => setTextMode('infographic')}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${textMode === 'infographic' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Инфографика (digpic)
+                  </button>
+                  <button
+                    onClick={() => setTextMode('overlay')}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${textMode === 'overlay' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Текст поверх фото
+                  </button>
+                </div>
+
+                {textMode === 'infographic' ? (
+                  <PhotoInfographicEditor
+                    imageUrl={imagePreview}
+                    analysis={{ good: toArr(analysis.good), improve: toArr(analysis.improve) }}
+                    onExport={dataUrl => setGeneratedImage(dataUrl)}
+                  />
+                ) : (
+                  <PhotoTextEditor
+                    imageUrl={imagePreview}
+                    analysis={{ good: toArr(analysis.good), improve: toArr(analysis.improve) }}
+                    onExport={dataUrl => setGeneratedImage(dataUrl)}
+                  />
+                )}
+              </div>
             ) : (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center py-16 text-center text-slate-600">
                 <div>

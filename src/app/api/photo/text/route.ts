@@ -2,85 +2,41 @@ import { NextRequest } from 'next/server';
 
 export const maxDuration = 30;
 
-const TEXT_PROMPT = `Ты — копирайтер для маркетплейса Wildberries. Специализация: продающие тексты для инфографики на фото товара.
+const INFOGRAPHIC_PROMPT = `Ты — копирайтер для карточек товаров на Wildberries. Специализация: продающая инфографика в стиле digpic.
 
-Тебе дан анализ фото товара. Сгенерируй 5 текстовых блоков для наложения на фото.
+Тебе дан анализ фото товара. Создай структурированный контент для профессиональной инфографики.
 
-ПРАВИЛА:
-- Заголовок: 1-4 слова, конкретно и по делу
-- Подзаголовок: до 8 слов, выгода или факт
-- ЗАПРЕЩЕНО использовать эмодзи — только текст, без символов
-- ЗАПРЕЩЕНО: "высокое качество", "лучший выбор", "для вас", "Хит", "Осталось N шт" (фальшивая срочность)
-- Пиши конкретно: не "Удобные шорты" — а "До колена, не жмёт"
-- Не повторяй название товара как заголовок — давай ценность
+СТРУКТУРА ОТВЕТА:
+1. productName — название товара, 1-3 слова, ЗАГЛАВНЫЕ БУКВЫ (например: "ШОРТЫ", "САРАФАН", "БРЮКИ")
+2. productSubtitle — уточнение, строчные буквы (например: "с кружевом", "для лета", "свободный крой")
+3. tagline — маленький тег сверху (1-3 слова, строчные), контекст или сезон (например: "летняя коллекция", "новинка 2026")
+4. characteristics — ровно 3 характеристики товара. Каждая: title (2-4 слова, ЗАГЛАВНЫЕ) + value (факт или уточнение)
+5. bottomText — финальный акцент внизу (1 короткая фраза строчными)
 
-ПОЗИЦИИ (каждый блок — своя уникальная позиция, не повторять):
-- top-left, top-right — маленькие бейджи или характеристики
-- bottom — главный заголовок
-- bottom-left, bottom-right — дополнительные блоки
+ПРАВИЛА ДЛЯ ХАРАКТЕРИСТИК:
+- Описывай ТОЛЬКО то что реально видно на фото или типично для этого типа товара
+- Пиши конкретно: "ДЛИНА 38 СМ", "ПОЯС НА РЕЗИНКЕ", "КРУЖЕВНАЯ КАЙМА"
+- Не придумывай факты (состав ткани, точные размеры) если не знаешь — пиши свойство ("МЯГКИЙ МАТЕРИАЛ")
+- Никаких эмодзи, никаких клише ("высокое качество", "лучший выбор")
 
-СТИЛИ:
-- dark: тёмный фон (хорошо на светлом фоне)
-- light: белый фон (хорошо на тёмном фоне)
-- accent: красный (только для самого важного, не более 1 раза)
+ЗАПРЕЩЕНО использовать эмодзи в любых полях.
 
-Верни ТОЛЬКО валидный JSON (без эмодзи в title/subtitle):
+Верни ТОЛЬКО валидный JSON без markdown:
 {
-  "blocks": [
-    {
-      "id": "main",
-      "type": "headline",
-      "title": "До колена, не жмёт",
-      "subtitle": "Свободный крой, натуральный хлопок",
-      "position": "bottom",
-      "style": "dark"
-    },
-    {
-      "id": "badge",
-      "type": "badge",
-      "title": "Новинка",
-      "subtitle": null,
-      "position": "top-left",
-      "style": "accent"
-    },
-    {
-      "id": "feature1",
-      "type": "feature",
-      "title": "Машинная стирка",
-      "subtitle": "Не теряет форму",
-      "position": "top-right",
-      "style": "light"
-    },
-    {
-      "id": "feature2",
-      "type": "feature",
-      "title": "Размеры XS-5XL",
-      "subtitle": null,
-      "position": "bottom-left",
-      "style": "light"
-    },
-    {
-      "id": "context",
-      "type": "context",
-      "title": "Лето 2026",
-      "subtitle": "Для улицы и пляжа",
-      "position": "bottom-right",
-      "style": "dark"
-    }
-  ]
-}
-
-Правила полей:
-- type: "headline" | "badge" | "feature" | "promo" | "context"
-- position: каждый блок — уникальная позиция из списка выше
-- style: "dark" | "light" | "accent" (accent — не более 1 раза)
-- subtitle может быть null
-- НИКАКИХ эмодзи в title и subtitle`;
+  "productName": "ШОРТЫ",
+  "productSubtitle": "с кружевом",
+  "tagline": "летняя коллекция",
+  "characteristics": [
+    {"title": "ВЫСОКАЯ ПОСАДКА", "value": "подчёркивает талию"},
+    {"title": "КРУЖЕВНАЯ КАЙМА", "value": "добавляет женственности"},
+    {"title": "СВОБОДНЫЙ КРОЙ", "value": "комфорт в движении"}
+  ],
+  "bottomText": "идеально для прогулок и встреч"
+}`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const analysis = body?.analysis;
-  const category = body?.category ?? '';
 
   const apiKey = (process.env.YANDEX_API_KEY ?? '').trim();
   const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
@@ -90,8 +46,8 @@ export async function POST(req: NextRequest) {
   }
 
   const analysisText = analysis
-    ? `Анализ фото:\n- Плюсы: ${(analysis.good ?? []).join(', ')}\n- Проблемы: ${(analysis.improve ?? []).join(', ')}\n- Категория товара: ${category || 'одежда'}`
-    : `Категория товара: ${category || 'одежда'}`;
+    ? `Анализ фото:\n- Что хорошо: ${(analysis.good ?? []).join('; ')}\n- Проблемы: ${(analysis.improve ?? []).join('; ')}`
+    : 'Товар одежда для Wildberries.';
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 25_000);
@@ -100,18 +56,15 @@ export async function POST(req: NextRequest) {
     const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
       method: 'POST',
       signal: ac.signal,
-      headers: {
-        'Authorization': `Api-Key ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: `gpt://${folderId}/yandexgpt-lite/latest`,
         messages: [
-          { role: 'system', content: TEXT_PROMPT },
+          { role: 'system', content: INFOGRAPHIC_PROMPT },
           { role: 'user', content: analysisText },
         ],
-        max_tokens: 2000,
-        temperature: 0.6,
+        max_tokens: 1000,
+        temperature: 0.5,
       }),
     });
     clearTimeout(timer);
@@ -123,24 +76,18 @@ export async function POST(req: NextRequest) {
 
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content ?? null;
+    if (!content) return Response.json({ error: 'Пустой ответ' }, { status: 500 });
 
-    if (!content) {
-      return Response.json({ error: 'Пустой ответ от AI' }, { status: 500 });
-    }
-
-    let result;
     try {
-      const jsonStart = content.indexOf('{');
-      const jsonEnd = content.lastIndexOf('}');
-      if (jsonStart === -1 || jsonEnd === -1) throw new Error('no JSON');
-      result = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
+      const s = content.indexOf('{');
+      const e = content.lastIndexOf('}');
+      if (s === -1 || e === -1) throw new Error('no JSON');
+      return Response.json(JSON.parse(content.slice(s, e + 1)));
     } catch {
       return Response.json({ error: `Не удалось разобрать JSON: ${content.slice(0, 200)}` }, { status: 500 });
     }
-
-    return Response.json(result);
-  } catch (e) {
+  } catch (err) {
     clearTimeout(timer);
-    return Response.json({ error: String(e) }, { status: 500 });
+    return Response.json({ error: String(err) }, { status: 500 });
   }
 }

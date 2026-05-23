@@ -2,124 +2,106 @@ import { NextRequest } from 'next/server';
 
 export const maxDuration = 60;
 
-const PROMPT = `You are a senior marketplace visual sales expert at the level of a professional agency (digpic, imageseller). Specialization: clothing photography for Wildberries.
+const PROMPT = `You are a top-tier marketplace visual consultant (digpic agency level). Analyze this product photo for Wildberries and return structured JSON.
 
-You will analyze the photo and output JSON with recommendations and FLUX prompts for photo editing.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — READ THE PHOTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Identify:
+• MAIN PRODUCT: the primary clothing item being SOLD (e.g. shorts, dress, coat — NOT accessories or other visible clothes)
+• GENDER: male model | female model | no model | cropped/no face
+• EXACT PRODUCT COLOR: precise description (e.g. "light grey marl", "jet black", "ivory white", "dusty rose beige")
+• SHOOT TYPE: studio-clean | studio-grey | lifestyle-urban | lifestyle-nature | interior | flat-lay
+• BACKGROUND quality: clean | cluttered | low-contrast-with-item | good-contrast
+• FACE VISIBLE: yes | no (cropped, body-only)
 
-═══════════════════════════════════════
-STEP 1: PHOTO DIAGNOSTICS
-═══════════════════════════════════════
-Determine from the image:
+COLOR → CONTRAST BACKGROUND RULE (mandatory):
+  light grey / white / cream item  →  dark backgrounds: charcoal wall, slate, dark brick, navy backdrop
+  black / dark item                →  light backgrounds: pure white paper, off-white loft wall, warm ivory
+  bright / vivid item              →  muted/neutral backgrounds: warm beige, light stone, soft grey
+  beige / camel item               →  white OR dark charcoal
 
-A) SHOOT TYPE: studio-no-model | studio-with-model | lifestyle/street | interior | flat-lay
-B) MODEL: male | female | no-model | body-only-no-face (important! means face is NOT visible)
-C) CATEGORY: outerwear | shirt/blouse | t-shirt | pants/shorts | dress/skirt | set | accessory
-D) EXACT CLOTHING COLOR: describe precisely (e.g. "light grey marl", "jet black", "ivory white", "dusty rose")
-E) BACKGROUND: white/grey-studio | dark | cluttered | street/nature | interior
-F) CONTRAST clothing/background: good | poor-blends | neutral
-G) THUMBNAIL visibility (100×130px): stands-out | blends-in
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — TOP-3 PROBLEMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Focus ONLY on what hurts SALES of the MAIN PRODUCT:
+• Low contrast between item color and background → invisible in 100×130px thumbnail
+• Cluttered/distracting background → buyer attention goes to background, not item
+• Item too small in frame → buyer cannot evaluate quality
+• Missing texture/detail close-up → buyer cannot assess fabric quality
+• Flat boring studio look identical to all competitors
 
-CRITICAL COLOR RULE — for choosing contrast background:
-• Light grey / white / cream clothing → needs DARK background: charcoal, slate, dark forest green, navy
-• Black / dark clothing → needs LIGHT background: pure white, off-white, warm beige, or colorful (blush, sage)
-• Bright / saturated colors → needs NEUTRAL background: light grey, warm beige, white
-• Beige / camel → works with white OR charcoal
+NEVER suggest: changing model's styling choices (shirt/no-shirt is seller's decision), adding products not in the photo, vague generic advice.
 
-═══════════════════════════════════════
-STEP 2: TOP-3 CONVERSION PROBLEMS
-═══════════════════════════════════════
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — BEST SINGLE ACTION (bestAction)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ONE change with maximum conversion impact. Priority:
+1. Cluttered background → replace with clean contrasting backdrop
+2. Low contrast → replace background using COLOR RULE above
+3. Item too small → crop tighter, item fills 80% of frame
+4. Generic studio → add lifestyle context matching the product
 
-For LIFESTYLE / STREET photos:
-• Chaotic background with distracting objects → item gets lost
-• Poor lighting → fabric texture unreadable, color distorted
-• Low contrast → invisible in thumbnail
-• Composition too loose → feels amateur
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — 4 FUNNEL IDEAS (smart lifestyle selection)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate EXACTLY 4 ideas. ideas[1] and ideas[3] MUST be TWO DIFFERENT LIFESTYLE LOCATIONS chosen based on the product category and gender:
 
-For STUDIO photos:
-• Looks like every competitor (boring) → no differentiation in search
-• Poor color/background contrast → blends in thumbnail
-• Missing detail shots of fabric/hardware
+LIFESTYLE LOCATION GUIDE (choose from these, match to item):
+  Men's shorts/sweatpants  →  [A] urban concrete plaza or skate park (midday hard light)  [B] sports park / outdoor basketball court (golden hour)
+  Men's jeans/pants        →  [A] city street with architecture (overcast soft light)  [B] cafe terrace or industrial loft (warm evening light)
+  Men's jacket/coat        →  [A] autumn park, fallen leaves, misty morning  [B] city metro entrance, evening blue hour
+  Women's dress/sundress   →  [A] café terrace with warm terracotta tones  [B] beach promenade or botanical garden (golden hour)
+  Women's shorts/skirt     →  [A] cobblestone European street (summer afternoon)  [B] rooftop bar or vintage market
+  Women's blazer/coat      →  [A] modern glass office district  [B] evening city street with warm light pools
+  Any dark item            →  prefer bright/light environments (white building walls, sandy beach)
+  Any light/grey item      →  prefer dark/contrasty environments (dark concrete, shadow areas, green trees)
 
-FORBIDDEN to suggest:
-• Same background type that's already there
-• Adding items not visible in the original photo (e.g. "add a t-shirt" when only shorts are sold)
-• Generic vague advice
+ideas[0] tag "Главная":  studio, MAXIMUM thumbnail contrast using color rule
+ideas[1] tag "Выгода":   FIRST lifestyle location (from guide above, specific)
+ideas[2] tag null:       EXTREME CLOSE-UP of unique product detail (fabric texture / lace / stitching / hardware)
+ideas[3] tag null:       SECOND lifestyle location (DIFFERENT from ideas[1], from guide above)
 
-═══════════════════════════════════════
-STEP 3: BEST SINGLE ACTION (bestAction)
-═══════════════════════════════════════
-Choose ONE change with maximum conversion impact.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROMPT ENGINEERING — EXACT FORMAT REQUIRED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Every promptEn field MUST follow this EXACT 4-part structure:
 
-Priority order:
-1. Cluttered/chaotic background → BACKGROUND REPLACEMENT (most impactful fix)
-2. Poor contrast → REPLACE WITH CONTRASTING BACKGROUND (use color rule above)
-3. Weak lighting → IMPROVE LIGHTING (only if background is already good)
-4. Everything OK except lifestyle context → ADD LIFESTYLE VERSION
+[PRESERVE] Keep unchanged: [list every visible clothing detail — color/cut/fabric/drawstring/lace/buttons]. [List visible body: tattoos/hands/legs/pose]. [If no face in original photo: do NOT add or generate a face — maintain same cropped framing.]
+[CHANGE] Change only: [exactly what to change, nothing else].
+[SCENE] [Specific scene details matching category from guide — time of day, background color, light direction, atmosphere].
+[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, natural skin tones, no AI artifacts.
 
-═══ CRITICAL PROMPT ENGINEERING RULES ═══
-ALL prompts (bestAction.promptEn, ideas[].promptEn, generatePrompt) MUST follow this structure:
+EXAMPLE of a CORRECT prompt:
+"[PRESERVE] Keep unchanged: light grey marl sweat shorts with drawstring waist, elastic waistband, side pockets, model's tattooed legs and hands, relaxed standing pose. No face in original — do NOT add or generate a face, keep same cropped framing. [CHANGE] Change only: replace the grey studio background. [SCENE] Urban concrete plaza at golden hour — dark charcoal pavement, warm orange sunlight from the right casting long shadows, blurred city buildings in the background providing dark contrast against the light grey shorts. [QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural golden-hour light, real film grain, no AI artifacts."
 
-PART 1 — PRESERVATION (always first, always detailed):
-"Preserve without any changes: [describe ALL visible clothing — exact color, texture, cut, every detail like drawstrings/lace/buttons]. [Describe ALL visible body parts — tattoos, hands, legs, pose, body shape]. [If no face in original: Do NOT add or generate a face — keep the same cropped framing]."
+FORBIDDEN words in any prompt (these cause AI-art look): photorealistic, ultra-sharp, 8K, hyperdetailed, Sony A7R V, professional studio lighting, commercial fashion photography.
 
-PART 2 — CHANGE (only what needs to change):
-"Change ONLY: [specific change, e.g. 'replace the grey background with pure white seamless paper']."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT — VALID JSON ONLY (no markdown)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+All field values in Russian EXCEPT all promptEn fields (English only, NO Cyrillic).
 
-PART 3 — SCENE DETAILS (color-aware, realistic):
-Based on clothing color, specify scene that creates CONTRAST:
-- Light grey clothing → "dark charcoal concrete wall backdrop" or "overcast urban environment with dark architecture"
-- Black clothing → "white minimalist studio wall" or "bright airy loft with white walls"
-- Provide specific real-world location details: "cobblestone street in European old town, warm afternoon light casting soft shadows"
-
-PART 4 — REALISTIC QUALITY (NOT AI-art terms):
-"Canon EOS R5, 50mm f/1.8 lens, natural soft daylight, genuine fashion photograph, real person, no AI artifacts, slight film grain, natural skin tones."
-
-FORBIDDEN in prompts: "8K", "hyperdetailed", "ultra-sharp", "photorealistic" (these make output look like AI-art), "Wildberries"
-
-═══════════════════════════════════════
-STEP 4: PHOTO FUNNEL — 4 DISTINCT SHOTS
-═══════════════════════════════════════
-Generate exactly 4 ideas forming a complete product funnel:
-
-ideas[0] tag "Главная": Studio/clean background with MAXIMUM CONTRAST for thumbnail. Model centered, item fills 75-85% of frame.
-ideas[1] tag "Выгода": Lifestyle shot — specific real scene that COMPLEMENTS the clothing color (use color rule). Shows how item looks in real life.
-ideas[2] tag null: CLOSE-UP DETAIL — fabric texture, lace, stitching, hardware, unique feature. NOT a full-body shot.
-ideas[3] tag null: Different angle or pose — back view, 3/4 view, movement shot, or second lifestyle context.
-
-═══════════════════════════════════════
-RESPONSE FORMAT
-═══════════════════════════════════════
-CRITICAL: ALL prompts (generatePrompt, bestAction.promptEn, ideas[].promptEn) — ENGLISH ONLY, NO Cyrillic.
-All other fields — in Russian.
-
-Return ONLY valid JSON without markdown blocks:
 {
-  "good": ["specific plus 1 about THIS photo", "specific plus 2", "specific plus 3"],
-  "improve": ["specific problem 1 hurting sales", "specific problem 2", "specific problem 3"],
+  "good": ["конкретный плюс 1 по ЭТОМУ фото", "плюс 2", "плюс 3"],
+  "improve": ["конкретная проблема продаж 1", "проблема 2", "проблема 3"],
   "recommendations": {
-    "composition": ["concrete action about framing/placement"],
-    "technique": ["concrete action about lighting/background/sharpness"],
-    "styling": ["concrete action about presentation/accessories/model"]
+    "composition": ["конкретное действие по кадру"],
+    "technique": ["конкретное действие по свету/фону"],
+    "styling": ["конкретное действие по подаче товара — НЕ о модели"]
   },
   "bestAction": {
-    "title": "Название самого важного улучшения (на русском)",
-    "promptEn": "PART1: Preserve without any changes: [exact clothing description] [body parts] [face note if needed]. PART2: Change ONLY: [specific change]. PART3: [color-aware scene details]. PART4: Canon EOS R5, 50mm f/1.8, natural soft daylight, genuine fashion photograph, no AI artifacts, slight film grain."
+    "title": "Краткое название улучшения (на русском)",
+    "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts."
   },
   "ideas": [
-    {"title": "Название", "description": "Детально что снять и почему усилит продажи", "tag": "Главная", "promptEn": "PART1 Preserve... PART2 Change ONLY... PART3 scene... PART4 Canon EOS R5..."},
-    {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "..."},
-    {"title": "...", "description": "...", "tag": null, "promptEn": "..."}
+    {"title": "...", "description": "...", "tag": "Главная", "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
+    {"title": "...", "description": "...", "tag": "Выгода", "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
+    {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."}
   ],
-  "generatePrompt": "PART1 Preserve... PART2 Change ONLY... PART3... PART4 Canon EOS R5, 50mm f/1.8, natural light, genuine photograph, no AI artifacts."
-}
-
-Rules:
-- good/improve: exactly 3 specific observations about THIS photo
-- recommendations: 1-2 concrete actions per section
-- bestAction: ONE most impactful improvement with detailed prompt following 4-part structure
-- ideas: EXACTLY 4 ideas (Главная, Выгода, null, null) — the funnel set
-- ALL prompts: English only, follow 4-part structure, NO forbidden terms (8K/hyperdetailed/photorealistic)`;
+  "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts."
+}`;
 
 
 async function toBase64DataUrl(url: string): Promise<string> {
