@@ -69,14 +69,23 @@ export async function POST(req: NextRequest) {
   console.log(`[wb-photos] WB API ok, cards count=${data?.cards?.length ?? 0}`);
   console.log(`[wb-photos] raw response keys: ${Object.keys(data ?? {}).join(', ')}`);
 
-  const card = data?.cards?.[0];
+  // nmIds filter in WB API doesn't reliably filter to a single article —
+  // search the returned cards for the exact matching nmID
+  const card = Array.isArray(data?.cards)
+    ? data.cards.find((c: { nmID: number }) => c.nmID === nmId) ?? null
+    : null;
 
   if (!card) {
-    console.log(`[wb-photos] no card found via API, falling back to basket formula. Full response: ${JSON.stringify(data).slice(0, 300)}`);
+    // Article not found in this account's catalog — use basket CDN fallback.
+    // Try both webp (newer products) and jpg (older products); client hides failed images.
+    console.log(`[wb-photos] nmId=${nmId} not in returned cards, using basket fallback`);
     const vol = Math.floor(nmId / 100000);
     const part = Math.floor(nmId / 1000);
     const basket = getWbBasket(vol);
     const fallbackPhotos: string[] = [];
+    for (let i = 1; i <= 15; i++) {
+      fallbackPhotos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.webp`);
+    }
     for (let i = 1; i <= 15; i++) {
       fallbackPhotos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.jpg`);
     }
@@ -84,40 +93,41 @@ export async function POST(req: NextRequest) {
     return Response.json({ photos: fallbackPhotos, title: '', brand: '', nmId, fallback: true });
   }
 
-  console.log(`[wb-photos] card nmID=${card.nmID}, title="${card.title}", photos_raw=${JSON.stringify(card.photos).slice(0, 300)}`);
-  console.log(`[wb-photos] card keys: ${Object.keys(card).join(', ')}`);
+  console.log(`[wb-photos] found card nmID=${card.nmID}, title="${card.title}", photos_raw=${JSON.stringify(card.photos).slice(0, 300)}`);
 
-  // Extract photo URLs — sort by sortOrder, use url (big) as primary
+  // Real photo structure from WB API: { big, hq, c516x688, c246x328 }
+  // (NOT url/midUrl/smallUrl as documented — actual field names confirmed from logs)
   const photos: string[] = [];
 
   if (Array.isArray(card.photos)) {
-    const sorted = [...card.photos].sort((a, b) => (a?.sortOrder ?? 0) - (b?.sortOrder ?? 0));
-    for (const p of sorted) {
-      const url = p?.url || p?.midUrl || p?.smallUrl || null;
-      if (url) photos.push(url);
+    for (const p of card.photos) {
+      const url = p?.big || p?.hq || p?.['c516x688'] || p?.['c246x328'] || p?.url || null;
+      if (url) photos.push(url as string);
     }
     console.log(`[wb-photos] extracted from card.photos: ${photos.length} urls`);
   } else {
-    console.log(`[wb-photos] card.photos is not array: ${typeof card.photos} = ${JSON.stringify(card.photos).slice(0, 200)}`);
+    console.log(`[wb-photos] card.photos is not array: ${typeof card.photos}`);
   }
 
-  // Fallback to mediaFiles if photos array is empty
   if (photos.length === 0 && Array.isArray(card.mediaFiles)) {
     for (const url of card.mediaFiles) {
       if (typeof url === 'string') photos.push(url);
     }
-    console.log(`[wb-photos] fallback mediaFiles: ${photos.length} urls`);
+    console.log(`[wb-photos] mediaFiles fallback: ${photos.length} urls`);
   }
 
-  // Last-resort fallback: construct CDN URLs from nmId using basket formula
+  // Last resort: basket formula (both webp + jpg)
   if (photos.length === 0) {
     const vol = Math.floor(nmId / 100000);
     const part = Math.floor(nmId / 1000);
     const basket = getWbBasket(vol);
     for (let i = 1; i <= 15; i++) {
+      photos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.webp`);
+    }
+    for (let i = 1; i <= 15; i++) {
       photos.push(`https://basket-${basket}.wbbasket.ru/vol${vol}/part${part}/${nmId}/images/big/${i}.jpg`);
     }
-    console.log(`[wb-photos] fallback basket formula: vol=${vol}, part=${part}, basket=${basket}, ${photos.length} urls`);
+    console.log(`[wb-photos] last-resort basket formula: ${photos.length} urls`);
   }
 
   console.log(`[wb-photos] final photos count=${photos.length}, first=${photos[0] ?? 'none'}`);
