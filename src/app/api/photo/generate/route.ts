@@ -34,15 +34,7 @@ export async function POST(req: NextRequest) {
   try {
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
     const sizekb = Math.round(imageData.length / 1024);
-    const mimeMatch = imageData.match(/^data:([^;]+);base64,/);
-    const mime = mimeMatch?.[1] ?? 'unknown';
-    const hasDataPrefix = imageData.startsWith('data:');
-    console.log(`[generate] image: ${sizekb}KB, mime=${mime}, hasDataPrefix=${hasDataPrefix}`);
-    const hasCyrillic = /[Ѐ-ӿ]/.test(prompt);
-    console.log(`[generate] prompt (${prompt.length} chars, cyrillic=${hasCyrillic}): ${prompt.slice(0, 300)}`);
-    if (hasCyrillic) console.log(`[generate] WARNING: prompt contains Russian — FLUX may ignore source image`);
-
-    console.log(`[generate] image prefix (first 100 chars): ${imageData.slice(0, 100)}`);
+    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-max`);
 
     // Kontext-max/pro: field is "input_image" (not "image" like Kontext-dev)
     const fluxBody = {
@@ -51,7 +43,6 @@ export async function POST(req: NextRequest) {
       input_image: imageData,
       output_format: 'jpeg',
     };
-    console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
