@@ -35,14 +35,14 @@ export async function POST(req: NextRequest) {
     // FLUX.1-Kontext-pro: image field with data: prefix required, strength controls source fidelity
     const imageData = imageUrl.startsWith('data:') ? imageUrl : await toBase64DataUrl(imageUrl);
     const sizekb = Math.round(imageData.length / 1024);
-    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-pro`);
+    console.log(`[generate] ${sizekb}KB, model: FLUX.1-Kontext-max`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac.signal,
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'black-forest-labs/FLUX.1-Kontext-pro',
+        model: 'black-forest-labs/FLUX.1-Kontext-max',
         prompt,
         image: imageData,
         num_outputs: 1,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       let data: Record<string, unknown> = {};
       try { data = JSON.parse(respText); } catch { return Response.json({ error: `Не JSON: ${respText.slice(0, 200)}` }, { status: 500 }); }
       const url = (data?.images as Array<{ url: string }>)?.[0]?.url ?? null;
-      if (url) return Response.json({ imageUrl: url, model: 'flux-kontext-pro' });
+      if (url) return Response.json({ imageUrl: url, model: 'flux-kontext-max' });
       return Response.json({ error: `Нет URL: ${JSON.stringify(data)}` }, { status: 500 });
     }
 
