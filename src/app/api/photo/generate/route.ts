@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     console.log(`[generate] prompt (${prompt.length} chars, cyrillic=${hasCyrillic}): ${prompt.slice(0, 300)}`);
     if (hasCyrillic) console.log(`[generate] WARNING: prompt contains Russian — FLUX may ignore source image`);
 
-    console.log(`[generate] image prefix (first 60 chars): ${imageData.slice(0, 60)}`);
+    console.log(`[generate] image prefix (first 100 chars): ${imageData.slice(0, 100)}`);
 
     const fluxBody = {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
