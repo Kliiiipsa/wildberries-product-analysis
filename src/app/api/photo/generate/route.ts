@@ -38,20 +38,22 @@ export async function POST(req: NextRequest) {
     const mime = mimeMatch?.[1] ?? 'unknown';
     const hasDataPrefix = imageData.startsWith('data:');
     console.log(`[generate] image: ${sizekb}KB, mime=${mime}, hasDataPrefix=${hasDataPrefix}`);
-    const hasCyrillic = /[а-яёА-ЯЁ]/.test(prompt);
+    const hasCyrillic = /[Ѐ-ӿ]/.test(prompt);
     console.log(`[generate] prompt (${prompt.length} chars, cyrillic=${hasCyrillic}): ${prompt.slice(0, 300)}`);
     if (hasCyrillic) console.log(`[generate] WARNING: prompt contains Russian — FLUX may ignore source image`);
-    console.log(`[generate] params: model=FLUX.1-Kontext-max, strength=0.82, guidance=3.2, steps=40`);
 
-    // Kontext-max supports: prompt, image, aspect_ratio, output_format, seed
-    // num_outputs/guidance_scale/num_inference_steps/strength are NOT supported — sending them breaks image conditioning
     const fluxBody = {
       model: 'black-forest-labs/FLUX.1-Kontext-max',
       prompt,
       image: imageData,
       aspect_ratio: '2:3',
       output_format: 'jpeg',
+      num_outputs: 1,
+      guidance_scale: 3.5,
+      num_inference_steps: 45,
+      strength: 0.88,
     };
+    console.log(`[generate] params: strength=${fluxBody.strength}, guidance=${fluxBody.guidance_scale}, steps=${fluxBody.num_inference_steps}`);
     console.log(`[generate] request keys: ${Object.keys(fluxBody).join(', ')}`);
 
     const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
