@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useState, useCallback } from 'react';
+import { Loader2 } from 'lucide-react';
 
 interface Characteristic {
   title: string;
@@ -37,58 +38,37 @@ const DEFAULT_DATA: InfographicData = {
 };
 
 const TEMPLATES: Record<TemplateStyle, {
-  overlayBg: string;
-  textColor: string;
-  subtitleColor: string;
-  accentColor: string;
-  circleStroke: string;
-  tagBg: string;
-  tagText: string;
-  bottomBg: string;
+  overlayBg: string; textColor: string; subtitleColor: string;
+  accentColor: string; circleStroke: string; tagBg: string;
+  tagText: string; bottomBg: string;
 }> = {
   light: {
-    overlayBg: 'rgba(252,249,244,0.96)',
-    textColor: '#1a1a1a',
-    subtitleColor: 'rgba(30,30,30,0.5)',
-    accentColor: '#7a5c2a',
-    circleStroke: '#c49a3c',
-    tagBg: 'rgba(122,92,42,0.12)',
-    tagText: '#7a5c2a',
-    bottomBg: 'rgba(122,92,42,0.06)',
+    overlayBg: 'rgba(252,249,244,0.96)', textColor: '#1a1a1a',
+    subtitleColor: 'rgba(30,30,30,0.5)', accentColor: '#7a5c2a',
+    circleStroke: '#c49a3c', tagBg: 'rgba(122,92,42,0.12)',
+    tagText: '#7a5c2a', bottomBg: 'rgba(122,92,42,0.06)',
   },
   dark: {
-    overlayBg: 'rgba(10,10,12,0.93)',
-    textColor: '#f0ede8',
-    subtitleColor: 'rgba(240,237,232,0.5)',
-    accentColor: '#c9a96e',
-    circleStroke: '#c9a96e',
-    tagBg: 'rgba(201,169,110,0.15)',
-    tagText: '#c9a96e',
-    bottomBg: 'rgba(201,169,110,0.06)',
+    overlayBg: 'rgba(10,10,12,0.93)', textColor: '#f0ede8',
+    subtitleColor: 'rgba(240,237,232,0.5)', accentColor: '#c9a96e',
+    circleStroke: '#c9a96e', tagBg: 'rgba(201,169,110,0.15)',
+    tagText: '#c9a96e', bottomBg: 'rgba(201,169,110,0.06)',
   },
   beige: {
-    overlayBg: 'rgba(240,232,218,0.97)',
-    textColor: '#2c1f0e',
-    subtitleColor: 'rgba(44,31,14,0.45)',
-    accentColor: '#8b5e30',
-    circleStroke: '#a0723e',
-    tagBg: 'rgba(139,94,48,0.12)',
-    tagText: '#8b5e30',
-    bottomBg: 'rgba(139,94,48,0.07)',
+    overlayBg: 'rgba(240,232,218,0.97)', textColor: '#2c1f0e',
+    subtitleColor: 'rgba(44,31,14,0.45)', accentColor: '#8b5e30',
+    circleStroke: '#a0723e', tagBg: 'rgba(139,94,48,0.12)',
+    tagText: '#8b5e30', bottomBg: 'rgba(139,94,48,0.07)',
   },
   black: {
-    overlayBg: 'rgba(0,0,0,0.97)',
-    textColor: '#ffffff',
-    subtitleColor: 'rgba(255,255,255,0.45)',
-    accentColor: '#e0c97a',
-    circleStroke: '#e0c97a',
-    tagBg: 'rgba(224,201,122,0.14)',
-    tagText: '#e0c97a',
-    bottomBg: 'rgba(224,201,122,0.07)',
+    overlayBg: 'rgba(0,0,0,0.97)', textColor: '#ffffff',
+    subtitleColor: 'rgba(255,255,255,0.45)', accentColor: '#e0c97a',
+    circleStroke: '#e0c97a', tagBg: 'rgba(224,201,122,0.14)',
+    tagText: '#e0c97a', bottomBg: 'rgba(224,201,122,0.07)',
   },
 };
 
-function wrapTextCanvas(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
   let current = '';
@@ -130,32 +110,27 @@ function drawInfographic(
   const fadeW = Math.round(w * 0.055);
   const maxTextW = panelW - pad - Math.round(w * 0.018);
 
-  // ── Photo background ──
   ctx.drawImage(img, 0, 0, w, h);
 
-  // ── Left panel solid ──
   ctx.fillStyle = t.overlayBg;
   ctx.fillRect(0, 0, panelW, h);
 
-  // ── Gradient fade on right edge ──
   const grad = ctx.createLinearGradient(panelW - fadeW, 0, panelW, 0);
   grad.addColorStop(0, t.overlayBg);
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(panelW - fadeW, 0, fadeW, h);
 
-  // ── Left accent stripe ──
   ctx.fillStyle = t.accentColor;
   ctx.fillRect(0, 0, stripeW, h);
 
-  // ── Subtle dot grid in top-right corner of panel ──
-  const dotArea = Math.round(w * 0.10);
-  const dotR = 1.2;
+  // Dot grid
   const dotStep = Math.round(w * 0.022);
+  const dotArea = Math.round(w * 0.10);
   for (let dx = 0; dx <= dotArea; dx += dotStep) {
     for (let dy = 0; dy <= dotArea; dy += dotStep) {
       ctx.beginPath();
-      ctx.arc(panelW - fadeW - 4 - (dotArea - dx), Math.round(h * 0.032) + dy, dotR, 0, Math.PI * 2);
+      ctx.arc(panelW - fadeW - 4 - (dotArea - dx), Math.round(h * 0.032) + dy, 1.2, 0, Math.PI * 2);
       ctx.fillStyle = t.circleStroke;
       ctx.globalAlpha = 0.18;
       ctx.fill();
@@ -165,7 +140,7 @@ function drawInfographic(
 
   let y = Math.round(h * 0.058);
 
-  // ── Tagline pill ──
+  // Tagline pill
   const tagSize = Math.round(h * 0.017);
   ctx.font = `600 ${tagSize}px Arial, Helvetica, sans-serif`;
   const tagText = data.tagline.toUpperCase();
@@ -176,11 +151,9 @@ function drawInfographic(
   const tagH = tagSize + tagPadV * 2;
   const tagR = tagH / 2;
 
-  // pill background
   roundRect(ctx, pad, y, tagW, tagH, tagR);
   ctx.fillStyle = t.tagBg;
   ctx.fill();
-  // pill border
   roundRect(ctx, pad, y, tagW, tagH, tagR);
   ctx.strokeStyle = t.accentColor;
   ctx.lineWidth = 1;
@@ -188,67 +161,49 @@ function drawInfographic(
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // pill text
   ctx.fillStyle = t.tagText;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(tagText, pad + tagPadH, y + tagH / 2);
   ctx.textBaseline = 'top';
-
   y += tagH + Math.round(h * 0.02);
 
-  // ── Product name ──
+  // Product name
   const nameSize = Math.round(h * 0.074);
   ctx.font = `900 ${nameSize}px Arial, Helvetica, sans-serif`;
   ctx.fillStyle = t.textColor;
   ctx.textAlign = 'left';
-  const nameLines = wrapTextCanvas(ctx, data.productName.toUpperCase(), maxTextW);
+  const nameLines = wrapText(ctx, data.productName.toUpperCase(), maxTextW);
   for (const line of nameLines) {
     ctx.fillText(line, pad, y);
     y += Math.round(nameSize * 1.06);
   }
 
-  // ── Subtitle italic ──
+  // Subtitle
   const subSize = Math.round(h * 0.022);
   ctx.font = `italic ${subSize}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = t.subtitleColor;
   ctx.fillText(data.productSubtitle, pad, y);
   y += subSize + Math.round(h * 0.022);
 
-  // ── Divider line with center diamond ──
+  // Divider with diamond
   const lineY = y + 2;
   const lineX1 = pad;
   const lineX2 = panelW - pad - fadeW;
   const midX = (lineX1 + lineX2) / 2;
   const dSize = 4;
 
-  ctx.beginPath();
-  ctx.moveTo(lineX1, lineY);
-  ctx.lineTo(midX - dSize * 1.6, lineY);
-  ctx.strokeStyle = t.circleStroke;
-  ctx.lineWidth = 1;
-  ctx.globalAlpha = 0.4;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(midX + dSize * 1.6, lineY);
-  ctx.lineTo(lineX2, lineY);
-  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(lineX1, lineY); ctx.lineTo(midX - dSize * 1.6, lineY);
+  ctx.strokeStyle = t.circleStroke; ctx.lineWidth = 1; ctx.globalAlpha = 0.4; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(midX + dSize * 1.6, lineY); ctx.lineTo(lineX2, lineY); ctx.stroke();
   ctx.globalAlpha = 1;
-
-  // Diamond center
   ctx.beginPath();
-  ctx.moveTo(midX, lineY - dSize);
-  ctx.lineTo(midX + dSize, lineY);
-  ctx.lineTo(midX, lineY + dSize);
-  ctx.lineTo(midX - dSize, lineY);
-  ctx.closePath();
-  ctx.fillStyle = t.circleStroke;
-  ctx.fill();
-
+  ctx.moveTo(midX, lineY - dSize); ctx.lineTo(midX + dSize, lineY);
+  ctx.lineTo(midX, lineY + dSize); ctx.lineTo(midX - dSize, lineY);
+  ctx.closePath(); ctx.fillStyle = t.circleStroke; ctx.fill();
   y += Math.round(h * 0.036);
 
-  // ── "ХАРАКТЕРИСТИКИ" label ──
+  // Section label
   const sectionLabelSize = Math.round(h * 0.014);
   ctx.font = `600 ${sectionLabelSize}px Arial, Helvetica, sans-serif`;
   ctx.fillStyle = t.subtitleColor;
@@ -256,7 +211,7 @@ function drawInfographic(
   ctx.fillText('ХАРАКТЕРИСТИКИ', pad, y);
   y += sectionLabelSize + Math.round(h * 0.016);
 
-  // ── Characteristics ──
+  // Characteristics
   const chars = data.characteristics.slice(0, 3);
   const charTitleSize = Math.round(h * 0.019);
   const charValSize = Math.round(h * 0.015);
@@ -265,67 +220,43 @@ function drawInfographic(
 
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
-    const bx = pad;
-    const by = y;
+    roundRect(ctx, pad, y, badgeSize, badgeSize, 5);
+    ctx.fillStyle = t.tagBg; ctx.fill();
+    roundRect(ctx, pad, y, badgeSize, badgeSize, 5);
+    ctx.strokeStyle = t.circleStroke; ctx.lineWidth = 1.5; ctx.stroke();
 
-    // Badge background
-    roundRect(ctx, bx, by, badgeSize, badgeSize, 5);
-    ctx.fillStyle = t.tagBg;
-    ctx.fill();
-    roundRect(ctx, bx, by, badgeSize, badgeSize, 5);
-    ctx.strokeStyle = t.circleStroke;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Number in badge
     ctx.font = `bold ${Math.round(badgeSize * 0.52)}px Arial, Helvetica, sans-serif`;
     ctx.fillStyle = t.accentColor;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), bx + badgeSize / 2, by + badgeSize / 2 + 0.5);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), pad + badgeSize / 2, y + badgeSize / 2 + 0.5);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
 
-    const tx = bx + badgeSize + Math.round(w * 0.018);
+    const tx = pad + badgeSize + Math.round(w * 0.018);
     const tMaxW = maxTextW - badgeSize - Math.round(w * 0.02);
-    const titleY = by + (badgeSize - charTitleSize) / 2 - 1;
+    const titleY = y + (badgeSize - charTitleSize) / 2 - 1;
 
-    // Char title
     ctx.font = `700 ${charTitleSize}px Arial, Helvetica, sans-serif`;
     ctx.fillStyle = t.textColor;
     ctx.fillText(ch.title.toUpperCase(), tx, titleY);
 
-    // Char value
     if (ch.value) {
       ctx.font = `${charValSize}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = t.subtitleColor;
-      const valLines = wrapTextCanvas(ctx, ch.value, tMaxW);
+      const valLines = wrapText(ctx, ch.value, tMaxW);
       let vy = titleY + charTitleSize + 3;
-      for (const vl of valLines) {
-        ctx.fillText(vl, tx, vy);
-        vy += charValSize + 2;
-      }
+      for (const vl of valLines) { ctx.fillText(vl, tx, vy); vy += charValSize + 2; }
     }
-
     y += charSpacing;
   }
 
-  // ── Bottom section ──
+  // Bottom section
   const bottomH = Math.round(h * 0.09);
   const bottomY = h - bottomH;
-
-  // Bottom tinted strip
   ctx.fillStyle = t.bottomBg;
   ctx.fillRect(0, bottomY, panelW, bottomH);
 
-  // Thin top line of bottom
-  ctx.beginPath();
-  ctx.moveTo(pad, bottomY + 8);
-  ctx.lineTo(panelW - pad - fadeW, bottomY + 8);
-  ctx.strokeStyle = t.circleStroke;
-  ctx.lineWidth = 1;
-  ctx.globalAlpha = 0.3;
-  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, bottomY + 8); ctx.lineTo(panelW - pad - fadeW, bottomY + 8);
+  ctx.strokeStyle = t.circleStroke; ctx.lineWidth = 1; ctx.globalAlpha = 0.3; ctx.stroke();
   ctx.globalAlpha = 1;
 
   if (data.bottomText) {
@@ -333,79 +264,27 @@ function drawInfographic(
     ctx.font = `italic ${btSize}px Georgia, 'Times New Roman', serif`;
     ctx.fillStyle = t.subtitleColor;
     ctx.textBaseline = 'middle';
-    const btLines = wrapTextCanvas(ctx, data.bottomText, maxTextW);
+    const btLines = wrapText(ctx, data.bottomText, maxTextW);
     const totalBtH = btLines.length * (btSize + 4);
     let by = bottomY + (bottomH - totalBtH) / 2 + 4;
-    for (const bl of btLines) {
-      ctx.fillText(bl, pad, by);
-      by += btSize + 4;
-    }
+    for (const bl of btLines) { ctx.fillText(bl, pad, by); by += btSize + 4; }
     ctx.textBaseline = 'top';
   }
 }
 
 export default function PhotoInfographicEditor({ imageUrl, analysis, generatePrompt, onExport }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const [canvasSize, setCanvasSize] = useState({ w: 500, h: 700 });
   const [data, setData] = useState<InfographicData>(DEFAULT_DATA);
   const [template, setTemplate] = useState<TemplateStyle>('light');
-  const [loading, setLoading] = useState(false);
-  const [fluxLoading, setFluxLoading] = useState(false);
-  const [activeImageUrl, setActiveImageUrl] = useState(imageUrl);
+  const [loadingText, setLoadingText] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [genError, setGenError] = useState('');
+  const [genStep, setGenStep] = useState('');
 
-  const redraw = useCallback(() => {
-    const canvas = canvasRef.current;
-    const img = imgRef.current;
-    if (!canvas || !img) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    drawInfographic(ctx, img, canvas.width, canvas.height, data, template);
-  }, [data, template]);
-
-  useEffect(() => { setActiveImageUrl(imageUrl); }, [imageUrl]);
-
-  useEffect(() => {
-    if (!activeImageUrl) return;
-    const img = new Image();
-    img.onload = () => {
-      imgRef.current = img;
-      const maxW = 520;
-      const scale = maxW / img.naturalWidth;
-      const h = Math.round(img.naturalHeight * scale);
-      setCanvasSize({ w: maxW, h });
-    };
-    img.src = activeImageUrl;
-  }, [activeImageUrl]);
-
-  // ── Generate infographic background via FLUX ────────────────────────────────
-  const generateFluxBackground = async () => {
-    if (!imageUrl) return;
-    setFluxLoading(true);
-    try {
-      // Extract [PRESERVE] from existing prompt or build a generic one
-      const preserveSection = generatePrompt
-        ? (generatePrompt.split(/\[CHANGE\]|\[SCENE\]|\[QUALITY\]/)[0] ?? '')
-        : '';
-
-      const fluxPrompt = `${preserveSection} [CHANGE] Change only: recompose the shot for a WB marketplace product card — position the model/product to the RIGHT half of the frame, keep the LEFT 45% clean with a smooth studio background (no model, no props). [SCENE] Clean bright studio, smooth gradient background (white fading to soft light grey), soft wrap lighting from the left, product sharp and well-lit, left panel area completely empty and clean for text overlay. WB Premium Card Style, commercial e-commerce product photography. [QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural studio light, no AI artifacts, real film grain.`;
-
-      const res = await fetch('/api/photo/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl, prompt: fluxPrompt }),
-      });
-      const json = await res.json();
-      if (json.imageUrl) setActiveImageUrl(json.imageUrl);
-    } catch { /* ignore */ } finally {
-      setFluxLoading(false);
-    }
-  };
-
-  useEffect(() => { redraw(); }, [redraw, canvasSize]);
-
-  const generateAI = async () => {
-    setLoading(true);
+  // ── Load AI text content ─────────────────────────────────────────────────────
+  const generateAIText = async () => {
+    setLoadingText(true);
     try {
       const res = await fetch('/api/photo/text', {
         method: 'POST',
@@ -423,17 +302,94 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, generatePro
         });
       }
     } catch { /* ignore */ } finally {
-      setLoading(false);
+      setLoadingText(false);
     }
   };
 
-  const exportImage = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const url = canvas.toDataURL('image/jpeg', 0.96);
-    onExport?.(url);
+  // ── Render infographic onto a loaded image and return data URL ───────────────
+  const renderOnImage = useCallback((imgSrc: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) { reject(new Error('no canvas')); return; }
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('no ctx')); return; }
+        drawInfographic(ctx, img, canvas.width, canvas.height, data, template);
+        resolve(canvas.toDataURL('image/jpeg', 0.96));
+      };
+      img.onerror = () => reject(new Error('image load failed'));
+      img.src = imgSrc;
+    });
+  }, [data, template]);
+
+  // ── Main: Generate infographic ───────────────────────────────────────────────
+  // Step 1: FLUX repositions product (right side, left side clean for text)
+  // Step 2: Canvas draws infographic overlay on FLUX result
+  const handleGenerate = async () => {
+    if (!imageUrl) return;
+    setGenerating(true);
+    setResultUrl(null);
+    setGenError('');
+
+    try {
+      // Build FLUX prompt for optimal infographic composition
+      const preserveSection = generatePrompt
+        ? generatePrompt.split(/\[CHANGE\]|\[SCENE\]|\[QUALITY\]/)[0] ?? ''
+        : '';
+
+      const fluxPrompt = `${preserveSection.trim()} [CHANGE] Change only: recompose for a WB marketplace product card — position the product/model to the RIGHT half of the frame, the LEFT 45% of the frame must be clean background with no model, no objects, no elements. [SCENE] Clean smooth studio background filling the left half of the frame (soft white-to-light-grey gradient), product on the right side sharp and well-lit, soft wrap lighting from the upper left. Commercial e-commerce product photography composition, WB Premium Card Style. [QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural studio light, no AI artifacts, real film grain.`;
+
+      setGenStep('FLUX обрабатывает фото (~30 сек)...');
+      const fluxRes = await fetch('/api/photo/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl, prompt: fluxPrompt }),
+      });
+      const fluxData = await fluxRes.json();
+      if (!fluxRes.ok || !fluxData.imageUrl) {
+        throw new Error(fluxData.error || 'FLUX не вернул изображение');
+      }
+
+      setGenStep('Накладываю инфографику...');
+      const final = await renderOnImage(fluxData.imageUrl);
+      setResultUrl(final);
+      onExport?.(final);
+    } catch (e) {
+      setGenError(String(e));
+    } finally {
+      setGenerating(false);
+      setGenStep('');
+    }
+  };
+
+  // ── Quick preview: render overlay on original photo (no FLUX) ────────────────
+  const handlePreview = async () => {
+    setGenerating(true);
+    setResultUrl(null);
+    setGenError('');
+    setGenStep('Генерирую превью...');
+    try {
+      const final = await renderOnImage(imageUrl);
+      setResultUrl(final);
+      onExport?.(final);
+    } catch (e) {
+      setGenError(String(e));
+    } finally {
+      setGenerating(false);
+      setGenStep('');
+    }
+  };
+
+  const downloadResult = () => {
+    if (!resultUrl) return;
     const a = document.createElement('a');
-    a.href = url; a.download = 'infographic.jpg'; a.click();
+    a.href = resultUrl;
+    a.download = 'infographic.jpg';
+    a.click();
   };
 
   const updateChar = (i: number, field: 'title' | 'value', val: string) => {
@@ -452,117 +408,162 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, generatePro
   ];
 
   return (
-    <div className="flex gap-4">
-      {/* Canvas */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0">
-        <div className="flex gap-2 flex-wrap items-center">
-          <button
-            onClick={generateAI}
-            disabled={loading || fluxLoading}
-            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-          >
-            {loading ? '⏳ Генерирую...' : '✨ Текст (AI)'}
-          </button>
-          <button
-            onClick={generateFluxBackground}
-            disabled={fluxLoading || loading}
-            title="FLUX перекомпонует фото: товар вправо, левая половина чистая — идеально для инфографики"
-            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-          >
-            {fluxLoading ? '⏳ FLUX...' : '🎨 Улучшить фон (FLUX)'}
-          </button>
-          {activeImageUrl !== imageUrl && (
-            <button
-              onClick={() => setActiveImageUrl(imageUrl)}
-              className="px-2.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs"
-            >
-              ↩ Оригинал
-            </button>
+    <div className="space-y-4">
+      {/* Hidden canvas — only used for rendering, never shown directly */}
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Two-column layout: form on right, result on left */}
+      <div className="flex gap-4">
+
+        {/* Result area */}
+        <div className="flex-1 min-w-0">
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden aspect-[3/4] relative flex items-center justify-center">
+            {generating ? (
+              <div className="text-center p-6">
+                <Loader2 className="h-10 w-10 animate-spin text-rose-400 mx-auto mb-3" />
+                <p className="text-sm text-slate-300 font-medium">{genStep || 'Генерирую...'}</p>
+                <p className="text-xs text-slate-500 mt-1">Подождите, это займёт ~30–60 сек</p>
+              </div>
+            ) : resultUrl ? (
+              <>
+                <img src={resultUrl} alt="Инфографика" className="w-full h-full object-contain" />
+                <div className="absolute bottom-3 right-3 flex gap-2">
+                  <button
+                    onClick={downloadResult}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
+                  >
+                    ⬇ Скачать
+                  </button>
+                  <button
+                    onClick={() => setResultUrl(null)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm"
+                  >
+                    ↩ Изменить
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center p-8 text-zinc-600">
+                <div className="text-5xl mb-3">🖼</div>
+                <p className="text-sm font-medium text-zinc-500">Заполните поля справа</p>
+                <p className="text-xs mt-1 text-zinc-600">и нажмите «Создать инфографику»</p>
+              </div>
+            )}
+          </div>
+
+          {genError && (
+            <div className="mt-2 rounded-xl border border-red-800/50 bg-red-900/15 px-3 py-2 text-xs text-red-400">
+              {genError}
+            </div>
           )}
-          <div className="flex gap-1 ml-auto">
+
+          {/* Generate buttons */}
+          {!resultUrl && !generating && (
+            <div className="mt-3 flex gap-2 flex-wrap">
+              <button
+                onClick={handleGenerate}
+                disabled={!imageUrl}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                ✨ Создать инфографику (FLUX + текст)
+              </button>
+              <button
+                onClick={handlePreview}
+                disabled={!imageUrl}
+                className="px-3 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-xl text-sm disabled:opacity-50"
+                title="Быстрый превью без FLUX — текст сразу на оригинальном фото"
+              >
+                Превью
+              </button>
+            </div>
+          )}
+
+          {/* Theme selector */}
+          <div className="mt-3 flex gap-1 flex-wrap">
             {TEMPLATE_LABELS.map(([t, label, cls]) => (
               <button
                 key={t}
-                onClick={() => setTemplate(t)}
+                onClick={() => { setTemplate(t); if (resultUrl) setResultUrl(null); }}
                 className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${cls} ${template === t ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-90'}`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <button
-            onClick={exportImage}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
-          >
-            ⬇ Скачать
-          </button>
         </div>
 
-        <div className="border border-zinc-700 rounded-xl overflow-hidden bg-zinc-900" style={{ lineHeight: 0 }}>
-          <canvas
-            ref={canvasRef}
-            width={canvasSize.w}
-            height={canvasSize.h}
-            className="max-w-full block"
-          />
-        </div>
-      </div>
+        {/* Editor panel */}
+        <div className="w-60 shrink-0 flex flex-col gap-3">
+          <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between mb-0.5">
+              <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide">Текст</div>
+              <button
+                onClick={generateAIText}
+                disabled={loadingText}
+                className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1"
+              >
+                {loadingText ? <Loader2 className="h-3 w-3 animate-spin" /> : '✨'} AI
+              </button>
+            </div>
+            <input
+              value={data.tagline}
+              onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
+              placeholder="тег (летняя коллекция)"
+              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+            />
+            <input
+              value={data.productName}
+              onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
+              placeholder="НАЗВАНИЕ ТОВАРА"
+              className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500"
+            />
+            <input
+              value={data.productSubtitle}
+              onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
+              placeholder="подзаголовок"
+              className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+            />
+          </div>
 
-      {/* Editor panel */}
-      <div className="w-60 shrink-0 flex flex-col gap-3">
-        <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
-          <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-0.5">Заголовок</div>
-          <input
-            value={data.tagline}
-            onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
-            placeholder="тег (летняя коллекция)"
-            className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-          />
-          <input
-            value={data.productName}
-            onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
-            placeholder="НАЗВАНИЕ ТОВАРА"
-            className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500"
-          />
-          <input
-            value={data.productSubtitle}
-            onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
-            placeholder="подзаголовок"
-            className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-          />
-        </div>
-
-        <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2">
-          <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-0.5">Характеристики</div>
-          {data.characteristics.map((ch, i) => (
-            <div key={i} className="flex flex-col gap-1 border-b border-zinc-700/60 pb-2 last:border-0 last:pb-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-zinc-500 w-4 shrink-0">{i + 1}.</span>
+          <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2">
+            <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-0.5">Характеристики</div>
+            {data.characteristics.map((ch, i) => (
+              <div key={i} className="flex flex-col gap-1 border-b border-zinc-700/60 pb-2 last:border-0 last:pb-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-zinc-500 w-4 shrink-0">{i + 1}.</span>
+                  <input
+                    value={ch.title}
+                    onChange={e => updateChar(i, 'title', e.target.value)}
+                    placeholder="ЗАГОЛОВОК"
+                    className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500"
+                  />
+                </div>
                 <input
-                  value={ch.title}
-                  onChange={e => updateChar(i, 'title', e.target.value)}
-                  placeholder="ЗАГОЛОВОК"
-                  className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500"
+                  value={ch.value}
+                  onChange={e => updateChar(i, 'value', e.target.value)}
+                  placeholder="уточнение"
+                  className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-5"
                 />
               </div>
-              <input
-                value={ch.value}
-                onChange={e => updateChar(i, 'value', e.target.value)}
-                placeholder="уточнение"
-                className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-5"
-              />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div className="bg-zinc-800 rounded-xl p-3">
-          <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-1.5">Подпись внизу</div>
-          <input
-            value={data.bottomText}
-            onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
-            placeholder="финальный акцент"
-            className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-          />
+          <div className="bg-zinc-800 rounded-xl p-3">
+            <div className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-1.5">Подпись внизу</div>
+            <input
+              value={data.bottomText}
+              onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
+              placeholder="финальный акцент"
+              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+            />
+          </div>
+
+          <div className="bg-zinc-800/50 rounded-xl p-3 text-xs text-zinc-500 leading-relaxed">
+            <p className="font-medium text-zinc-400 mb-1">Как работает</p>
+            <p>1. Заполните текст (или нажмите ✨ AI)</p>
+            <p className="mt-0.5">2. «Создать инфографику» — FLUX улучшит композицию фото, затем добавится текст</p>
+            <p className="mt-0.5">3. «Превью» — быстро, без FLUX</p>
+          </div>
         </div>
       </div>
     </div>
