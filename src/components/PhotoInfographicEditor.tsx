@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useRef, useState, useCallback, useEffect } from 'react';
+import { Loader2, Zap, Sparkles } from 'lucide-react';
 
 interface Characteristic {
   title: string;
@@ -17,11 +17,16 @@ interface InfographicData {
 }
 
 type TemplateStyle = 'light' | 'dark' | 'beige' | 'black';
+type InfographicMode = 'quick' | 'premium';
 
 interface Props {
   imageUrl: string;
   analysis?: { good?: string[]; improve?: string[] } | null;
   generatePrompt?: string;
+  /** FLUX Kontext prompt from Qwen analysis — required for Premium mode */
+  fluxPrompt?: string;
+  /** If 'premium', auto-starts FLUX generation on mount when fluxPrompt is available */
+  initialMode?: InfographicMode;
   onExport?: (dataUrl: string) => void;
 }
 
@@ -78,14 +83,7 @@ const T = {
 
 // ── Text helpers ──────────────────────────────────────────────────────────────
 
-/** Draw text with extra letter-spacing (canvas has no letterSpacing in old engines) */
-function drawSpaced(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  spacing: number,
-) {
+function drawSpaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number) {
   let cx = x;
   for (const ch of text) {
     ctx.fillText(ch, cx, y);
@@ -131,8 +129,7 @@ function iconLeaf(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.strokeStyle = 'rgba(255,255,255,0.42)';
   ctx.lineWidth = 0.9;
   ctx.beginPath();
-  ctx.moveTo(cx, cy - r * 0.72);
-  ctx.lineTo(cx, cy + r * 0.18);
+  ctx.moveTo(cx, cy - r * 0.72); ctx.lineTo(cx, cy + r * 0.18);
   ctx.stroke();
   ctx.restore();
 }
@@ -141,9 +138,8 @@ function iconSparkle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: n
   ctx.save();
   ctx.fillStyle = color;
   ctx.beginPath();
-  const pts = 4;
-  for (let i = 0; i < pts * 2; i++) {
-    const angle = (i * Math.PI) / pts - Math.PI / 2;
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI) / 4 - Math.PI / 2;
     const rad = i % 2 === 0 ? r : r * 0.36;
     const px = cx + Math.cos(angle) * rad;
     const py = cy + Math.sin(angle) * rad;
@@ -186,14 +182,13 @@ function drawCard(
   const PAD = 66;
   const TEXT_W = 370;
 
-  // ── 1. Photo: full-bleed, object-cover ────────────────────────────────────
+  // 1. Photo: full-bleed, object-cover
   const sx = W / img.naturalWidth, sy = H / img.naturalHeight;
   const sc = Math.max(sx, sy);
   const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
   ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
 
-  // ── 2. Scrim: elegant fade from left ──────────────────────────────────────
-  // Strong near left (text lives here), completely transparent by right edge
+  // 2. Left scrim — strong near edge, fades to transparent
   const scrim = ctx.createLinearGradient(0, 0, W * 0.72, 0);
   scrim.addColorStop(0,    `rgba(${t.scrimRgb},${t.scrimA})`);
   scrim.addColorStop(0.38, `rgba(${t.scrimRgb},${t.scrimA * 0.78})`);
@@ -202,14 +197,14 @@ function drawCard(
   ctx.fillStyle = scrim;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle bottom scrim (for bottom text)
+  // Bottom scrim for bottom text readability
   const bScrim = ctx.createLinearGradient(0, H - 130, 0, H);
   bScrim.addColorStop(0, `rgba(${t.scrimRgb},0)`);
   bScrim.addColorStop(1, `rgba(${t.scrimRgb},${t.scrimA * 0.58})`);
   ctx.fillStyle = bScrim;
   ctx.fillRect(0, H - 130, W, 130);
 
-  // ── 3. Typography ─────────────────────────────────────────────────────────
+  // 3. Typography
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   let y = 88;
@@ -220,7 +215,7 @@ function drawCard(
   drawSpaced(ctx, data.tagline.toUpperCase(), PAD, y, 2.6);
   y += 36;
 
-  // Product name — italic serif, size scales with name length
+  // Product name — italic serif, auto-scales by name length
   const rawName = data.productName.toUpperCase();
   const nLen = rawName.replace(/\s/g, '').length;
   const NS = nLen <= 6 ? 80 : nLen <= 10 ? 66 : nLen <= 15 ? 54 : 44;
@@ -236,7 +231,7 @@ function drawCard(
   ctx.shadowBlur = 0;
   y += 16;
 
-  // Subtitle — thin italic, smaller
+  // Subtitle — thin italic
   if (data.productSubtitle) {
     ctx.font = 'italic 300 16px Arial, Helvetica, sans-serif';
     ctx.fillStyle = t.subColor;
@@ -244,7 +239,7 @@ function drawCard(
     y += 44;
   }
 
-  // Thin decorative rule — short gold line
+  // Short decorative gold rule
   ctx.beginPath();
   ctx.moveTo(PAD, y);
   ctx.lineTo(PAD + 50, y);
@@ -255,57 +250,43 @@ function drawCard(
   ctx.globalAlpha = 1;
   y += 28;
 
-  // ── 4. Feature pills ──────────────────────────────────────────────────────
+  // 4. Feature pills with icons
   const PILL_H = 58;
   const PILL_W = 295;
-  const PILL_R = 29;   // fully rounded (= PILL_H / 2)
-  const ICON_CX_OFFSET = 36; // center of icon from pill left
+  const PILL_R = 29;
+  const ICON_CX_OFF = 36;
+  const ICON_DOT_R = 11;
   const ICON_R = 13;
-  const ICON_DOT_R = 11; // circle behind icon
 
-  const chars = data.characteristics.slice(0, 3);
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
-    const px = PAD;
-    const py = y;
+  for (let i = 0; i < data.characteristics.slice(0, 3).length; i++) {
+    const ch = data.characteristics[i];
+    const px = PAD, py = y;
 
-    // Pill body
+    // Pill background
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.fillStyle = t.pillBg;
-    ctx.fill();
+    ctx.fillStyle = t.pillBg; ctx.fill();
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.strokeStyle = t.stroke;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.20;
-    ctx.stroke();
+    ctx.strokeStyle = t.stroke; ctx.lineWidth = 1; ctx.globalAlpha = 0.20; ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Icon circle background
-    const iconCX = px + ICON_CX_OFFSET;
-    const iconCY = py + PILL_H / 2;
+    // Icon circle
+    const iconCX = px + ICON_CX_OFF, iconCY = py + PILL_H / 2;
     ctx.beginPath();
     ctx.arc(iconCX, iconCY, ICON_DOT_R, 0, Math.PI * 2);
-    ctx.fillStyle = t.pillIconBg;
-    ctx.fill();
-
-    // Icon
+    ctx.fillStyle = t.pillIconBg; ctx.fill();
     ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, t.accent);
 
-    // Text (title + optional sub-value)
-    const textX = px + ICON_CX_OFFSET + ICON_DOT_R + 14;
-    const maxTW = PILL_W - (ICON_CX_OFFSET + ICON_DOT_R + 14) - 14;
-    const hasVal = !!ch.value;
+    // Text
+    const textX = px + ICON_CX_OFF + ICON_DOT_R + 14;
+    const maxTW = PILL_W - (ICON_CX_OFF + ICON_DOT_R + 14) - 14;
     ctx.textBaseline = 'middle';
-
-    if (hasVal) {
+    if (ch.value) {
       ctx.font = '600 13px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.textColor;
       ctx.fillText(ch.title, textX, iconCY - 9);
-
       ctx.font = '400 11px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.subColor;
-      const val = wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value;
-      ctx.fillText(val, textX, iconCY + 9);
+      ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textX, iconCY + 9);
     } else {
       ctx.font = '500 13px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.textColor;
@@ -315,23 +296,21 @@ function drawCard(
     y += PILL_H + 13;
   }
 
-  // ── 5. Bottom text ────────────────────────────────────────────────────────
+  // 5. Bottom italic text
   if (data.bottomText) {
-    const btY = H - 60;
-    const btSz = 14;
+    const btY = H - 60, btSz = 14;
     ctx.font = `italic 300 ${btSz}px Georgia, 'Times New Roman', serif`;
     ctx.fillStyle = t.subColor;
     ctx.textBaseline = 'top';
-    const btLines = wrapText(ctx, data.bottomText, TEXT_W - 20, 2);
     let bty = btY;
-    for (const bl of btLines) {
+    for (const bl of wrapText(ctx, data.bottomText, TEXT_W - 20, 2)) {
       ctx.fillText(bl, PAD, bty);
       bty += btSz + 4;
     }
   }
 }
 
-// ── Proxy helper (avoids canvas CORS taint) ───────────────────────────────────
+// ── Proxy helper ──────────────────────────────────────────────────────────────
 
 async function toDataUrl(url: string): Promise<string> {
   if (url.startsWith('data:')) return url;
@@ -348,7 +327,13 @@ async function toDataUrl(url: string): Promise<string> {
 
 // ── React component ───────────────────────────────────────────────────────────
 
-export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }: Props) {
+export default function PhotoInfographicEditor({
+  imageUrl,
+  analysis,
+  fluxPrompt,
+  initialMode = 'quick',
+  onExport,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [data, setData] = useState<InfographicData>(DEFAULT_DATA);
   const [template, setTemplate] = useState<TemplateStyle>('light');
@@ -356,6 +341,52 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
   const [rendering, setRendering] = useState(false);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [renderError, setRenderError] = useState('');
+
+  // ── Premium mode state ──────────────────────────────────────────────────────
+  const [mode, setMode] = useState<InfographicMode>(initialMode);
+  const [baseImage, setBaseImage] = useState<string | null>(null); // FLUX-generated base
+  const [premiumLoading, setPremiumLoading] = useState(false);
+  const [premiumError, setPremiumError] = useState('');
+  const autoStartedRef = useRef(false);
+
+  // Generate FLUX base image for premium mode
+  const generatePremiumBase = useCallback(async () => {
+    if (!imageUrl || !fluxPrompt) {
+      setPremiumError('Нет fluxPrompt — сначала проанализируйте фото');
+      return;
+    }
+    setPremiumLoading(true);
+    setPremiumError('');
+    setBaseImage(null);
+    setResultUrl(null);
+    try {
+      // toDataUrl handles proxy so we send the correct data to the server
+      const imgSrc = await toDataUrl(imageUrl);
+      const res = await fetch('/api/photo/generate-infographic-base', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
+      setBaseImage(json.imageUrl);
+    } catch (e) {
+      setPremiumError(String(e));
+      setMode('quick'); // automatic fallback
+    } finally {
+      setPremiumLoading(false);
+    }
+  }, [imageUrl, fluxPrompt]);
+
+  // Auto-start generation when mode=premium and fluxPrompt becomes available
+  useEffect(() => {
+    if (mode === 'premium' && fluxPrompt && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      generatePremiumBase();
+    }
+  }, [mode, fluxPrompt, generatePremiumBase]);
+
+  // ── Canvas render ───────────────────────────────────────────────────────────
 
   const generateAIText = async () => {
     setLoadingText(true);
@@ -380,6 +411,9 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     }
   };
 
+  // Use FLUX base if in premium mode and available; otherwise original image
+  const activeImageUrl = (mode === 'premium' && baseImage) ? baseImage : imageUrl;
+
   const renderCard = useCallback(async (): Promise<string> => {
     const canvas = canvasRef.current;
     if (!canvas) throw new Error('no canvas');
@@ -387,7 +421,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     canvas.height = CARD_H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
-    const imgSrc = await toDataUrl(imageUrl);
+    const imgSrc = await toDataUrl(activeImageUrl);
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
@@ -397,7 +431,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
       img.onerror = () => reject(new Error('image load failed'));
       img.src = imgSrc;
     });
-  }, [imageUrl, data, template]);
+  }, [activeImageUrl, data, template]);
 
   const handleRender = async () => {
     if (!imageUrl) return;
@@ -433,10 +467,86 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
     <div className="space-y-4">
       <canvas ref={canvasRef} className="hidden" />
 
+      {/* ── Mode switcher ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-1 bg-zinc-900/70 rounded-xl p-1">
+          <button
+            onClick={() => { setMode('quick'); setResultUrl(null); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              mode === 'quick'
+                ? 'bg-violet-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Zap className="h-3 w-3" />
+            Быстрый
+          </button>
+          <button
+            onClick={() => {
+              setMode('premium');
+              setResultUrl(null);
+              if (!baseImage && !premiumLoading) {
+                autoStartedRef.current = true;
+                generatePremiumBase();
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              mode === 'premium'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="h-3 w-3" />
+            Премиум (FLUX)
+          </button>
+        </div>
+
+        {/* Premium status badge */}
+        {mode === 'premium' && premiumLoading && (
+          <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 px-3 py-1.5 rounded-lg">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            FLUX генерирует базу... (~15 сек)
+          </div>
+        )}
+        {mode === 'premium' && !premiumLoading && baseImage && (
+          <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-700/30 px-3 py-1.5 rounded-lg">
+            ✓ FLUX база готова
+            <button
+              onClick={() => { autoStartedRef.current = true; generatePremiumBase(); }}
+              className="text-zinc-500 hover:text-emerald-300 transition-colors"
+              title="Перегенерировать"
+            >
+              ↻
+            </button>
+          </div>
+        )}
+        {mode === 'premium' && !premiumLoading && !baseImage && !premiumError && !fluxPrompt && (
+          <span className="text-xs text-amber-500/80">
+            Сначала нажмите «Анализировать» — нужен AI-промпт для FLUX
+          </span>
+        )}
+      </div>
+
+      {/* Premium error + fallback notice */}
+      {premiumError && (
+        <div className="rounded-xl border border-red-800/40 bg-red-900/10 px-3 py-2 text-xs text-red-400">
+          ⚠ {premiumError}{mode === 'quick' ? ' — переключено на быстрый режим' : ''}
+        </div>
+      )}
+
       <div className="flex gap-4">
 
-        {/* Result preview */}
+        {/* ── Result preview ─────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0">
+
+          {/* FLUX base preview (premium, before card render) */}
+          {mode === 'premium' && baseImage && !resultUrl && (
+            <div className="mb-2 rounded-xl border border-amber-700/30 bg-amber-900/10 px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
+              <Sparkles className="h-3 w-3 shrink-0" />
+              FLUX база загружена — нажмите «Создать» для финального рендера с текстом
+            </div>
+          )}
+
           <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden max-h-[520px] min-h-[260px] relative flex items-center justify-center">
             {rendering ? (
               <div className="text-center p-6">
@@ -461,10 +571,23 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
                   </button>
                 </div>
               </>
+            ) : premiumLoading ? (
+              <div className="text-center p-8">
+                <div className="relative mb-4">
+                  <Loader2 className="h-12 w-12 animate-spin text-amber-400 mx-auto" />
+                  <Sparkles className="h-5 w-5 text-amber-300 absolute top-0 right-[calc(50%-30px)]" />
+                </div>
+                <p className="text-sm text-amber-300 font-medium">FLUX создаёт премиум базу...</p>
+                <p className="text-xs text-slate-500 mt-1">обычно 10–20 секунд</p>
+              </div>
             ) : (
               <div className="text-center p-8 text-zinc-600">
-                <div className="text-5xl mb-3">🖼</div>
-                <p className="text-sm font-medium text-zinc-500">Заполните поля и нажмите «Создать»</p>
+                <div className="text-5xl mb-3">{mode === 'premium' ? '✨' : '🖼'}</div>
+                <p className="text-sm font-medium text-zinc-500">
+                  {mode === 'premium'
+                    ? 'Заполните поля и нажмите «Создать» (FLUX + Canvas)'
+                    : 'Заполните поля и нажмите «Создать»'}
+                </p>
               </div>
             )}
           </div>
@@ -477,10 +600,18 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
 
           <button
             onClick={handleRender}
-            disabled={!imageUrl || rendering}
-            className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={!imageUrl || rendering || premiumLoading}
+            className={`mt-3 w-full px-4 py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-all ${
+              mode === 'premium'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:opacity-90'
+                : 'bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90'
+            }`}
           >
-            {rendering ? <><Loader2 className="h-4 w-4 animate-spin" /> Создаю...</> : '✨ Создать карточку товара'}
+            {rendering
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Создаю...</>
+              : mode === 'premium'
+                ? <><Sparkles className="h-4 w-4" /> Создать премиум карточку</>
+                : '✨ Создать карточку товара'}
           </button>
 
           {/* Template selector */}
@@ -497,7 +628,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
           </div>
         </div>
 
-        {/* Editor panel */}
+        {/* ── Editor panel ───────────────────────────────────────────────── */}
         <div className="w-60 shrink-0 flex flex-col gap-3">
           <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
             <div className="flex items-center justify-between mb-0.5">
@@ -535,7 +666,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
             {data.characteristics.map((ch, i) => (
               <div key={i} className="flex flex-col gap-1 border-b border-zinc-700/60 pb-2 last:border-0 last:pb-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-zinc-500 w-3 shrink-0">{['🌿','✦','◉'][i]}</span>
+                  <span className="text-[10px] text-zinc-500 w-3 shrink-0">{['🌿', '✦', '◉'][i]}</span>
                   <input
                     value={ch.title}
                     onChange={e => updateChar(i, 'title', e.target.value)}

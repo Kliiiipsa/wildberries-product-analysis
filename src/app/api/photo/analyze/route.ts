@@ -80,9 +80,21 @@ EXAMPLE of a CORRECT prompt:
 FORBIDDEN words in any prompt (these cause AI-art look): photorealistic, ultra-sharp, 8K, hyperdetailed, Sony A7R V, professional studio lighting, commercial fashion photography.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 5 — INFOGRAPHIC BASE (fluxPrompt)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate a FLUX Kontext image-to-image prompt to create the perfect infographic card base:
+- Model/product positioned in the RIGHT 55-60% of frame
+- LEFT 35-40% of frame: clean, empty, soft background — space reserved for text overlay
+- Soft diffused light from the left, clean studio look
+- Premium commercial fashion photography
+
+Use [PRESERVE][CHANGE][SCENE][QUALITY] format. [CHANGE] must say: shift composition so model occupies right half, left side is clean empty space for text.
+Also output: recommendedLayout ("left"|"bottom"|"minimal"), style ("studio"|"lifestyle"|"minimal"|"premium"), textPosition ("left-third"|"bottom"|"overlay").
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — VALID JSON ONLY (no markdown)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-All field values in Russian EXCEPT all promptEn fields (English only, NO Cyrillic).
+All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only, NO Cyrillic).
 
 {
   "good": ["конкретный плюс 1 по ЭТОМУ фото", "плюс 2", "плюс 3"],
@@ -104,7 +116,11 @@ All field values in Russian EXCEPT all promptEn fields (English only, NO Cyrilli
     {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."},
     {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."}
   ],
-  "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts."
+  "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.",
+  "fluxPrompt": "[PRESERVE] Keep unchanged: [product details]. [CHANGE] Recompose: shift model to right 55% of frame, create clean empty space in left 40% for text overlay. [SCENE] Soft studio, uniform background contrasting with item color, light from left. [QUALITY] Genuine photograph, Canon EOS R5, natural light, real film grain, no AI artifacts.",
+  "recommendedLayout": "left",
+  "style": "studio",
+  "textPosition": "left-third"
 }`;
 
 
