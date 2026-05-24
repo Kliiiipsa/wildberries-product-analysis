@@ -80,16 +80,43 @@ EXAMPLE of a CORRECT prompt:
 FORBIDDEN words in any prompt (these cause AI-art look): photorealistic, ultra-sharp, 8K, hyperdetailed, Sony A7R V, professional studio lighting, commercial fashion photography.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 5 — INFOGRAPHIC BASE (fluxPrompt)
+STEP 5 — PREMIUM INFOGRAPHIC BASE (fluxPrompt)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Generate a FLUX Kontext image-to-image prompt to create the perfect infographic card base:
-- Model/product positioned in the RIGHT 55-60% of frame
-- LEFT 35-40% of frame: clean, empty, soft background — space reserved for text overlay
-- Soft diffused light from the left, clean studio look
-- Premium commercial fashion photography
+Generate a FLUX Kontext image-to-image prompt for a perfect Wildberries infographic base.
 
-Use [PRESERVE][CHANGE][SCENE][QUALITY] format. [CHANGE] must say: shift composition so model occupies right half, left side is clean empty space for text.
-Also output: recommendedLayout ("left"|"bottom"|"minimal"), style ("studio"|"lifestyle"|"minimal"|"premium"), textPosition ("left-third"|"bottom"|"overlay").
+UNIVERSAL RULES (mandatory for ALL products):
+• Composition: model in RIGHT 60-65% of frame, LEFT 35-40% is clean empty space for text
+• Style: professional studio product photography, premium level — reference brands: Zara, Massimo Dutti, COS, Arket
+• Lighting: soft diffused studio light from front-left, beautiful fabric shadows, high fabric texture detail
+• Background: minimalist — clean light wall OR very soft studio gradient. NO apartments, sofas, windows, outdoor spots
+• Format: vertical 3:4 ratio
+• FORBIDDEN in [CHANGE]: selfie poses, phone in hands, bright distracting accessories, heavy makeup, unnatural poses, cluttered backgrounds
+
+POSE GUIDE — detect gender from STEP 1 and product type, apply correct pose:
+
+Women:
+  Suit (blouse+pants/skirt): calm confident stance, one hand slightly at hip, shows silhouette naturally
+  Dress / sundress: light graceful pose, slight fabric movement, shows dress length and drape
+  Blouse / shirt: 3/4 or full height, slight body turn toward camera, collar and cuffs visible
+  Shorts / skirt: slight hip turn, natural stance, shows garment length and fit
+  Outerwear (coat/jacket): straight elegant stance, shows full silhouette and length
+  General women style: soft + elegant + slightly feminine; model looks beautiful and expensive, NOT like an influencer
+
+Men:
+  Suit / blazer: straight confident stance, shoulders back and relaxed, professional
+  Shirt: straight or one hand lightly in pocket, shoulders visible, collar neat
+  Pants / jeans: straight stance or slight turn, shows waist and hip fit
+  Outerwear: straight stance, hands lightly in pockets, shows volume and length
+  T-shirt / hoodie: relaxed but confident stance, shoulders and torso visible
+  General men style: confident + clean + masculine; model looks stylish and solid
+
+Use [PRESERVE][CHANGE][SCENE][QUALITY] format:
+[PRESERVE] — all product details exactly as seen (color, cut, fabric, visible details, body visibility)
+[CHANGE] — recompose: model in right 60%, clean empty studio space on left 40%; fix background to clean minimalist studio; pose corrected per gender+product guide above; no phone, no accessories
+[SCENE] — soft studio: clean light warm wall or very soft gradient background, diffused light from front-left, beautiful fabric shadow detail
+[QUALITY] Genuine photograph, Canon EOS R5, natural studio light, real film grain, no AI artifacts.
+
+Also determine: recommendedLayout ("left"|"bottom"|"minimal"), style ("studio"|"lifestyle"|"minimal"|"premium"), textPosition ("left-third"|"bottom"|"overlay").
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — VALID JSON ONLY (no markdown)

@@ -188,21 +188,24 @@ function drawCard(
   const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
   ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
 
-  // 2. Left scrim — strong near edge, fades to transparent
-  const scrim = ctx.createLinearGradient(0, 0, W * 0.72, 0);
+  // 2. Scrim: solid text panel left 44%, then soft fade to transparent
+  // This creates a clean white/cream background on the left (like competitor cards)
+  // instead of a cheap-looking gradient overlay over the photo.
+  const scrim = ctx.createLinearGradient(0, 0, W, 0);
   scrim.addColorStop(0,    `rgba(${t.scrimRgb},${t.scrimA})`);
-  scrim.addColorStop(0.38, `rgba(${t.scrimRgb},${t.scrimA * 0.78})`);
-  scrim.addColorStop(0.62, `rgba(${t.scrimRgb},${t.scrimA * 0.22})`);
+  scrim.addColorStop(0.44, `rgba(${t.scrimRgb},${t.scrimA})`);      // solid up to 44% width
+  scrim.addColorStop(0.62, `rgba(${t.scrimRgb},${t.scrimA * 0.40})`);
+  scrim.addColorStop(0.80, `rgba(${t.scrimRgb},${t.scrimA * 0.04})`);
   scrim.addColorStop(1,    `rgba(${t.scrimRgb},0)`);
   ctx.fillStyle = scrim;
   ctx.fillRect(0, 0, W, H);
 
-  // Bottom scrim for bottom text readability
-  const bScrim = ctx.createLinearGradient(0, H - 130, 0, H);
+  // Subtle bottom scrim for bottom text (left side only — don't darken model area)
+  const bScrim = ctx.createLinearGradient(0, H - 110, 0, H);
   bScrim.addColorStop(0, `rgba(${t.scrimRgb},0)`);
-  bScrim.addColorStop(1, `rgba(${t.scrimRgb},${t.scrimA * 0.58})`);
+  bScrim.addColorStop(1, `rgba(${t.scrimRgb},${t.scrimA * 0.50})`);
   ctx.fillStyle = bScrim;
-  ctx.fillRect(0, H - 130, W, 130);
+  ctx.fillRect(0, H - 110, W * 0.58, 110);
 
   // 3. Typography
   ctx.textAlign = 'left';
@@ -215,11 +218,12 @@ function drawCard(
   drawSpaced(ctx, data.tagline.toUpperCase(), PAD, y, 2.6);
   y += 36;
 
-  // Product name — italic serif, auto-scales by name length
+  // Product name — lighter italic serif, smaller and more elegant
+  // 700 → 600 weight (less aggressive), reduced sizes by ~15%
   const rawName = data.productName.toUpperCase();
   const nLen = rawName.replace(/\s/g, '').length;
-  const NS = nLen <= 6 ? 80 : nLen <= 10 ? 66 : nLen <= 15 ? 54 : 44;
-  ctx.font = `italic 700 ${NS}px Georgia, 'Times New Roman', serif`;
+  const NS = nLen <= 6 ? 66 : nLen <= 10 ? 54 : nLen <= 15 ? 44 : 36;
+  ctx.font = `italic 600 ${NS}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = t.textColor;
   ctx.shadowColor = t.shadowColor;
   ctx.shadowBlur = 14;
@@ -250,55 +254,67 @@ function drawCard(
   ctx.globalAlpha = 1;
   y += 28;
 
-  // 4. Feature pills with icons
-  const PILL_H = 58;
-  const PILL_W = 295;
-  const PILL_R = 29;
-  const ICON_CX_OFF = 36;
-  const ICON_DOT_R = 11;
-  const ICON_R = 13;
+  // 4. Feature pills — larger, with subtle shadow for depth
+  const PILL_H = 66;
+  const PILL_W = 318;
+  const PILL_R = 33;
+  const ICON_CX_OFF = 42;
+  const ICON_DOT_R = 14;
+  const ICON_R = 15;
 
   for (let i = 0; i < data.characteristics.slice(0, 3).length; i++) {
     const ch = data.characteristics[i];
     const px = PAD, py = y;
 
-    // Pill background
+    // Pill background with subtle shadow for depth/volume
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.09)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 4;
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.fillStyle = t.pillBg; ctx.fill();
+    ctx.fillStyle = t.pillBg;
+    ctx.fill();
+    ctx.restore(); // clear shadow before border
+
+    // Pill border (no shadow)
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.strokeStyle = t.stroke; ctx.lineWidth = 1; ctx.globalAlpha = 0.20; ctx.stroke();
+    ctx.strokeStyle = t.stroke;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.18;
+    ctx.stroke();
     ctx.globalAlpha = 1;
 
     // Icon circle
     const iconCX = px + ICON_CX_OFF, iconCY = py + PILL_H / 2;
     ctx.beginPath();
     ctx.arc(iconCX, iconCY, ICON_DOT_R, 0, Math.PI * 2);
-    ctx.fillStyle = t.pillIconBg; ctx.fill();
+    ctx.fillStyle = t.pillIconBg;
+    ctx.fill();
     ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, t.accent);
 
-    // Text
+    // Text — slightly larger
     const textX = px + ICON_CX_OFF + ICON_DOT_R + 14;
-    const maxTW = PILL_W - (ICON_CX_OFF + ICON_DOT_R + 14) - 14;
+    const maxTW = PILL_W - (ICON_CX_OFF + ICON_DOT_R + 14) - 16;
     ctx.textBaseline = 'middle';
     if (ch.value) {
-      ctx.font = '600 13px Arial, Helvetica, sans-serif';
+      ctx.font = '600 14px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.textColor;
-      ctx.fillText(ch.title, textX, iconCY - 9);
-      ctx.font = '400 11px Arial, Helvetica, sans-serif';
+      ctx.fillText(ch.title, textX, iconCY - 10);
+      ctx.font = '400 12px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.subColor;
-      ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textX, iconCY + 9);
+      ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textX, iconCY + 10);
     } else {
-      ctx.font = '500 13px Arial, Helvetica, sans-serif';
+      ctx.font = '500 14px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.textColor;
       ctx.fillText(ch.title, textX, iconCY);
     }
     ctx.textBaseline = 'top';
-    y += PILL_H + 13;
+    y += PILL_H + 14;
   }
 
-  // 5. Bottom italic text
+  // 5. Bottom italic text — slightly larger and higher
   if (data.bottomText) {
-    const btY = H - 60, btSz = 14;
+    const btY = H - 76, btSz = 15;
     ctx.font = `italic 300 ${btSz}px Georgia, 'Times New Roman', serif`;
     ctx.fillStyle = t.subColor;
     ctx.textBaseline = 'top';
