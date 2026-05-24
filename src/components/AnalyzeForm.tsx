@@ -323,60 +323,60 @@ export function AnalyzeForm() {
           )}
 
           {/* Action cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-4 gap-3 mt-6">
             <button
               type="button"
               onClick={() => loadDashboard()}
-              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-0.5 transition-all duration-200"
+              className="group flex flex-col items-center gap-2.5 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm py-5 px-3 text-center hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-0.5 transition-all duration-200"
             >
-              <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-                <LayoutDashboard className="h-6 w-6 text-blue-400" />
+              <div className="h-11 w-11 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                <LayoutDashboard className="h-5 w-5 text-blue-400" />
               </div>
               <div>
-                <div className="font-semibold text-white text-sm leading-tight">Дашборд товаров</div>
-                <div className="text-xs text-slate-500 mt-0.5">Все артикулы разом</div>
+                <div className="font-semibold text-white text-xs leading-tight">Дашборд товаров</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Все артикулы разом</div>
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => setMode('comparison')}
-              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-violet-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-0.5 transition-all duration-200"
+              className="group flex flex-col items-center gap-2.5 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm py-5 px-3 text-center hover:border-violet-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-0.5 transition-all duration-200"
             >
-              <div className="h-12 w-12 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-                <Users className="h-6 w-6 text-violet-400" />
+              <div className="h-11 w-11 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                <Users className="h-5 w-5 text-violet-400" />
               </div>
               <div>
-                <div className="font-semibold text-white text-sm leading-tight">Конкуренты</div>
-                <div className="text-xs text-slate-500 mt-0.5">Сравнение и анализ</div>
+                <div className="font-semibold text-white text-xs leading-tight">Конкуренты</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Сравнение и анализ</div>
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => setMode('simulator')}
-              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-purple-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 transition-all duration-200"
+              className="group flex flex-col items-center gap-2.5 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm py-5 px-3 text-center hover:border-purple-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 transition-all duration-200"
             >
-              <div className="h-12 w-12 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
-                <Zap className="h-6 w-6 text-purple-400" />
+              <div className="h-11 w-11 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                <Zap className="h-5 w-5 text-purple-400" />
               </div>
               <div>
-                <div className="font-semibold text-white text-sm leading-tight">Симулятор</div>
-                <div className="text-xs text-slate-500 mt-0.5">Сценарии и прогнозы</div>
+                <div className="font-semibold text-white text-xs leading-tight">Симулятор</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Сценарии и прогнозы</div>
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => setMode('photo')}
-              className="group flex items-center gap-4 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm px-5 py-4 text-left hover:border-rose-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-rose-500/10 hover:-translate-y-0.5 transition-all duration-200"
+              className="group flex flex-col items-center gap-2.5 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm py-5 px-3 text-center hover:border-rose-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-rose-500/10 hover:-translate-y-0.5 transition-all duration-200"
             >
-              <div className="h-12 w-12 rounded-xl bg-rose-500/10 flex items-center justify-center shrink-0">
-                <Camera className="h-6 w-6 text-rose-400" />
+              <div className="h-11 w-11 rounded-xl bg-rose-500/10 flex items-center justify-center">
+                <Camera className="h-5 w-5 text-rose-400" />
               </div>
               <div>
-                <div className="font-semibold text-white text-sm leading-tight">Фото</div>
-                <div className="text-xs text-slate-500 mt-0.5">Улучшение карточки</div>
+                <div className="font-semibold text-white text-xs leading-tight">Фото</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Улучшение карточки</div>
               </div>
             </button>
           </div>

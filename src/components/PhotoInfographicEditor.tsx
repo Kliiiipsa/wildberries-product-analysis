@@ -30,12 +30,12 @@ const CARD_H = 1200;
 
 const DEFAULT_DATA: InfographicData = {
   productName: 'НАЗВАНИЕ',
-  productSubtitle: 'на каждый день',
+  productSubtitle: 'лёгкий и дышащий',
   tagline: 'новинка сезона',
   characteristics: [
-    { title: 'КАЧЕСТВО', value: 'натуральные материалы' },
-    { title: 'КОМФОРТ', value: 'удобная посадка' },
-    { title: 'СТИЛЬ', value: 'актуальный дизайн' },
+    { title: 'Качество', value: 'натуральные материалы' },
+    { title: 'Комфорт', value: 'удобная посадка' },
+    { title: 'Стиль', value: 'актуальный дизайн' },
   ],
   bottomText: 'стиль и качество в каждой детали',
 };
@@ -43,38 +43,55 @@ const DEFAULT_DATA: InfographicData = {
 // Per-template palette
 const T = {
   light: {
-    scrimRgb: '248,244,238', scrimA: 0.72,
-    textColor: '#1C1C1C', subColor: 'rgba(28,28,28,0.56)',
-    accent: '#9C7A3C', stroke: '#C49A3C',
-    tagBg: 'rgba(156,122,60,0.12)', tagText: '#9C7A3C',
-    badgeBg: 'rgba(156,122,60,0.14)',
-    shadowColor: 'rgba(255,255,255,0.7)',
+    scrimRgb: '252,250,246', scrimA: 0.90,
+    textColor: '#18150E', subColor: 'rgba(24,21,14,0.46)',
+    accent: '#8C6D3F', stroke: '#B08A52',
+    pillBg: 'rgba(255,255,255,0.78)',
+    pillIconBg: 'rgba(140,109,63,0.10)',
+    shadowColor: 'rgba(255,255,255,0.55)',
   },
   dark: {
-    scrimRgb: '14,13,18', scrimA: 0.68,
-    textColor: '#F2EFE9', subColor: 'rgba(242,239,233,0.52)',
+    scrimRgb: '10,9,16', scrimA: 0.82,
+    textColor: '#F0EDE4', subColor: 'rgba(240,237,228,0.50)',
     accent: '#C9A96E', stroke: '#C9A96E',
-    tagBg: 'rgba(201,169,110,0.15)', tagText: '#C9A96E',
-    badgeBg: 'rgba(201,169,110,0.12)',
-    shadowColor: 'rgba(0,0,0,0.5)',
+    pillBg: 'rgba(20,18,32,0.76)',
+    pillIconBg: 'rgba(201,169,110,0.12)',
+    shadowColor: 'rgba(0,0,0,0.60)',
   },
   beige: {
-    scrimRgb: '238,228,212', scrimA: 0.74,
-    textColor: '#2C1F0E', subColor: 'rgba(44,31,14,0.52)',
-    accent: '#8B5E30', stroke: '#A0723E',
-    tagBg: 'rgba(139,94,48,0.12)', tagText: '#8B5E30',
-    badgeBg: 'rgba(139,94,48,0.14)',
-    shadowColor: 'rgba(255,255,255,0.65)',
+    scrimRgb: '250,243,230', scrimA: 0.88,
+    textColor: '#2A1C0C', subColor: 'rgba(42,28,12,0.48)',
+    accent: '#9B6B3A', stroke: '#B07E44',
+    pillBg: 'rgba(255,248,236,0.80)',
+    pillIconBg: 'rgba(155,107,58,0.12)',
+    shadowColor: 'rgba(255,236,196,0.50)',
   },
   black: {
-    scrimRgb: '0,0,0', scrimA: 0.72,
-    textColor: '#FFFFFF', subColor: 'rgba(255,255,255,0.52)',
-    accent: '#E0C97A', stroke: '#E0C97A',
-    tagBg: 'rgba(224,201,122,0.15)', tagText: '#E0C97A',
-    badgeBg: 'rgba(224,201,122,0.12)',
-    shadowColor: 'rgba(0,0,0,0.6)',
+    scrimRgb: '5,4,10', scrimA: 0.86,
+    textColor: '#FFFFFF', subColor: 'rgba(255,255,255,0.50)',
+    accent: '#D4B86A', stroke: '#D4B86A',
+    pillBg: 'rgba(10,9,20,0.80)',
+    pillIconBg: 'rgba(212,184,106,0.12)',
+    shadowColor: 'rgba(0,0,0,0.70)',
   },
 } as const;
+
+// ── Text helpers ──────────────────────────────────────────────────────────────
+
+/** Draw text with extra letter-spacing (canvas has no letterSpacing in old engines) */
+function drawSpaced(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  spacing: number,
+) {
+  let cx = x;
+  for (const ch of text) {
+    ctx.fillText(ch, cx, y);
+    cx += ctx.measureText(ch).width + spacing;
+  }
+}
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines = 99): string[] {
   const lines: string[] = [];
@@ -91,14 +108,72 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number, max
   return lines;
 }
 
-function pill(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
   ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
   ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
   ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
+
+// ── Canvas icons ──────────────────────────────────────────────────────────────
+
+function iconLeaf(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.bezierCurveTo(cx + r * 0.88, cy - r * 0.45, cx + r * 0.88, cy + r * 0.38, cx, cy + r * 0.22);
+  ctx.bezierCurveTo(cx - r * 0.88, cy + r * 0.38, cx - r * 0.88, cy - r * 0.45, cx, cy - r);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r * 0.72);
+  ctx.lineTo(cx, cy + r * 0.18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function iconSparkle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  const pts = 4;
+  for (let i = 0; i < pts * 2; i++) {
+    const angle = (i * Math.PI) / pts - Math.PI / 2;
+    const rad = i % 2 === 0 ? r : r * 0.36;
+    const px = cx + Math.cos(angle) * rad;
+    const py = cy + Math.sin(angle) * rad;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function iconButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  [0, 1, 2, 3].forEach(i => {
+    const a = i * Math.PI / 2 + Math.PI / 4;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * r * 0.45, cy + Math.sin(a) * r * 0.45, r * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+const ICON_FNS = [iconLeaf, iconSparkle, iconButton] as const;
+
+// ── Main draw function ────────────────────────────────────────────────────────
 
 function drawCard(
   ctx: CanvasRenderingContext2D,
@@ -108,8 +183,8 @@ function drawCard(
 ) {
   const W = CARD_W, H = CARD_H;
   const t = T[style];
-  const PAD = 56;           // left margin (after accent stripe)
-  const TEXT_W = 400;       // max text block width
+  const PAD = 66;
+  const TEXT_W = 370;
 
   // ── 1. Photo: full-bleed, object-cover ────────────────────────────────────
   const sx = W / img.naturalWidth, sy = H / img.naturalHeight;
@@ -117,133 +192,146 @@ function drawCard(
   const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
   ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
 
-  // ── 2. Scrim: left gradient for text readability ───────────────────────────
-  // Wide soft fade — photo shows through on the right, text readable on left
-  const scrim = ctx.createLinearGradient(0, 0, W * 0.62, 0);
+  // ── 2. Scrim: elegant fade from left ──────────────────────────────────────
+  // Strong near left (text lives here), completely transparent by right edge
+  const scrim = ctx.createLinearGradient(0, 0, W * 0.72, 0);
   scrim.addColorStop(0,    `rgba(${t.scrimRgb},${t.scrimA})`);
-  scrim.addColorStop(0.55, `rgba(${t.scrimRgb},${t.scrimA * 0.55})`);
+  scrim.addColorStop(0.38, `rgba(${t.scrimRgb},${t.scrimA * 0.78})`);
+  scrim.addColorStop(0.62, `rgba(${t.scrimRgb},${t.scrimA * 0.22})`);
   scrim.addColorStop(1,    `rgba(${t.scrimRgb},0)`);
   ctx.fillStyle = scrim;
-  ctx.fillRect(0, 0, W * 0.62, H);
+  ctx.fillRect(0, 0, W, H);
 
-  // Bottom fade (for bottom text readability)
-  const bScrim = ctx.createLinearGradient(0, H - 180, 0, H);
+  // Subtle bottom scrim (for bottom text)
+  const bScrim = ctx.createLinearGradient(0, H - 130, 0, H);
   bScrim.addColorStop(0, `rgba(${t.scrimRgb},0)`);
-  bScrim.addColorStop(1, `rgba(${t.scrimRgb},${t.scrimA * 0.75})`);
+  bScrim.addColorStop(1, `rgba(${t.scrimRgb},${t.scrimA * 0.58})`);
   ctx.fillStyle = bScrim;
-  ctx.fillRect(0, H - 180, W, 180);
+  ctx.fillRect(0, H - 130, W, 130);
 
-  // ── 3. Accent stripe ───────────────────────────────────────────────────────
-  ctx.fillStyle = t.accent;
-  ctx.fillRect(0, 0, 8, H);
-
-  // ── 4. Text elements ───────────────────────────────────────────────────────
+  // ── 3. Typography ─────────────────────────────────────────────────────────
   ctx.textAlign = 'left';
-
-  let y = 62;
-
-  // 4a. Tagline — small caps, muted, above the big name
-  ctx.font = `600 13px Arial, Helvetica, sans-serif`;
-  ctx.fillStyle = t.subColor;
   ctx.textBaseline = 'top';
-  ctx.fillText(data.tagline.toUpperCase(), PAD, y);
-  y += 13 + 20;
+  let y = 88;
 
-  // 4b. Product name — dominant hero element
-  const NS = 94; // name font size
-  ctx.font = `900 ${NS}px Arial, Helvetica, sans-serif`;
+  // Tagline — small, spaced, thin
+  ctx.font = '400 11.5px Arial, Helvetica, sans-serif';
+  ctx.fillStyle = t.subColor;
+  drawSpaced(ctx, data.tagline.toUpperCase(), PAD, y, 2.6);
+  y += 36;
+
+  // Product name — italic serif, size scales with name length
+  const rawName = data.productName.toUpperCase();
+  const nLen = rawName.replace(/\s/g, '').length;
+  const NS = nLen <= 6 ? 80 : nLen <= 10 ? 66 : nLen <= 15 ? 54 : 44;
+  ctx.font = `italic 700 ${NS}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = t.textColor;
   ctx.shadowColor = t.shadowColor;
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-  const nameLines = wrapText(ctx, data.productName.toUpperCase(), TEXT_W, 2);
+  ctx.shadowBlur = 14;
+  const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
   for (const line of nameLines) {
     ctx.fillText(line, PAD, y);
-    y += Math.ceil(NS * 1.03);
+    y += Math.ceil(NS * 1.12);
   }
   ctx.shadowBlur = 0;
-  y += 20;
+  y += 16;
 
-  // 4c. Subtitle badge — НА КАЖДЫЙ ДЕНЬ style
-  const SS = 14;
-  ctx.font = `600 ${SS}px Arial, Helvetica, sans-serif`;
-  const sStr = data.productSubtitle.toUpperCase();
-  const sTW = ctx.measureText(sStr).width;
-  const sPX = 18, sPY = 10;
-  const sBW = sTW + sPX * 2, sBH = SS + sPY * 2;
-  pill(ctx, PAD, y, sBW, sBH, 4);
-  ctx.fillStyle = t.tagBg; ctx.fill();
-  pill(ctx, PAD, y, sBW, sBH, 4);
-  ctx.strokeStyle = t.accent; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.55; ctx.stroke();
+  // Subtitle — thin italic, smaller
+  if (data.productSubtitle) {
+    ctx.font = 'italic 300 16px Arial, Helvetica, sans-serif';
+    ctx.fillStyle = t.subColor;
+    ctx.fillText(data.productSubtitle, PAD, y);
+    y += 44;
+  }
+
+  // Thin decorative rule — short gold line
+  ctx.beginPath();
+  ctx.moveTo(PAD, y);
+  ctx.lineTo(PAD + 50, y);
+  ctx.strokeStyle = t.accent;
+  ctx.lineWidth = 1.4;
+  ctx.globalAlpha = 0.52;
+  ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = t.tagText;
-  ctx.textBaseline = 'middle';
-  ctx.fillText(sStr, PAD + sPX, y + sBH / 2);
-  ctx.textBaseline = 'top';
-  y += sBH + 50;
+  y += 28;
 
-  // 4d. Characteristics — 3 rows
+  // ── 4. Feature pills ──────────────────────────────────────────────────────
+  const PILL_H = 58;
+  const PILL_W = 295;
+  const PILL_R = 29;   // fully rounded (= PILL_H / 2)
+  const ICON_CX_OFFSET = 36; // center of icon from pill left
+  const ICON_R = 13;
+  const ICON_DOT_R = 11; // circle behind icon
+
   const chars = data.characteristics.slice(0, 3);
-  const BADGE = 44, CTIT = 18, CVAL = 15, CROW = 92;
-
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
+    const px = PAD;
+    const py = y;
 
-    // Badge square
-    pill(ctx, PAD, y, BADGE, BADGE, 10);
-    ctx.fillStyle = t.badgeBg; ctx.fill();
-    pill(ctx, PAD, y, BADGE, BADGE, 10);
-    ctx.strokeStyle = t.stroke; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.4; ctx.stroke();
+    // Pill body
+    roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+    ctx.fillStyle = t.pillBg;
+    ctx.fill();
+    roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+    ctx.strokeStyle = t.stroke;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.20;
+    ctx.stroke();
     ctx.globalAlpha = 1;
-    ctx.font = `bold ${Math.round(BADGE * 0.5)}px Arial, Helvetica, sans-serif`;
-    ctx.fillStyle = t.accent; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), PAD + BADGE / 2, y + BADGE / 2 + 0.5);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
 
-    // Title + value
-    const TX = PAD + BADGE + 16;
-    const TW = TEXT_W - BADGE - 16;
+    // Icon circle background
+    const iconCX = px + ICON_CX_OFFSET;
+    const iconCY = py + PILL_H / 2;
+    ctx.beginPath();
+    ctx.arc(iconCX, iconCY, ICON_DOT_R, 0, Math.PI * 2);
+    ctx.fillStyle = t.pillIconBg;
+    ctx.fill();
+
+    // Icon
+    ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, t.accent);
+
+    // Text (title + optional sub-value)
+    const textX = px + ICON_CX_OFFSET + ICON_DOT_R + 14;
+    const maxTW = PILL_W - (ICON_CX_OFFSET + ICON_DOT_R + 14) - 14;
     const hasVal = !!ch.value;
-    const rowContentH = CTIT + (hasVal ? CVAL + 4 : 0);
-    const titleY = y + (BADGE - rowContentH) / 2;
-
-    ctx.font = `700 ${CTIT}px Arial, Helvetica, sans-serif`;
-    ctx.fillStyle = t.textColor;
-    ctx.shadowColor = t.shadowColor; ctx.shadowBlur = 4;
-    ctx.fillText(ch.title.toUpperCase(), TX, titleY);
-    ctx.shadowBlur = 0;
+    ctx.textBaseline = 'middle';
 
     if (hasVal) {
-      ctx.font = `${CVAL}px Arial, Helvetica, sans-serif`;
+      ctx.font = '600 13px Arial, Helvetica, sans-serif';
+      ctx.fillStyle = t.textColor;
+      ctx.fillText(ch.title, textX, iconCY - 9);
+
+      ctx.font = '400 11px Arial, Helvetica, sans-serif';
       ctx.fillStyle = t.subColor;
-      const vls = wrapText(ctx, ch.value, TW, 2);
-      let vy = titleY + CTIT + 4;
-      for (const vl of vls) { ctx.fillText(vl, TX, vy); vy += CVAL + 2; }
+      const val = wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value;
+      ctx.fillText(val, textX, iconCY + 9);
+    } else {
+      ctx.font = '500 13px Arial, Helvetica, sans-serif';
+      ctx.fillStyle = t.textColor;
+      ctx.fillText(ch.title, textX, iconCY);
     }
-    y += CROW;
+    ctx.textBaseline = 'top';
+    y += PILL_H + 13;
   }
 
-  // 4e. Bottom text — italic serif, anchored near bottom
+  // ── 5. Bottom text ────────────────────────────────────────────────────────
   if (data.bottomText) {
-    const btY = H - 82;
-    // thin rule
-    ctx.beginPath();
-    ctx.moveTo(PAD, btY - 18); ctx.lineTo(PAD + TEXT_W - 20, btY - 18);
-    ctx.strokeStyle = t.stroke; ctx.lineWidth = 1; ctx.globalAlpha = 0.28; ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    const btSz = 18;
-    ctx.font = `italic ${btSz}px Georgia, 'Times New Roman', serif`;
-    ctx.fillStyle = t.subColor; ctx.textBaseline = 'top';
-    const btLines = wrapText(ctx, data.bottomText, TEXT_W, 2);
+    const btY = H - 60;
+    const btSz = 14;
+    ctx.font = `italic 300 ${btSz}px Georgia, 'Times New Roman', serif`;
+    ctx.fillStyle = t.subColor;
+    ctx.textBaseline = 'top';
+    const btLines = wrapText(ctx, data.bottomText, TEXT_W - 20, 2);
     let bty = btY;
-    for (const bl of btLines) { ctx.fillText(bl, PAD, bty); bty += btSz + 5; }
+    for (const bl of btLines) {
+      ctx.fillText(bl, PAD, bty);
+      bty += btSz + 4;
+    }
   }
-
-  // ── 5. Bottom accent bar ───────────────────────────────────────────────────
-  ctx.fillStyle = t.accent;
-  ctx.fillRect(0, H - 8, W, 8);
 }
+
+// ── Proxy helper (avoids canvas CORS taint) ───────────────────────────────────
 
 async function toDataUrl(url: string): Promise<string> {
   if (url.startsWith('data:')) return url;
@@ -257,6 +345,8 @@ async function toDataUrl(url: string): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+// ── React component ───────────────────────────────────────────────────────────
 
 export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -334,9 +424,9 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
 
   const TMPL: [TemplateStyle, string, string][] = [
     ['light', 'Светлый', 'bg-amber-50 text-amber-900 border border-amber-200'],
-    ['dark', 'Тёмный', 'bg-zinc-900 text-zinc-100 border border-zinc-700'],
+    ['dark',  'Тёмный',  'bg-zinc-900 text-zinc-100 border border-zinc-700'],
     ['beige', 'Бежевый', 'bg-amber-100 text-amber-950 border border-amber-300'],
-    ['black', 'Чёрный', 'bg-black text-yellow-300 border border-yellow-700'],
+    ['black', 'Чёрный',  'bg-black text-yellow-300 border border-yellow-700'],
   ];
 
   return (
@@ -345,7 +435,7 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
 
       <div className="flex gap-4">
 
-        {/* Result */}
+        {/* Result preview */}
         <div className="flex-1 min-w-0">
           <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden max-h-[520px] min-h-[260px] relative flex items-center justify-center">
             {rendering ? (
@@ -357,12 +447,16 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
               <>
                 <img src={resultUrl} alt="Карточка" className="w-full h-full object-contain" />
                 <div className="absolute bottom-3 right-3 flex gap-2">
-                  <button onClick={() => { const a = document.createElement('a'); a.href = resultUrl!; a.download = 'wb-card.jpg'; a.click(); }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium">
+                  <button
+                    onClick={() => { const a = document.createElement('a'); a.href = resultUrl!; a.download = 'wb-card.jpg'; a.click(); }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
+                  >
                     ⬇ Скачать
                   </button>
-                  <button onClick={() => setResultUrl(null)}
-                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm">
+                  <button
+                    onClick={() => setResultUrl(null)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm"
+                  >
                     ↩ Изменить
                   </button>
                 </div>
@@ -381,40 +475,59 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
             </div>
           )}
 
-          <button onClick={handleRender} disabled={!imageUrl || rendering}
-            className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+          <button
+            onClick={handleRender}
+            disabled={!imageUrl || rendering}
+            className="mt-3 w-full px-4 py-2.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+          >
             {rendering ? <><Loader2 className="h-4 w-4 animate-spin" /> Создаю...</> : '✨ Создать карточку товара'}
           </button>
 
+          {/* Template selector */}
           <div className="mt-2 flex gap-1 flex-wrap">
             {TMPL.map(([t, label, cls]) => (
-              <button key={t} onClick={() => { setTemplate(t); setResultUrl(null); }}
-                className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${cls} ${template === t ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-90'}`}>
+              <button
+                key={t}
+                onClick={() => { setTemplate(t); setResultUrl(null); }}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${cls} ${template === t ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-90'}`}
+              >
                 {label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Editor */}
+        {/* Editor panel */}
         <div className="w-60 shrink-0 flex flex-col gap-3">
           <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
             <div className="flex items-center justify-between mb-0.5">
               <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide">Текст</span>
-              <button onClick={generateAIText} disabled={loadingText}
-                className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1">
+              <button
+                onClick={generateAIText}
+                disabled={loadingText}
+                className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1"
+              >
                 {loadingText ? <Loader2 className="h-3 w-3 animate-spin" /> : '✨'} AI
               </button>
             </div>
-            <input value={data.tagline} onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
+            <input
+              value={data.tagline}
+              onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
               placeholder="тег (новинка / хит продаж)"
-              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500" />
-            <input value={data.productName} onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
+              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+            />
+            <input
+              value={data.productName}
+              onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
               placeholder="НАЗВАНИЕ ТОВАРА"
-              className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500" />
-            <input value={data.productSubtitle} onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
-              placeholder="на каждый день"
-              className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500" />
+              className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500"
+            />
+            <input
+              value={data.productSubtitle}
+              onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
+              placeholder="лёгкий и дышащий"
+              className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+            />
           </div>
 
           <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2">
@@ -422,23 +535,32 @@ export default function PhotoInfographicEditor({ imageUrl, analysis, onExport }:
             {data.characteristics.map((ch, i) => (
               <div key={i} className="flex flex-col gap-1 border-b border-zinc-700/60 pb-2 last:border-0 last:pb-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-zinc-500 w-4 shrink-0">{i + 1}.</span>
-                  <input value={ch.title} onChange={e => updateChar(i, 'title', e.target.value)}
-                    placeholder="ЗАГОЛОВОК"
-                    className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500" />
+                  <span className="text-[10px] text-zinc-500 w-3 shrink-0">{['🌿','✦','◉'][i]}</span>
+                  <input
+                    value={ch.title}
+                    onChange={e => updateChar(i, 'title', e.target.value)}
+                    placeholder="Название"
+                    className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500"
+                  />
                 </div>
-                <input value={ch.value} onChange={e => updateChar(i, 'value', e.target.value)}
+                <input
+                  value={ch.value}
+                  onChange={e => updateChar(i, 'value', e.target.value)}
                   placeholder="уточнение"
-                  className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-5" />
+                  className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-4"
+                />
               </div>
             ))}
           </div>
 
           <div className="bg-zinc-800 rounded-xl p-3">
             <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-1.5 block">Подпись внизу</span>
-            <input value={data.bottomText} onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
+            <input
+              value={data.bottomText}
+              onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
               placeholder="стиль и качество"
-              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500" />
+              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+            />
           </div>
         </div>
       </div>
