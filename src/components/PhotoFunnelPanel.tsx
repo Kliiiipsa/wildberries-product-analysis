@@ -670,7 +670,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
           >
             {imagePreview ? (
               <>
-                <img src={imagePreview} alt="preview" className="w-full h-full object-cover" onError={() => setImagePreview('')} />
+                <img src={imagePreview} alt="preview" className="w-full h-full object-contain" onError={() => setImagePreview('')} />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center">
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center gap-1 text-white">
                     <Upload className="h-6 w-6" />
@@ -710,7 +710,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
               </div>
             )}
             {!isGenerating && !generateError && generatedImage && (
-              <img src={generatedImage} alt="Результат" className="w-full h-full object-cover" />
+              <img src={generatedImage} alt="Результат" className="w-full h-full object-contain" />
             )}
             {!isGenerating && !generateError && !generatedImage && (
               <div className="text-center text-slate-700 p-8">
