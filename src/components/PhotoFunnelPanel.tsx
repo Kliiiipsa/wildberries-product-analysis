@@ -11,6 +11,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import PhotoTextEditor from '@/components/PhotoTextEditor';
 import PhotoInfographicEditor from '@/components/PhotoInfographicEditor';
 
+interface TextVariant {
+  approach: 'Выгоды' | 'Характеристики' | 'Эмоции' | 'Минимализм';
+  productName: string;
+  subtitle: string;
+  tagline: string;
+  characteristics: Array<{ title: string; value: string }>;
+  bottomText: string;
+}
+
 interface PhotoAnalysis {
   good: string[] | string;
   improve: string[] | string;
@@ -26,6 +35,7 @@ interface PhotoAnalysis {
   recommendedLayout?: 'left' | 'bottom' | 'minimal';
   style?: 'minimal' | 'studio' | 'lifestyle' | 'premium';
   textPosition?: 'left-third' | 'bottom' | 'overlay';
+  textVariants?: TextVariant[];
 }
 
 interface FunnelPhoto {
@@ -100,6 +110,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [textMode, setTextMode] = useState<'infographic' | 'overlay'>('infographic');
   const [infographicMode, setInfographicMode] = useState<'quick' | 'premium'>('quick');
   const [fluxPrompt, setFluxPrompt] = useState('');
+  const [textVariants, setTextVariants] = useState<TextVariant[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -225,6 +236,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
       }
       setAnalysis(parsed);
       if (parsed.fluxPrompt) setFluxPrompt(parsed.fluxPrompt);
+      if (parsed.textVariants?.length) setTextVariants(parsed.textVariants);
       if (parsed.generatePrompt) {
         setGeneratePrompt(parsed.generatePrompt);
         // Auto-translate to Russian for display (fire-and-forget)
@@ -721,7 +733,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
             <TabsTrigger value="ideas" className="text-xs rounded-lg">Идеи</TabsTrigger>
             <TabsTrigger value="generate" className="text-xs rounded-lg">Генерация</TabsTrigger>
             <TabsTrigger value="character" className="text-xs rounded-lg">Персонаж</TabsTrigger>
-            <TabsTrigger value="text" className="text-xs rounded-lg flex items-center gap-1"><Type className="h-3 w-3" />Текст</TabsTrigger>
+            <TabsTrigger value="text" className="text-xs rounded-lg flex items-center gap-1"><Sparkles className="h-3 w-3" />Инфографика AI</TabsTrigger>
           </TabsList>
 
           {/* ── ASSESSMENT ── */}
@@ -1123,6 +1135,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                     generatePrompt={generatePrompt}
                     fluxPrompt={fluxPrompt || undefined}
                     initialMode={infographicMode}
+                    textVariants={textVariants.length ? textVariants : undefined}
                     onExport={dataUrl => setGeneratedImage(dataUrl)}
                   />
                 ) : (

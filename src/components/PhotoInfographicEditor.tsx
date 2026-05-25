@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Loader2, Zap, Sparkles } from 'lucide-react';
+import { Loader2, Zap, Sparkles, ChevronDown } from 'lucide-react';
 
 interface Characteristic {
   title: string;
@@ -16,6 +16,15 @@ interface InfographicData {
   bottomText: string;
 }
 
+export interface TextVariant {
+  approach: 'Выгоды' | 'Характеристики' | 'Эмоции' | 'Минимализм';
+  productName: string;
+  subtitle: string;
+  tagline: string;
+  characteristics: Array<{ title: string; value: string }>;
+  bottomText: string;
+}
+
 type TemplateStyle = 'light' | 'dark' | 'beige' | 'black';
 type InfographicMode = 'quick' | 'premium';
 
@@ -25,8 +34,17 @@ interface Props {
   generatePrompt?: string;
   fluxPrompt?: string;
   initialMode?: InfographicMode;
+  textVariants?: TextVariant[];
   onExport?: (dataUrl: string) => void;
 }
+
+// Approach badge styles
+const APPROACH_STYLE: Record<string, { badge: string; ring: string }> = {
+  'Выгоды':         { badge: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700/50', ring: 'border-emerald-500/70 bg-emerald-950/30' },
+  'Характеристики': { badge: 'bg-blue-900/60 text-blue-300 border border-blue-700/50',          ring: 'border-blue-500/70 bg-blue-950/30' },
+  'Эмоции':         { badge: 'bg-rose-900/60 text-rose-300 border border-rose-700/50',           ring: 'border-rose-500/70 bg-rose-950/30' },
+  'Минимализм':     { badge: 'bg-zinc-700/80 text-zinc-300 border border-zinc-600/50',           ring: 'border-zinc-400/50 bg-zinc-900/40' },
+};
 
 const CARD_W = 900;
 const CARD_H = 1200;
@@ -394,6 +412,7 @@ export default function PhotoInfographicEditor({
   analysis,
   fluxPrompt,
   initialMode = 'quick',
+  textVariants,
   onExport,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -509,12 +528,27 @@ export default function PhotoInfographicEditor({
     }
   };
 
+  const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
+  const [showManual, setShowManual] = useState(false);
+
   const updateChar = (i: number, field: 'title' | 'value', val: string) =>
     setData(prev => {
       const chars = [...prev.characteristics];
       chars[i] = { ...chars[i], [field]: val };
       return { ...prev, characteristics: chars };
     });
+
+  const applyVariant = (v: TextVariant, idx: number) => {
+    setSelectedVariant(idx);
+    setData({
+      productName: v.productName,
+      productSubtitle: v.subtitle,
+      tagline: v.tagline,
+      characteristics: v.characteristics.slice(0, 3),
+      bottomText: v.bottomText,
+    });
+    setResultUrl(null);
+  };
 
   const TMPL: [TemplateStyle, string, string][] = [
     ['light', 'Золото',  'bg-amber-50 text-amber-900 border border-amber-200'],
@@ -692,70 +726,168 @@ export default function PhotoInfographicEditor({
           </p>
         </div>
 
-        {/* ── Editor panel ───────────────────────────────────────────────── */}
-        <div className="w-60 shrink-0 flex flex-col gap-3">
-          <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2.5">
-            <div className="flex items-center justify-between mb-0.5">
-              <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide">Текст</span>
-              <button
-                onClick={generateAIText}
-                disabled={loadingText}
-                className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1"
-              >
-                {loadingText ? <Loader2 className="h-3 w-3 animate-spin" /> : '✨'} AI
-              </button>
-            </div>
-            <input
-              value={data.tagline}
-              onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
-              placeholder="тег (новинка / хит продаж)"
-              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-            />
-            <input
-              value={data.productName}
-              onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
-              placeholder="НАЗВАНИЕ ТОВАРА"
-              className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500"
-            />
-            <input
-              value={data.productSubtitle}
-              onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
-              placeholder="лёгкий и дышащий"
-              className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-            />
+        {/* ── Right panel: AI suggestions + manual edit ─────────────────── */}
+        <div className="w-72 shrink-0 flex flex-col gap-3 max-h-[640px] overflow-y-auto pr-0.5">
+
+          {/* Header */}
+          <div className="flex items-center justify-between sticky top-0 bg-zinc-950/90 backdrop-blur-sm z-10 pb-1">
+            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-violet-400" />
+              Предложения AI
+            </span>
+            <button
+              onClick={generateAIText}
+              disabled={loadingText}
+              className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1 transition-colors"
+            >
+              {loadingText ? <Loader2 className="h-3 w-3 animate-spin" /> : '↻'} Обновить
+            </button>
           </div>
 
-          <div className="bg-zinc-800 rounded-xl p-3 flex flex-col gap-2">
-            <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-0.5">Характеристики</span>
-            {data.characteristics.map((ch, i) => (
-              <div key={i} className="flex flex-col gap-1 border-b border-zinc-700/60 pb-2 last:border-0 last:pb-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-zinc-500 w-3 shrink-0">{['🌿', '✦', '◉'][i]}</span>
-                  <input
-                    value={ch.title}
-                    onChange={e => updateChar(i, 'title', e.target.value)}
-                    placeholder="Название"
-                    className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500"
-                  />
+          {/* Variant cards */}
+          {textVariants && textVariants.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {textVariants.map((v, i) => {
+                const st = APPROACH_STYLE[v.approach] ?? APPROACH_STYLE['Минимализм'];
+                const isSelected = selectedVariant === i;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => applyVariant(v, i)}
+                    className={`w-full text-left rounded-xl border p-3 transition-all hover:brightness-110 ${
+                      isSelected
+                        ? `${st.ring} ring-1 ring-inset`
+                        : 'border-zinc-700/60 bg-zinc-800/50 hover:border-zinc-600'
+                    }`}
+                  >
+                    {/* Approach badge */}
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mb-2 ${st.badge}`}>
+                      {v.approach}
+                    </span>
+
+                    {/* Product name */}
+                    <p className="text-white font-bold text-sm leading-tight mb-1.5 truncate">
+                      {v.productName}
+                    </p>
+
+                    {/* Subtitle */}
+                    {v.subtitle && (
+                      <p className="text-zinc-400 text-[11px] italic mb-2 leading-tight">{v.subtitle}</p>
+                    )}
+
+                    {/* Bullets */}
+                    <ul className="space-y-1 mb-2">
+                      {v.characteristics.slice(0, 3).map((ch, ci) => (
+                        <li key={ci} className="text-xs text-zinc-400 flex items-start gap-1.5 leading-tight">
+                          <span className="text-zinc-600 shrink-0 mt-0.5">•</span>
+                          <span>
+                            <span className="text-zinc-300 font-medium">{ch.title}</span>
+                            {ch.value && <span className="text-zinc-500"> — {ch.value}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {/* Bottom text */}
+                    {v.bottomText && (
+                      <p className="text-[10px] text-zinc-500 italic leading-tight border-t border-zinc-700/50 pt-1.5 mt-1">
+                        {v.bottomText}
+                      </p>
+                    )}
+
+                    {isSelected && (
+                      <p className="text-[10px] text-violet-400 font-medium mt-1.5">✓ Применено</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-center">
+              {loadingText ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-violet-400" />
+                  <p className="text-xs text-zinc-500">Генерирую варианты...</p>
                 </div>
+              ) : (
+                <>
+                  <Sparkles className="h-5 w-5 text-zinc-700 mx-auto mb-2" />
+                  <p className="text-xs text-zinc-500 mb-2">Нажмите «Анализировать» — AI сгенерирует 4 варианта текста</p>
+                  <button
+                    onClick={generateAIText}
+                    disabled={loadingText}
+                    className="text-xs text-violet-400 hover:text-violet-300 border border-violet-700/40 rounded-lg px-3 py-1.5 transition-colors"
+                  >
+                    ✨ Сгенерировать текст
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Manual editor (collapsible) ─────────────────────────────── */}
+          <div className="border border-zinc-800 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowManual(p => !p)}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 transition-all"
+            >
+              <span className="font-medium uppercase tracking-wide">Редактировать вручную</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showManual ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showManual && (
+              <div className="px-3 pb-3 flex flex-col gap-2.5 bg-zinc-900/40">
+                {/* Text fields */}
                 <input
-                  value={ch.value}
-                  onChange={e => updateChar(i, 'value', e.target.value)}
-                  placeholder="уточнение"
-                  className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-4"
+                  value={data.tagline}
+                  onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
+                  placeholder="тег (новинка / хит продаж)"
+                  className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+                />
+                <input
+                  value={data.productName}
+                  onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
+                  placeholder="НАЗВАНИЕ ТОВАРА"
+                  className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500"
+                />
+                <input
+                  value={data.productSubtitle}
+                  onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
+                  placeholder="лёгкий и дышащий"
+                  className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
+                />
+
+                {/* Characteristics */}
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide mt-1">Характеристики</p>
+                {data.characteristics.map((ch, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-zinc-600 w-3 shrink-0">{['🌿','✦','◉'][i]}</span>
+                      <input
+                        value={ch.title}
+                        onChange={e => updateChar(i, 'title', e.target.value)}
+                        placeholder="Название"
+                        className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                    </div>
+                    <input
+                      value={ch.value}
+                      onChange={e => updateChar(i, 'value', e.target.value)}
+                      placeholder="уточнение"
+                      className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-4"
+                    />
+                  </div>
+                ))}
+
+                {/* Bottom text */}
+                <input
+                  value={data.bottomText}
+                  onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
+                  placeholder="стиль и качество"
+                  className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
                 />
               </div>
-            ))}
-          </div>
-
-          <div className="bg-zinc-800 rounded-xl p-3">
-            <span className="text-xs text-zinc-400 font-medium uppercase tracking-wide mb-1.5 block">Подпись внизу</span>
-            <input
-              value={data.bottomText}
-              onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
-              placeholder="стиль и качество"
-              className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-            />
+            )}
           </div>
         </div>
       </div>

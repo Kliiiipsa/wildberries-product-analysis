@@ -126,6 +126,24 @@ Use [PRESERVE][CHANGE][SCENE][QUALITY] format:
 Also determine: recommendedLayout ("left"|"bottom"|"minimal"), style ("studio"|"lifestyle"|"minimal"|"premium"), textPosition ("left-third"|"bottom"|"overlay").
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6 — INFOGRAPHIC TEXT VARIANTS (textVariants)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate EXACTLY 4 text variants for the infographic canvas. ALL text values in RUSSIAN.
+
+RULES for every variant:
+• productName — 2-3 words MAX, uppercase-friendly, SPECIFIC to THIS exact product (e.g. "ШОРТЫ МУЖСКИЕ", "ПЛАТЬЕ ЛЕТНЕЕ", "РУБАШКА ОВЕРСАЙЗ")
+• subtitle — 3-7 words, feel/fit/feature of the item
+• tagline — 3-5 word lowercase slug for the top of card (e.g. "новинка сезона", "хит продаж")
+• characteristics — EXACTLY 3 items, each: title 1-3 words + value 2-6 words
+• bottomText — 5-9 words memorable closing line
+
+THE 4 APPROACHES:
+[0] approach "Выгоды" — WHY BUYER SHOULD BUY: comfort, quality, value, convenience. Example: productName "ШОРТЫ МУЖСКИЕ", bullets: {Дышит летом, Мягкий хлопок}, {Не жмёт, Эластичный пояс}, {Носи везде, Универсальный крой}
+[1] approach "Характеристики" — WHAT IT IS: material %, fit type, season, construction. Example: bullets: {Состав, 95% хлопок 5% эластан}, {Посадка, свободный оверсайз}, {Сезон, лето / весна}
+[2] approach "Эмоции" — HOW IT MAKES YOU FEEL: aspiration, image, self-expression, lifestyle. productName may be "СТИЛЬНЫЙ ОБРАЗ" or similar. Bullets are short aspirational phrases without values.
+[3] approach "Минимализм" — ULTRA MINIMAL: shortest possible product name (1 word ok), very brief bullets (title only, no value needed), minimal everything
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — VALID JSON ONLY (no markdown)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only, NO Cyrillic).
@@ -154,7 +172,13 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   "fluxPrompt": "[PRESERVE] Keep unchanged: [exact product color, cut, fabric, visible body parts, pose]. [CHANGE] Recompose: shift model to right 60% of frame — left 40% must be completely empty clean background; fix pose per gender+product guide; remove any props or accessories. [SCENE] Studio: smooth deep charcoal plaster wall (replace with correct tone from BACKGROUND COLOUR RULE), uniform seamless colour, soft diffused light from front-left, beautiful fabric shadow on right edge, no equipment or props visible, left panel perfectly clean for text overlay. [QUALITY] Genuine photograph, Canon EOS R5, 85mm f/2, natural studio light, real film grain, no AI artifacts.",
   "recommendedLayout": "left",
   "style": "studio",
-  "textPosition": "left-third"
+  "textPosition": "left-third",
+  "textVariants": [
+    {"approach": "Выгоды",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
+    {"approach": "Характеристики","productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
+    {"approach": "Эмоции",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":""},   {"title":"...","value":""},   {"title":"...","value":""}],   "bottomText": "..."},
+    {"approach": "Минимализм",    "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":""},   {"title":"...","value":""},   {"title":"...","value":""}],   "bottomText": "..."}
+  ]
 }`;
 
 
