@@ -85,12 +85,19 @@ STEP 5 — PREMIUM INFOGRAPHIC BASE (fluxPrompt)
 Generate a FLUX Kontext image-to-image prompt for a perfect Wildberries infographic base.
 
 UNIVERSAL RULES (mandatory for ALL products):
-• Composition: model in RIGHT 60-65% of frame, LEFT 35-40% is clean empty space for text
+• Composition: model in RIGHT 60-65% of frame, LEFT 35-40% is COMPLETELY CLEAN AND EMPTY — no body parts, no shadows, no props crossing into this zone
 • Style: professional studio product photography, premium level — reference brands: Zara, Massimo Dutti, COS, Arket
 • Lighting: soft diffused studio light from front-left, beautiful fabric shadows, high fabric texture detail
-• Background: minimalist — clean light wall OR very soft studio gradient. NO apartments, sofas, windows, outdoor spots
+• Background: ONE SOLID COLOUR wall or seamless paper — no gradients, no vignettes, no patterns, no studio equipment, no reflections. The background colour MUST contrast the garment using the rule below.
 • Format: vertical 3:4 ratio
 • FORBIDDEN in [CHANGE]: selfie poses, phone in hands, bright distracting accessories, heavy makeup, unnatural poses, cluttered backgrounds
+
+BACKGROUND COLOUR RULE for infographic (apply ALWAYS — critical for text readability on the left panel):
+  light grey / white / cream garment  →  deep warm charcoal wall (#2E2B27 tone) or dark slate
+  black / dark navy garment           →  warm ivory / off-white linen wall (#F5F1EB tone)
+  beige / camel garment               →  deep charcoal OR bright white — whichever gives MORE contrast
+  bright / vivid garment              →  muted warm stone, soft warm grey concrete
+  The LEFT 40% of the final image MUST be the background colour — smooth, clean, ideal for white/dark text overlay
 
 POSE GUIDE — detect gender from STEP 1 and product type, apply correct pose:
 
@@ -112,9 +119,9 @@ Men:
 
 Use [PRESERVE][CHANGE][SCENE][QUALITY] format:
 [PRESERVE] — all product details exactly as seen (color, cut, fabric, visible details, body visibility)
-[CHANGE] — recompose: model in right 60%, clean empty studio space on left 40%; fix background to clean minimalist studio; pose corrected per gender+product guide above; no phone, no accessories
-[SCENE] — soft studio: clean light warm wall or very soft gradient background, diffused light from front-left, beautiful fabric shadow detail
-[QUALITY] Genuine photograph, Canon EOS R5, natural studio light, real film grain, no AI artifacts.
+[CHANGE] — recompose: model shifted to right 60% of frame; left 40% is completely clear background; pose corrected per gender+product guide above; remove phone, selfie arm, distracting accessories; fix background to clean studio wall
+[SCENE] — describe the SPECIFIC chosen background using BACKGROUND COLOUR RULE above: name the exact wall material and tone (e.g. "smooth deep charcoal plaster wall, uniform #2E2B27, soft diffused light from front-left, beautiful fabric shadow on right edge, zero studio equipment or props visible, perfectly clean for left text panel")
+[QUALITY] Genuine photograph, Canon EOS R5, 85mm f/2, natural studio light, real film grain, no AI artifacts.
 
 Also determine: recommendedLayout ("left"|"bottom"|"minimal"), style ("studio"|"lifestyle"|"minimal"|"premium"), textPosition ("left-third"|"bottom"|"overlay").
 
@@ -144,7 +151,7 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
     {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."}
   ],
   "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.",
-  "fluxPrompt": "[PRESERVE] Keep unchanged: [product details]. [CHANGE] Recompose: shift model to right 55% of frame, create clean empty space in left 40% for text overlay. [SCENE] Soft studio, uniform background contrasting with item color, light from left. [QUALITY] Genuine photograph, Canon EOS R5, natural light, real film grain, no AI artifacts.",
+  "fluxPrompt": "[PRESERVE] Keep unchanged: [exact product color, cut, fabric, visible body parts, pose]. [CHANGE] Recompose: shift model to right 60% of frame — left 40% must be completely empty clean background; fix pose per gender+product guide; remove any props or accessories. [SCENE] Studio: smooth deep charcoal plaster wall (replace with correct tone from BACKGROUND COLOUR RULE), uniform seamless colour, soft diffused light from front-left, beautiful fabric shadow on right edge, no equipment or props visible, left panel perfectly clean for text overlay. [QUALITY] Genuine photograph, Canon EOS R5, 85mm f/2, natural studio light, real film grain, no AI artifacts.",
   "recommendedLayout": "left",
   "style": "studio",
   "textPosition": "left-third"

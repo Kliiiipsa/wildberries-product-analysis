@@ -19,18 +19,21 @@ async function toBase64DataUrl(url: string): Promise<string> {
 }
 
 /**
- * Composition instructions appended to every fluxPrompt.
- * Ensures the result is suitable as an infographic canvas base.
+ * Composition instructions appended to every fluxPrompt when it does not
+ * already contain explicit left-panel composition language.
+ * Critical: left 40% must be clean solid background so the canvas overlay
+ * can apply adaptive scrim + text without any visual seams.
  */
 const INFOGRAPHIC_SUFFIX =
-  ', professional Wildberries infographic base, ' +
-  'model positioned in the right 55-60% of frame, ' +
-  '35-40% clean empty area on the left side for text overlay, ' +
-  'soft diffused studio lighting from the left side, ' +
-  'clean uniform background with no distracting elements, ' +
-  'elegant premium fashion photography, ' +
-  'vertical 3:4 portrait ratio, ' +
-  'no text, no logos, no watermarks, no graphics overlaid';
+  '. COMPOSITION OVERRIDE: ' +
+  'model must occupy only the RIGHT 58-62% of the frame — ' +
+  'the LEFT 38-42% must be completely empty solid-colour background (no body parts, no shadows, no props crossing into this zone), ' +
+  'this clean left panel is required for text overlay. ' +
+  'Background must be ONE seamless solid colour or very subtle single-tone texture — ' +
+  'absolutely no gradients, no vignettes, no studio equipment, no reflections, no secondary objects. ' +
+  'Soft diffused studio light from front-left, beautiful fabric shadow detail on the garment. ' +
+  'Vertical 3:4 portrait ratio. ' +
+  'No text, no logos, no watermarks, no graphics.';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -58,10 +61,13 @@ export async function POST(req: NextRequest) {
       ? imageUrl
       : await toBase64DataUrl(imageUrl);
 
-    // Append composition instructions unless already present
-    const fullPrompt = fluxPrompt.includes('empty area on the left')
-      ? fluxPrompt
-      : fluxPrompt + INFOGRAPHIC_SUFFIX;
+    // Append composition override unless the prompt already has explicit left-panel language
+    const hasLeftPanel =
+      fluxPrompt.includes('left 40%') ||
+      fluxPrompt.includes('left 38%') ||
+      fluxPrompt.includes('empty area on the left') ||
+      fluxPrompt.includes('clean left panel');
+    const fullPrompt = hasLeftPanel ? fluxPrompt : fluxPrompt + INFOGRAPHIC_SUFFIX;
 
     console.log(`[infographic-base] FLUX prompt_len=${fullPrompt.length}`);
 

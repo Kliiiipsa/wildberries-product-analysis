@@ -55,26 +55,48 @@ const ACCENTS: Record<TemplateStyle, { accent: string; stroke: string }> = {
 // ── Canvas helpers ────────────────────────────────────────────────────────────
 
 /**
- * Sample average RGB + luminance of a rectangular region.
- * Called after photo is drawn so the canvas contains actual pixel data.
+ * Sample average RGB + luminance from the left background zone of the canvas.
+ * We sample three narrow vertical strips in the leftmost 32% to avoid any
+ * model bleed-over from the right side, and skip pixels that look saturated
+ * (likely clothing or skin) to focus on pure background colour.
+ *
+ * Called after the photo is drawn — canvas must contain actual pixel data.
  */
-function sampleRegion(
+function sampleBackground(
   ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number,
+  W: number,
+  H: number,
 ): { r: number; g: number; b: number; luminance: number } {
   try {
-    const data = ctx.getImageData(x, y, Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h))).data;
+    // Sample leftmost 30% — should be pure background in a proper infographic base
+    const sampleW = Math.max(1, Math.floor(W * 0.30));
+    const data = ctx.getImageData(0, 0, sampleW, H).data;
+
     let r = 0, g = 0, b = 0, count = 0;
-    const step = 4 * 32; // every 32nd pixel — fast enough for 900×1200
+    const step = 4 * 20; // every 20th pixel — fast, ~2 700 samples for 900×1200
     for (let i = 0; i < data.length; i += step) {
-      r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+      const pr = data[i], pg = data[i + 1], pb = data[i + 2];
+      // Skip highly saturated pixels (likely garment or skin bleed)
+      const mx = Math.max(pr, pg, pb), mn = Math.min(pr, pg, pb);
+      const saturation = mx > 0 ? (mx - mn) / mx : 0;
+      if (saturation > 0.35) continue; // skip vivid coloured pixels
+      r += pr; g += pg; b += pb; count++;
     }
-    const ar = count ? r / count : 180;
-    const ag = count ? g / count : 175;
-    const ab = count ? b / count : 165;
+
+    if (count < 10) {
+      // Fallback: sample without saturation filter (very saturated background)
+      let fr = 0, fg = 0, fb = 0, fc = 0;
+      for (let i = 0; i < data.length; i += step) {
+        fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fc++;
+      }
+      const ar = fc ? fr / fc : 200, ag = fc ? fg / fc : 195, ab = fc ? fb / fc : 185;
+      return { r: ar, g: ag, b: ab, luminance: 0.299 * ar + 0.587 * ag + 0.114 * ab };
+    }
+
+    const ar = r / count, ag = g / count, ab = b / count;
     return { r: ar, g: ag, b: ab, luminance: 0.299 * ar + 0.587 * ag + 0.114 * ab };
   } catch {
-    // Canvas tainted or other error → fall back to light defaults
+    // Canvas tainted or other error → fall back to neutral light defaults
     return { r: 240, g: 235, b: 225, luminance: 235 };
   }
 }
@@ -184,9 +206,10 @@ function drawCard(
 
   // ── 2. Sample left area pixels to detect background colour ────────────────
   // Reading AFTER photo draw, so we get actual scene colours.
-  // We sample the left 38% of canvas (where FLUX puts the empty background).
+  // sampleBackground reads the leftmost 30% and skips saturated pixels
+  // (clothing/skin bleed) to isolate pure background colour.
   const { r: bgR, g: bgG, b: bgB, luminance: lum } =
-    sampleRegion(ctx, 0, 0, Math.floor(W * 0.38), H);
+    sampleBackground(ctx, W, H);
 
   const isLight = lum > 130; // bright background → use dark text
 
