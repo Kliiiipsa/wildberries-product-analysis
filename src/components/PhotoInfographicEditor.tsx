@@ -23,9 +23,7 @@ interface Props {
   imageUrl: string;
   analysis?: { good?: string[]; improve?: string[] } | null;
   generatePrompt?: string;
-  /** FLUX Kontext prompt from Qwen analysis — required for Premium mode */
   fluxPrompt?: string;
-  /** If 'premium', auto-starts FLUX generation on mount when fluxPrompt is available */
   initialMode?: InfographicMode;
   onExport?: (dataUrl: string) => void;
 }
@@ -45,43 +43,41 @@ const DEFAULT_DATA: InfographicData = {
   bottomText: 'стиль и качество в каждой детали',
 };
 
-// Per-template palette
-const T = {
-  light: {
-    scrimRgb: '252,250,246', scrimA: 0.90,
-    textColor: '#18150E', subColor: 'rgba(24,21,14,0.46)',
-    accent: '#8C6D3F', stroke: '#B08A52',
-    pillBg: 'rgba(255,255,255,0.78)',
-    pillIconBg: 'rgba(140,109,63,0.10)',
-    shadowColor: 'rgba(255,255,255,0.55)',
-  },
-  dark: {
-    scrimRgb: '10,9,16', scrimA: 0.82,
-    textColor: '#F0EDE4', subColor: 'rgba(240,237,228,0.50)',
-    accent: '#C9A96E', stroke: '#C9A96E',
-    pillBg: 'rgba(20,18,32,0.76)',
-    pillIconBg: 'rgba(201,169,110,0.12)',
-    shadowColor: 'rgba(0,0,0,0.60)',
-  },
-  beige: {
-    scrimRgb: '250,243,230', scrimA: 0.88,
-    textColor: '#2A1C0C', subColor: 'rgba(42,28,12,0.48)',
-    accent: '#9B6B3A', stroke: '#B07E44',
-    pillBg: 'rgba(255,248,236,0.80)',
-    pillIconBg: 'rgba(155,107,58,0.12)',
-    shadowColor: 'rgba(255,236,196,0.50)',
-  },
-  black: {
-    scrimRgb: '5,4,10', scrimA: 0.86,
-    textColor: '#FFFFFF', subColor: 'rgba(255,255,255,0.50)',
-    accent: '#D4B86A', stroke: '#D4B86A',
-    pillBg: 'rgba(10,9,20,0.80)',
-    pillIconBg: 'rgba(212,184,106,0.12)',
-    shadowColor: 'rgba(0,0,0,0.70)',
-  },
-} as const;
+// Accent palette — template controls accent colour only.
+// Overlay colours are auto-derived from the photo (see sampleRegion).
+const ACCENTS: Record<TemplateStyle, { accent: string; stroke: string }> = {
+  light: { accent: '#7A5830', stroke: '#A07840' },
+  dark:  { accent: '#C9A96E', stroke: '#C9A96E' },
+  beige: { accent: '#8B5E30', stroke: '#A07840' },
+  black: { accent: '#D4B86A', stroke: '#D4B86A' },
+};
 
-// ── Text helpers ──────────────────────────────────────────────────────────────
+// ── Canvas helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Sample average RGB + luminance of a rectangular region.
+ * Called after photo is drawn so the canvas contains actual pixel data.
+ */
+function sampleRegion(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+): { r: number; g: number; b: number; luminance: number } {
+  try {
+    const data = ctx.getImageData(x, y, Math.max(1, Math.floor(w)), Math.max(1, Math.floor(h))).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    const step = 4 * 32; // every 32nd pixel — fast enough for 900×1200
+    for (let i = 0; i < data.length; i += step) {
+      r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+    }
+    const ar = count ? r / count : 180;
+    const ag = count ? g / count : 175;
+    const ab = count ? b / count : 165;
+    return { r: ar, g: ag, b: ab, luminance: 0.299 * ar + 0.587 * ag + 0.114 * ab };
+  } catch {
+    // Canvas tainted or other error → fall back to light defaults
+    return { r: 240, g: 235, b: 225, luminance: 235 };
+  }
+}
 
 function drawSpaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number) {
   let cx = x;
@@ -116,7 +112,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-// ── Canvas icons ──────────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function iconLeaf(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
   ctx.save();
@@ -178,145 +174,164 @@ function drawCard(
   style: TemplateStyle,
 ) {
   const W = CARD_W, H = CARD_H;
-  const t = T[style];
-  const PAD = 66;
-  const TEXT_W = 370;
+  const PAD = 66, TEXT_W = 370;
 
-  // 1. Photo: full-bleed, object-cover
+  // ── 1. Photo: full-bleed object-cover ─────────────────────────────────────
   const sx = W / img.naturalWidth, sy = H / img.naturalHeight;
   const sc = Math.max(sx, sy);
   const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
   ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
 
-  // 2. Scrim: solid text panel left 44%, then soft fade to transparent
-  // This creates a clean white/cream background on the left (like competitor cards)
-  // instead of a cheap-looking gradient overlay over the photo.
+  // ── 2. Sample left area pixels to detect background colour ────────────────
+  // Reading AFTER photo draw, so we get actual scene colours.
+  // We sample the left 38% of canvas (where FLUX puts the empty background).
+  const { r: bgR, g: bgG, b: bgB, luminance: lum } =
+    sampleRegion(ctx, 0, 0, Math.floor(W * 0.38), H);
+
+  const isLight = lum > 130; // bright background → use dark text
+
+  // ── 3. Adaptive scrim — colour derived from detected background ────────────
+  // On light BGs: strengthen existing light area (cream → white).
+  // On dark BGs: deepen existing dark area for contrast.
+  // This makes the overlay feel like it BELONGS to the photo, not pasted on.
+  const sr = Math.min(255, Math.round(bgR * (isLight ? 1.08 : 0.82)));
+  const sg = Math.min(255, Math.round(bgG * (isLight ? 1.06 : 0.78)));
+  const sb = Math.min(255, Math.round(bgB * (isLight ? 1.05 : 0.76)));
+  const sa = isLight ? 0.93 : 0.90;
+
+  // Solid text panel left 44%, then smooth fade
   const scrim = ctx.createLinearGradient(0, 0, W, 0);
-  scrim.addColorStop(0,    `rgba(${t.scrimRgb},${t.scrimA})`);
-  scrim.addColorStop(0.44, `rgba(${t.scrimRgb},${t.scrimA})`);      // solid up to 44% width
-  scrim.addColorStop(0.62, `rgba(${t.scrimRgb},${t.scrimA * 0.40})`);
-  scrim.addColorStop(0.80, `rgba(${t.scrimRgb},${t.scrimA * 0.04})`);
-  scrim.addColorStop(1,    `rgba(${t.scrimRgb},0)`);
+  scrim.addColorStop(0,    `rgba(${sr},${sg},${sb},${sa})`);
+  scrim.addColorStop(0.44, `rgba(${sr},${sg},${sb},${sa})`);        // fully solid text zone
+  scrim.addColorStop(0.62, `rgba(${sr},${sg},${sb},${+(sa * 0.36).toFixed(3)})`);
+  scrim.addColorStop(0.80, `rgba(${sr},${sg},${sb},${+(sa * 0.03).toFixed(3)})`);
+  scrim.addColorStop(1,    `rgba(${sr},${sg},${sb},0)`);
   ctx.fillStyle = scrim;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle bottom scrim for bottom text (left side only — don't darken model area)
+  // Subtle bottom fade for bottom text (left side only)
   const bScrim = ctx.createLinearGradient(0, H - 110, 0, H);
-  bScrim.addColorStop(0, `rgba(${t.scrimRgb},0)`);
-  bScrim.addColorStop(1, `rgba(${t.scrimRgb},${t.scrimA * 0.50})`);
+  bScrim.addColorStop(0, `rgba(${sr},${sg},${sb},0)`);
+  bScrim.addColorStop(1, `rgba(${sr},${sg},${sb},${+(sa * 0.44).toFixed(3)})`);
   ctx.fillStyle = bScrim;
   ctx.fillRect(0, H - 110, W * 0.58, 110);
 
-  // 3. Typography
+  // ── 4. Adaptive text/pill colours ─────────────────────────────────────────
+  const textColor  = isLight ? '#15110A'              : '#F3F0E9';
+  const subColor   = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
+  const shColor    = isLight ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.55)';
+  const pillBg     = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(14,12,22,0.84)';
+  const pillSh     = isLight ? 'rgba(0,0,0,0.09)'     : 'rgba(0,0,0,0.38)';
+  const pillIconBg = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
+
+  // Accent from template (unchanged by auto-detection)
+  const { accent, stroke } = ACCENTS[style];
+
+  // ── 5. Typography ─────────────────────────────────────────────────────────
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   let y = 88;
 
-  // Tagline — small, spaced, thin
+  // Tagline — small, spaced letters
   ctx.font = '400 11.5px Arial, Helvetica, sans-serif';
-  ctx.fillStyle = t.subColor;
+  ctx.fillStyle = subColor;
   drawSpaced(ctx, data.tagline.toUpperCase(), PAD, y, 2.6);
   y += 36;
 
-  // Product name — lighter italic serif, smaller and more elegant
-  // 700 → 600 weight (less aggressive), reduced sizes by ~15%
+  // Product name — italic serif, weight 600, auto-sizes
   const rawName = data.productName.toUpperCase();
   const nLen = rawName.replace(/\s/g, '').length;
   const NS = nLen <= 6 ? 66 : nLen <= 10 ? 54 : nLen <= 15 ? 44 : 36;
   ctx.font = `italic 600 ${NS}px Georgia, 'Times New Roman', serif`;
-  ctx.fillStyle = t.textColor;
-  ctx.shadowColor = t.shadowColor;
-  ctx.shadowBlur = 14;
+  ctx.fillStyle = textColor;
+  ctx.shadowColor = shColor;
+  ctx.shadowBlur = 10;
   const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
   for (const line of nameLines) {
     ctx.fillText(line, PAD, y);
     y += Math.ceil(NS * 1.12);
   }
   ctx.shadowBlur = 0;
-  y += 16;
+  y += 14;
 
   // Subtitle — thin italic
   if (data.productSubtitle) {
     ctx.font = 'italic 300 16px Arial, Helvetica, sans-serif';
-    ctx.fillStyle = t.subColor;
+    ctx.fillStyle = subColor;
     ctx.fillText(data.productSubtitle, PAD, y);
     y += 44;
   }
 
-  // Short decorative gold rule
+  // Short gold rule
   ctx.beginPath();
   ctx.moveTo(PAD, y);
   ctx.lineTo(PAD + 50, y);
-  ctx.strokeStyle = t.accent;
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 1.4;
   ctx.globalAlpha = 0.52;
   ctx.stroke();
   ctx.globalAlpha = 1;
   y += 28;
 
-  // 4. Feature pills — larger, with subtle shadow for depth
-  const PILL_H = 66;
-  const PILL_W = 318;
-  const PILL_R = 33;
-  const ICON_CX_OFF = 42;
-  const ICON_DOT_R = 14;
-  const ICON_R = 15;
+  // ── 6. Feature pills ──────────────────────────────────────────────────────
+  const PILL_H = 66, PILL_W = 318, PILL_R = 33;
+  const ICON_CX = 42, ICON_DOT_R = 14, ICON_R = 15;
 
   for (let i = 0; i < data.characteristics.slice(0, 3).length; i++) {
     const ch = data.characteristics[i];
     const px = PAD, py = y;
 
-    // Pill background with subtle shadow for depth/volume
+    // Pill fill with shadow (creates depth/volume)
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.09)';
+    ctx.shadowColor = pillSh;
     ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 4;
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.fillStyle = t.pillBg;
+    ctx.fillStyle = pillBg;
     ctx.fill();
-    ctx.restore(); // clear shadow before border
+    ctx.restore();
 
-    // Pill border (no shadow)
+    // Pill border
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.strokeStyle = t.stroke;
+    ctx.strokeStyle = stroke;
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.18;
     ctx.stroke();
     ctx.globalAlpha = 1;
 
     // Icon circle
-    const iconCX = px + ICON_CX_OFF, iconCY = py + PILL_H / 2;
+    const iconCX = px + ICON_CX, iconCY = py + PILL_H / 2;
     ctx.beginPath();
     ctx.arc(iconCX, iconCY, ICON_DOT_R, 0, Math.PI * 2);
-    ctx.fillStyle = t.pillIconBg;
+    ctx.fillStyle = pillIconBg;
     ctx.fill();
-    ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, t.accent);
+    ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, accent);
 
-    // Text — slightly larger
-    const textX = px + ICON_CX_OFF + ICON_DOT_R + 14;
-    const maxTW = PILL_W - (ICON_CX_OFF + ICON_DOT_R + 14) - 16;
+    // Text
+    const textX = iconCX + ICON_DOT_R + 14;
+    const maxTW = px + PILL_W - textX - 16;
     ctx.textBaseline = 'middle';
     if (ch.value) {
       ctx.font = '600 14px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = t.textColor;
+      ctx.fillStyle = textColor;
       ctx.fillText(ch.title, textX, iconCY - 10);
       ctx.font = '400 12px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = t.subColor;
+      ctx.fillStyle = subColor;
       ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textX, iconCY + 10);
     } else {
       ctx.font = '500 14px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = t.textColor;
+      ctx.fillStyle = textColor;
       ctx.fillText(ch.title, textX, iconCY);
     }
     ctx.textBaseline = 'top';
     y += PILL_H + 14;
   }
 
-  // 5. Bottom italic text — slightly larger and higher
+  // ── 7. Bottom italic text ─────────────────────────────────────────────────
   if (data.bottomText) {
     const btY = H - 76, btSz = 15;
     ctx.font = `italic 300 ${btSz}px Georgia, 'Times New Roman', serif`;
-    ctx.fillStyle = t.subColor;
+    ctx.fillStyle = subColor;
     ctx.textBaseline = 'top';
     let bty = btY;
     for (const bl of wrapText(ctx, data.bottomText, TEXT_W - 20, 2)) {
@@ -358,14 +373,13 @@ export default function PhotoInfographicEditor({
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [renderError, setRenderError] = useState('');
 
-  // ── Premium mode state ──────────────────────────────────────────────────────
+  // ── Premium mode ────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<InfographicMode>(initialMode);
-  const [baseImage, setBaseImage] = useState<string | null>(null); // FLUX-generated base
+  const [baseImage, setBaseImage] = useState<string | null>(null);
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumError, setPremiumError] = useState('');
   const autoStartedRef = useRef(false);
 
-  // Generate FLUX base image for premium mode
   const generatePremiumBase = useCallback(async () => {
     if (!imageUrl || !fluxPrompt) {
       setPremiumError('Нет fluxPrompt — сначала проанализируйте фото');
@@ -376,7 +390,6 @@ export default function PhotoInfographicEditor({
     setBaseImage(null);
     setResultUrl(null);
     try {
-      // toDataUrl handles proxy so we send the correct data to the server
       const imgSrc = await toDataUrl(imageUrl);
       const res = await fetch('/api/photo/generate-infographic-base', {
         method: 'POST',
@@ -388,13 +401,12 @@ export default function PhotoInfographicEditor({
       setBaseImage(json.imageUrl);
     } catch (e) {
       setPremiumError(String(e));
-      setMode('quick'); // automatic fallback
+      setMode('quick');
     } finally {
       setPremiumLoading(false);
     }
   }, [imageUrl, fluxPrompt]);
 
-  // Auto-start generation when mode=premium and fluxPrompt becomes available
   useEffect(() => {
     if (mode === 'premium' && fluxPrompt && !autoStartedRef.current) {
       autoStartedRef.current = true;
@@ -402,7 +414,7 @@ export default function PhotoInfographicEditor({
     }
   }, [mode, fluxPrompt, generatePremiumBase]);
 
-  // ── Canvas render ───────────────────────────────────────────────────────────
+  // ── AI text generation ──────────────────────────────────────────────────────
 
   const generateAIText = async () => {
     setLoadingText(true);
@@ -427,7 +439,8 @@ export default function PhotoInfographicEditor({
     }
   };
 
-  // Use FLUX base if in premium mode and available; otherwise original image
+  // ── Canvas render ───────────────────────────────────────────────────────────
+
   const activeImageUrl = (mode === 'premium' && baseImage) ? baseImage : imageUrl;
 
   const renderCard = useCallback(async (): Promise<string> => {
@@ -473,10 +486,10 @@ export default function PhotoInfographicEditor({
     });
 
   const TMPL: [TemplateStyle, string, string][] = [
-    ['light', 'Светлый', 'bg-amber-50 text-amber-900 border border-amber-200'],
-    ['dark',  'Тёмный',  'bg-zinc-900 text-zinc-100 border border-zinc-700'],
-    ['beige', 'Бежевый', 'bg-amber-100 text-amber-950 border border-amber-300'],
-    ['black', 'Чёрный',  'bg-black text-yellow-300 border border-yellow-700'],
+    ['light', 'Золото',  'bg-amber-50 text-amber-900 border border-amber-200'],
+    ['dark',  'Бронза',  'bg-zinc-900 text-amber-400 border border-zinc-700'],
+    ['beige', 'Карамель','bg-amber-100 text-amber-950 border border-amber-300'],
+    ['black', 'Роскошь', 'bg-black text-yellow-300 border border-yellow-700'],
   ];
 
   return (
@@ -489,9 +502,7 @@ export default function PhotoInfographicEditor({
           <button
             onClick={() => { setMode('quick'); setResultUrl(null); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              mode === 'quick'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white'
+              mode === 'quick' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Zap className="h-3 w-3" />
@@ -517,7 +528,6 @@ export default function PhotoInfographicEditor({
           </button>
         </div>
 
-        {/* Premium status badge */}
         {mode === 'premium' && premiumLoading && (
           <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 px-3 py-1.5 rounded-lg">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -543,7 +553,6 @@ export default function PhotoInfographicEditor({
         )}
       </div>
 
-      {/* Premium error + fallback notice */}
       {premiumError && (
         <div className="rounded-xl border border-red-800/40 bg-red-900/10 px-3 py-2 text-xs text-red-400">
           ⚠ {premiumError}{mode === 'quick' ? ' — переключено на быстрый режим' : ''}
@@ -555,11 +564,10 @@ export default function PhotoInfographicEditor({
         {/* ── Result preview ─────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0">
 
-          {/* FLUX base preview (premium, before card render) */}
           {mode === 'premium' && baseImage && !resultUrl && (
             <div className="mb-2 rounded-xl border border-amber-700/30 bg-amber-900/10 px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
               <Sparkles className="h-3 w-3 shrink-0" />
-              FLUX база загружена — нажмите «Создать» для финального рендера с текстом
+              FLUX база готова — нажмите «Создать» для рендера с текстом
             </div>
           )}
 
@@ -574,7 +582,12 @@ export default function PhotoInfographicEditor({
                 <img src={resultUrl} alt="Карточка" className="w-full h-full object-contain" />
                 <div className="absolute bottom-3 right-3 flex gap-2">
                   <button
-                    onClick={() => { const a = document.createElement('a'); a.href = resultUrl!; a.download = 'wb-card.jpg'; a.click(); }}
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = resultUrl!;
+                      a.download = 'wb-card.jpg';
+                      a.click();
+                    }}
                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
                   >
                     ⬇ Скачать
@@ -591,7 +604,7 @@ export default function PhotoInfographicEditor({
               <div className="text-center p-8">
                 <div className="relative mb-4">
                   <Loader2 className="h-12 w-12 animate-spin text-amber-400 mx-auto" />
-                  <Sparkles className="h-5 w-5 text-amber-300 absolute top-0 right-[calc(50%-30px)]" />
+                  <Sparkles className="h-5 w-5 text-amber-300 absolute -top-1 right-[calc(50%-28px)]" />
                 </div>
                 <p className="text-sm text-amber-300 font-medium">FLUX создаёт премиум базу...</p>
                 <p className="text-xs text-slate-500 mt-1">обычно 10–20 секунд</p>
@@ -627,11 +640,12 @@ export default function PhotoInfographicEditor({
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Создаю...</>
               : mode === 'premium'
                 ? <><Sparkles className="h-4 w-4" /> Создать премиум карточку</>
-                : '✨ Создать карточку товара'}
+                : '✨ Создать карточку'}
           </button>
 
-          {/* Template selector */}
+          {/* Accent colour selector */}
           <div className="mt-2 flex gap-1 flex-wrap">
+            <span className="text-[10px] text-zinc-600 self-center mr-1">Акцент:</span>
             {TMPL.map(([t, label, cls]) => (
               <button
                 key={t}
@@ -642,6 +656,9 @@ export default function PhotoInfographicEditor({
               </button>
             ))}
           </div>
+          <p className="text-[10px] text-zinc-700 mt-1">
+            Цвет текста/пилюль подбирается автоматически по фону фото
+          </p>
         </div>
 
         {/* ── Editor panel ───────────────────────────────────────────────── */}
