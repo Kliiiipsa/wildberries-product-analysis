@@ -252,7 +252,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     }
   };
 
-  // ── Build prompt with appearance ────────────────────────────────────────────
+  // ── Build prompt with appearance (used for idea/funnel generation) ──────────
   const buildPrompt = (base: string): string => {
     const parts = [base];
     const ap = modelAppearance;
@@ -268,6 +268,43 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     if (ap.hairColor) parts.push(apMap[ap.hairColor] ?? ap.hairColor);
     if (ap.extra.trim()) parts.push(ap.extra.trim());
     return parts.join(', ');
+  };
+
+  // ── Build dedicated character-replacement prompt ──────────────────────────
+  // Unlike buildPrompt (which appends traits to a [PRESERVE]-first prompt),
+  // this function builds a fresh prompt where [PRESERVE] protects ONLY the
+  // clothing and [CHANGE] explicitly instructs FLUX to swap the model.
+  const buildCharacterChangePrompt = (): string => {
+    const ap = modelAppearance;
+    const hasAnyParam = ap.gender || ap.age || ap.bodyType || ap.hairColor || ap.extra.trim();
+    if (!hasAnyParam) return generatePrompt;
+
+    const genderMap: Record<string, string> = { 'Женщина': 'female', 'Мужчина': 'male' };
+    const ageMap: Record<string, string> = { '18-25': 'young 20s', '25-35': 'mid-30s', '35-45': 'late 30s', '45+': '50s' };
+    const bodyMap: Record<string, string> = { 'Стройное': 'slim', 'Спортивное': 'athletic muscular', 'Пышное': 'curvy', 'Полное': 'plus-size' };
+    const hairMap: Record<string, string> = { 'Тёмные': 'dark hair', 'Светлые': 'blonde hair', 'Рыжие': 'red hair', 'Седые': 'grey hair' };
+
+    const modelParts: string[] = [];
+    if (ap.age) modelParts.push(ageMap[ap.age] ?? ap.age);
+    if (ap.bodyType) modelParts.push(bodyMap[ap.bodyType] ?? ap.bodyType);
+    if (ap.hairColor) modelParts.push(hairMap[ap.hairColor] ?? ap.hairColor);
+    if (ap.gender) modelParts.push((genderMap[ap.gender] ?? ap.gender) + ' model');
+    if (ap.extra.trim()) modelParts.push(ap.extra.trim());
+    const modelDesc = modelParts.join(', ');
+
+    // Extract clothing from [PRESERVE] section of generatePrompt.
+    // generatePrompt typically: "[PRESERVE] Keep unchanged: <clothing>. [CHANGE] ... [SCENE] ... [QUALITY] ..."
+    const preserveMatch = generatePrompt.match(/\[PRESERVE\]([\s\S]*?)(?=\[CHANGE\]|\[SCENE\]|\[QUALITY\])/);
+    const clothingDesc = preserveMatch
+      ? preserveMatch[1].replace(/Keep unchanged:/i, '').trim().replace(/\.$/, '')
+      : 'all clothing items from the original photo';
+
+    return (
+      `[PRESERVE] Keep ONLY the clothing unchanged: ${clothingDesc}. ` +
+      `[CHANGE] Replace the model entirely with a new ${modelDesc} — the new model wears the exact same outfit. ` +
+      `[SCENE] Clean studio background, professional fashion photography, same lighting as original. ` +
+      `[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.`
+    );
   };
 
   // ── Translate prompt RU→EN if needed, then generate ────────────────────────
@@ -1084,7 +1121,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
               <p className="text-xs text-amber-500/80">Сначала проанализируйте фото — AI сформирует базовый промпт</p>
             )}
             <Button
-              onClick={() => handleGenerate()}
+              onClick={() => handleGenerate(buildCharacterChangePrompt())}
               disabled={isGenerating || !effectiveUrl || !generatePrompt.trim()}
               className="w-full bg-gradient-to-r from-violet-500 to-purple-600 hover:opacity-90 text-white font-semibold rounded-xl h-11"
             >
