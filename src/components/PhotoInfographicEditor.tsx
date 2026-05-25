@@ -493,7 +493,9 @@ export default function PhotoInfographicEditor({
 
   const activeImageUrl = (mode === 'premium' && baseImage) ? baseImage : imageUrl;
 
-  const renderCard = useCallback(async (): Promise<string> => {
+  // renderCard accepts an optional data override so applyVariant can bypass
+  // the async setState delay and render with fresh data immediately.
+  const renderCard = useCallback(async (overrideData?: InfographicData): Promise<string> => {
     const canvas = canvasRef.current;
     if (!canvas) throw new Error('no canvas');
     canvas.width = CARD_W;
@@ -501,10 +503,11 @@ export default function PhotoInfographicEditor({
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
     const imgSrc = await toDataUrl(activeImageUrl);
+    const d = overrideData ?? data;
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        drawCard(ctx, img, data, template, mode);
+        drawCard(ctx, img, d, template, mode);
         resolve(canvas.toDataURL('image/jpeg', 0.95));
       };
       img.onerror = () => reject(new Error('image load failed'));
@@ -512,13 +515,13 @@ export default function PhotoInfographicEditor({
     });
   }, [activeImageUrl, data, template, mode]);
 
-  const handleRender = async () => {
+  const handleRender = useCallback(async (overrideData?: InfographicData) => {
     if (!imageUrl) return;
     setRendering(true);
     setResultUrl(null);
     setRenderError('');
     try {
-      const url = await renderCard();
+      const url = await renderCard(overrideData);
       setResultUrl(url);
       onExport?.(url);
     } catch (e) {
@@ -526,7 +529,7 @@ export default function PhotoInfographicEditor({
     } finally {
       setRendering(false);
     }
-  };
+  }, [imageUrl, renderCard, onExport]);
 
   const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
   const [showManual, setShowManual] = useState(false);
@@ -538,17 +541,20 @@ export default function PhotoInfographicEditor({
       return { ...prev, characteristics: chars };
     });
 
-  const applyVariant = (v: TextVariant, idx: number) => {
+  // One-click: apply variant text AND immediately render the card.
+  // We pass newData directly to handleRender to bypass async setState delay.
+  const applyVariant = useCallback(async (v: TextVariant, idx: number) => {
     setSelectedVariant(idx);
-    setData({
+    const newData: InfographicData = {
       productName: v.productName,
       productSubtitle: v.subtitle,
       tagline: v.tagline,
       characteristics: v.characteristics.slice(0, 3),
       bottomText: v.bottomText,
-    });
-    setResultUrl(null);
-  };
+    };
+    setData(newData);
+    await handleRender(newData);
+  }, [handleRender]);
 
   const TMPL: [TemplateStyle, string, string][] = [
     ['light', 'Золото',  'bg-amber-50 text-amber-900 border border-amber-200'],
@@ -693,7 +699,7 @@ export default function PhotoInfographicEditor({
           )}
 
           <button
-            onClick={handleRender}
+            onClick={() => handleRender()}
             disabled={!imageUrl || rendering || premiumLoading}
             className={`mt-3 w-full px-4 py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-all ${
               mode === 'premium'
@@ -754,16 +760,22 @@ export default function PhotoInfographicEditor({
                   <button
                     key={i}
                     onClick={() => applyVariant(v, i)}
-                    className={`w-full text-left rounded-xl border p-3 transition-all hover:brightness-110 ${
+                    disabled={rendering || premiumLoading}
+                    className={`w-full text-left rounded-xl border p-3 transition-all disabled:opacity-60 ${
                       isSelected
                         ? `${st.ring} ring-1 ring-inset`
-                        : 'border-zinc-700/60 bg-zinc-800/50 hover:border-zinc-600'
+                        : 'border-zinc-700/60 bg-zinc-800/50 hover:border-zinc-600 hover:brightness-110'
                     }`}
                   >
-                    {/* Approach badge */}
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mb-2 ${st.badge}`}>
-                      {v.approach}
-                    </span>
+                    {/* Approach badge + rendering indicator */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${st.badge}`}>
+                        {v.approach}
+                      </span>
+                      {isSelected && rendering && (
+                        <Loader2 className="h-3 w-3 animate-spin text-violet-400 shrink-0" />
+                      )}
+                    </div>
 
                     {/* Product name */}
                     <p className="text-white font-bold text-sm leading-tight mb-1.5 truncate">
@@ -796,7 +808,12 @@ export default function PhotoInfographicEditor({
                     )}
 
                     {isSelected && (
-                      <p className="text-[10px] text-violet-400 font-medium mt-1.5">✓ Применено</p>
+                      <p className="text-[10px] font-medium mt-1.5 flex items-center gap-1">
+                        {rendering
+                          ? <><Loader2 className="h-2.5 w-2.5 animate-spin text-amber-400" /><span className="text-amber-400">Создаю карточку...</span></>
+                          : <span className="text-violet-400">✓ Применено</span>
+                        }
+                      </p>
                     )}
                   </button>
                 );
