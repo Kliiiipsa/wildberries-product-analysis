@@ -169,6 +169,7 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
     {"title": "...", "description": "...", "tag": null, "promptEn": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."}
   ],
   "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.",
+  "generatePromptRu": "Краткое описание на русском (2-3 предложения): что именно изменится (фон, поза, обрезка и т.д.) и почему это улучшит конверсию карточки. Например: «Заменить загромождённый фон на однотонную тёмно-серую стену — это создаст сильный контраст с жёлтым комплектом и улучшит кликабельность в ленте Wildberries.»",
   "fluxPrompt": "[PRESERVE] Keep unchanged: [exact product color, cut, fabric, visible body parts, pose]. [CHANGE] Recompose: shift model to right 60% of frame — left 40% must be completely empty clean background; fix pose per gender+product guide; remove any props or accessories. [SCENE] Studio: smooth deep charcoal plaster wall (replace with correct tone from BACKGROUND COLOUR RULE), uniform seamless colour, soft diffused light from front-left, beautiful fabric shadow on right edge, no equipment or props visible, left panel perfectly clean for text overlay. [QUALITY] Genuine photograph, Canon EOS R5, 85mm f/2, natural studio light, real film grain, no AI artifacts.",
   "recommendedLayout": "left",
   "style": "studio",

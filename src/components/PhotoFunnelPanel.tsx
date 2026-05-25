@@ -31,6 +31,7 @@ interface PhotoAnalysis {
   bestAction?: { title: string; promptEn: string };
   ideas: Array<{ title: string; description: string; tag?: string | null; promptEn?: string }>;
   generatePrompt?: string;
+  generatePromptRu?: string;
   fluxPrompt?: string;
   recommendedLayout?: 'left' | 'bottom' | 'minimal';
   style?: 'minimal' | 'studio' | 'lifestyle' | 'premium';
@@ -238,14 +239,10 @@ export function PhotoFunnelPanel({ onBack }: Props) {
       if (parsed.textVariants?.length) setTextVariants(parsed.textVariants);
       if (parsed.generatePrompt) {
         setGeneratePrompt(parsed.generatePrompt);
-        // Auto-translate to Russian for display (fire-and-forget)
-        fetch('/api/photo/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: parsed.generatePrompt }),
-        }).then(r => r.json()).then(d => {
-          if (d.translated) setGeneratePromptRu(d.translated);
-        }).catch(() => {});
+        // Use Qwen's own Russian description (more reliable than translate API)
+        if (parsed.generatePromptRu) {
+          setGeneratePromptRu(parsed.generatePromptRu);
+        }
       }
       setActiveTab('assessment');
     } catch (e) {
@@ -290,13 +287,19 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   // ── Generate ────────────────────────────────────────────────────────────────
   const handleGenerate = async (customPrompt?: string) => {
     const src = effectiveUrl;
-    // customPrompt is always English (from idea cards); display prompt may be Russian
+    // customPrompt is always English (from idea cards).
+    // generatePromptRu is a Russian description shown/edited by user.
+    // generatePrompt is the original English technical prompt from Qwen.
+    // Strategy: if user has Russian text — translate it; otherwise use English directly.
     let prompt: string;
     if (customPrompt) {
       prompt = customPrompt;
+    } else if (generatePromptRu.trim()) {
+      // User sees/edits Russian — translate to English for AI
+      prompt = await resolveEnglishPrompt(generatePromptRu, generatePrompt);
     } else {
-      const displayPrompt = generatePromptRu || generatePrompt;
-      prompt = await resolveEnglishPrompt(displayPrompt, generatePrompt);
+      // Fallback: use the original English prompt directly (no translation needed)
+      prompt = generatePrompt;
     }
     if (!src || !prompt.trim()) return;
     setIsGenerating(true);
@@ -802,8 +805,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                   <Sparkles className="h-4 w-4 text-violet-400 shrink-0" />
                   <span className="text-sm font-semibold text-violet-300">Лучшее действие</span>
                 </div>
-                <p className="text-sm text-white font-medium mb-1">{analysis.bestAction.title}</p>
-                <p className="text-xs text-slate-400 leading-relaxed mb-3 font-mono">{analysis.bestAction.promptEn}</p>
+                <p className="text-sm text-white font-medium mb-3">{analysis.bestAction.title}</p>
                 <Button
                   onClick={() => {
                     setGeneratePrompt(analysis.bestAction!.promptEn);
@@ -994,32 +996,33 @@ export function PhotoFunnelPanel({ onBack }: Props) {
 
           {/* ── GENERATE ── */}
           <TabsContent value="generate" className="mt-0 space-y-4">
+            {/* Russian description of what will change */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs text-slate-400 font-medium">Промпт для генерации (на русском)</label>
+                <label className="text-xs text-slate-400 font-medium">Что будет изменено</label>
                 {generatePromptRu && (
-                  <span className="text-xs text-emerald-500/80">✓ переведён AI после анализа</span>
+                  <span className="text-xs text-emerald-500/80">✓ AI заполнил после анализа</span>
                 )}
               </div>
               <textarea
-                value={generatePromptRu || generatePrompt}
+                value={generatePromptRu}
                 onChange={e => setGeneratePromptRu(e.target.value)}
-                placeholder="Опишите что изменить, или нажмите «Анализировать» — AI заполнит автоматически..."
-                rows={6}
+                placeholder="Нажмите «Анализировать» — AI опишет, что именно изменит на фото и почему это улучшит продажи..."
+                rows={5}
                 className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60 resize-none"
               />
-              <p className="text-xs text-slate-600 mt-1">Текст на русском — при генерации автоматически переведётся в английский для AI</p>
+              <p className="text-xs text-slate-600 mt-1">Можно отредактировать текст — при генерации AI переведёт в технический промпт автоматически</p>
             </div>
 
-            {/* Custom Russian input */}
+            {/* Custom Russian additions */}
             <div className="rounded-xl border border-slate-700/40 bg-slate-800/20 p-3 space-y-2">
-              <label className="text-xs text-slate-500 font-medium block">Или добавьте свои правки на русском:</label>
+              <label className="text-xs text-slate-500 font-medium block">Добавьте свои пожелания:</label>
               <div className="flex gap-2">
                 <input
                   value={ruPrompt}
                   onChange={e => setRuPrompt(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && ruPrompt.trim()) handleTranslate(); }}
-                  placeholder="замени фон на тёмный бетон..."
+                  placeholder="например: модель должна улыбаться..."
                   className="flex-1 rounded-lg border border-slate-700/50 bg-slate-800/50 px-3 py-1.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/60"
                 />
                 <Button
@@ -1028,7 +1031,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs h-9 px-3 shrink-0"
                 >
-                  {isTranslating ? <Loader2 className="h-3 w-3 animate-spin" /> : '→ В промпт'}
+                  {isTranslating ? <Loader2 className="h-3 w-3 animate-spin" /> : '→ Добавить'}
                 </Button>
               </div>
             </div>
