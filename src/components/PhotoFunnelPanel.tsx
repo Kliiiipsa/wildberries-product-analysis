@@ -108,7 +108,6 @@ export function PhotoFunnelPanel({ onBack }: Props) {
     gender: '', age: '', bodyType: '', hairColor: '', extra: '',
   });
   const [textMode, setTextMode] = useState<'infographic' | 'overlay'>('infographic');
-  const [infographicMode, setInfographicMode] = useState<'quick' | 'premium'>('quick');
   const [fluxPrompt, setFluxPrompt] = useState('');
   const [textVariants, setTextVariants] = useState<TextVariant[]>([]);
 
@@ -1091,41 +1090,30 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                 : <><User className="h-4 w-4 mr-2" />Применить персонажа</>}
             </Button>
           </TabsContent>
-          {/* ── TEXT / INFOGRAPHIC ── */}
+          {/* ── INFOGRAPHIC AI ── */}
           <TabsContent value="text" className="mt-0">
             {imagePreview ? (
               <div className="space-y-4">
-                {!analysis && infographicMode === 'premium' && (
-                  <div className="rounded-xl border border-amber-700/30 bg-amber-900/10 px-3 py-2.5 text-xs text-amber-400 flex items-center gap-2">
-                    <Loader2 className={`h-3.5 w-3.5 ${isAnalyzing ? 'animate-spin' : 'opacity-40'}`} />
-                    {isAnalyzing ? 'Анализирую фото для создания FLUX-базы...' : 'Запускаю анализ для Премиум режима...'}
+                {/* Secondary toggle: Инфографика ↔ Текст поверх фото */}
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1 bg-zinc-800/60 rounded-xl p-1">
+                    <button
+                      onClick={() => setTextMode('infographic')}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        textMode === 'infographic' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      Инфографика
+                    </button>
+                    <button
+                      onClick={() => setTextMode('overlay')}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        textMode === 'overlay' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      Текст поверх фото
+                    </button>
                   </div>
-                )}
-                {/* Mode toggle */}
-                <div className="flex gap-1 bg-zinc-800/60 rounded-xl p-1 w-fit flex-wrap">
-                  <button
-                    onClick={() => { setTextMode('infographic'); setInfographicMode('quick'); }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${textMode === 'infographic' && infographicMode === 'quick' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-                  >
-                    ⚡ AI Инфографика
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTextMode('infographic');
-                      setInfographicMode('premium');
-                      // Trigger analysis if not done yet
-                      if (!analysis && !isAnalyzing && effectiveUrl) handleAnalyze();
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${textMode === 'infographic' && infographicMode === 'premium' ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white' : 'text-zinc-400 hover:text-white'}`}
-                  >
-                    ✨ Премиум карточка
-                  </button>
-                  <button
-                    onClick={() => setTextMode('overlay')}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${textMode === 'overlay' ? 'bg-violet-600 text-white' : 'text-zinc-400 hover:text-white'}`}
-                  >
-                    Текст поверх фото
-                  </button>
                 </div>
 
                 {textMode === 'infographic' ? (
@@ -1134,14 +1122,14 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                     analysis={{ good: toArr(analysis?.good ?? []), improve: toArr(analysis?.improve ?? []) }}
                     generatePrompt={generatePrompt}
                     fluxPrompt={fluxPrompt || undefined}
-                    initialMode={infographicMode}
+                    initialMode="quick"
                     textVariants={textVariants.length ? textVariants : undefined}
                     onExport={dataUrl => setGeneratedImage(dataUrl)}
                   />
                 ) : (
                   <PhotoTextEditor
                     imageUrl={imagePreview}
-                    analysis={{ good: toArr(analysis.good), improve: toArr(analysis.improve) }}
+                    analysis={{ good: toArr(analysis?.good ?? []), improve: toArr(analysis?.improve ?? []) }}
                     onExport={dataUrl => setGeneratedImage(dataUrl)}
                   />
                 )}
