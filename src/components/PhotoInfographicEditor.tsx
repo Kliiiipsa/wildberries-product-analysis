@@ -194,9 +194,10 @@ function drawCard(
   img: HTMLImageElement,
   data: InfographicData,
   style: TemplateStyle,
+  mode: InfographicMode = 'quick',
 ) {
   const W = CARD_W, H = CARD_H;
-  const PAD = 66, TEXT_W = 370;
+  const PAD = 58, TEXT_W = 310;
 
   // ── 1. Photo: full-bleed object-cover ─────────────────────────────────────
   const sx = W / img.naturalWidth, sy = H / img.naturalHeight;
@@ -214,35 +215,39 @@ function drawCard(
   const isLight = lum > 130; // bright background → use dark text
 
   // ── 3. Adaptive scrim — colour derived from detected background ────────────
-  // On light BGs: strengthen existing light area (cream → white).
-  // On dark BGs: deepen existing dark area for contrast.
-  // This makes the overlay feel like it BELONGS to the photo, not pasted on.
-  const sr = Math.min(255, Math.round(bgR * (isLight ? 1.08 : 0.82)));
-  const sg = Math.min(255, Math.round(bgG * (isLight ? 1.06 : 0.78)));
-  const sb = Math.min(255, Math.round(bgB * (isLight ? 1.05 : 0.76)));
-  const sa = isLight ? 0.93 : 0.90;
+  // Slightly nudge the sampled colour: brighten for light BG, deepen for dark.
+  // This makes the text panel feel like it BELONGS to the photo, not pasted on.
+  const sr = Math.min(255, Math.round(bgR * (isLight ? 1.06 : 0.80)));
+  const sg = Math.min(255, Math.round(bgG * (isLight ? 1.04 : 0.76)));
+  const sb = Math.min(255, Math.round(bgB * (isLight ? 1.03 : 0.74)));
 
-  // Solid text panel left 44%, then smooth fade
+  // Premium mode (FLUX-repositioned model in right 60%): stronger, wider panel.
+  // Quick mode (centred model): lighter, narrower to avoid darkening the model.
+  const saMax    = mode === 'premium' ? (isLight ? 0.92 : 0.88) : (isLight ? 0.80 : 0.76);
+  const solidEnd = mode === 'premium' ? 0.40 : 0.32;   // solid panel ends here
+  const fade1    = mode === 'premium' ? 0.57 : 0.46;   // 25% opacity here
+  const fade2    = mode === 'premium' ? 0.72 : 0.56;   // ~2% opacity here
+  const fadeEnd  = mode === 'premium' ? 0.85 : 0.64;   // fully transparent
+
   const scrim = ctx.createLinearGradient(0, 0, W, 0);
-  scrim.addColorStop(0,    `rgba(${sr},${sg},${sb},${sa})`);
-  scrim.addColorStop(0.44, `rgba(${sr},${sg},${sb},${sa})`);        // fully solid text zone
-  scrim.addColorStop(0.62, `rgba(${sr},${sg},${sb},${+(sa * 0.36).toFixed(3)})`);
-  scrim.addColorStop(0.80, `rgba(${sr},${sg},${sb},${+(sa * 0.03).toFixed(3)})`);
-  scrim.addColorStop(1,    `rgba(${sr},${sg},${sb},0)`);
+  scrim.addColorStop(0,        `rgba(${sr},${sg},${sb},${saMax})`);
+  scrim.addColorStop(solidEnd, `rgba(${sr},${sg},${sb},${saMax})`);
+  scrim.addColorStop(fade1,    `rgba(${sr},${sg},${sb},${+(saMax * 0.25).toFixed(3)})`);
+  scrim.addColorStop(fade2,    `rgba(${sr},${sg},${sb},${+(saMax * 0.04).toFixed(3)})`);
+  scrim.addColorStop(fadeEnd,  `rgba(${sr},${sg},${sb},0)`);
   ctx.fillStyle = scrim;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle bottom fade for bottom text (left side only)
-  const bScrim = ctx.createLinearGradient(0, H - 110, 0, H);
+  // Subtle bottom fade for bottom text (left zone only)
+  const bScrim = ctx.createLinearGradient(0, H - 100, 0, H);
   bScrim.addColorStop(0, `rgba(${sr},${sg},${sb},0)`);
-  bScrim.addColorStop(1, `rgba(${sr},${sg},${sb},${+(sa * 0.44).toFixed(3)})`);
+  bScrim.addColorStop(1, `rgba(${sr},${sg},${sb},${+(saMax * 0.40).toFixed(3)})`);
   ctx.fillStyle = bScrim;
-  ctx.fillRect(0, H - 110, W * 0.58, 110);
+  ctx.fillRect(0, H - 100, W * 0.52, 100);
 
   // ── 4. Adaptive text/pill colours ─────────────────────────────────────────
   const textColor  = isLight ? '#15110A'              : '#F3F0E9';
   const subColor   = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
-  const shColor    = isLight ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.55)';
   const pillBg     = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(14,12,22,0.84)';
   const pillSh     = isLight ? 'rgba(0,0,0,0.09)'     : 'rgba(0,0,0,0.38)';
   const pillIconBg = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
@@ -264,17 +269,20 @@ function drawCard(
   // Product name — italic serif, weight 600, auto-sizes
   const rawName = data.productName.toUpperCase();
   const nLen = rawName.replace(/\s/g, '').length;
-  const NS = nLen <= 6 ? 66 : nLen <= 10 ? 54 : nLen <= 15 ? 44 : 36;
+  const NS = nLen <= 6 ? 64 : nLen <= 10 ? 52 : nLen <= 15 ? 42 : 34;
   ctx.font = `italic 600 ${NS}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = textColor;
-  ctx.shadowColor = shColor;
-  ctx.shadowBlur = 10;
+  ctx.shadowColor = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.70)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 1;
   const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
   for (const line of nameLines) {
     ctx.fillText(line, PAD, y);
     y += Math.ceil(NS * 1.12);
   }
   ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
   y += 14;
 
   // Subtitle — thin italic
@@ -477,13 +485,13 @@ export default function PhotoInfographicEditor({
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        drawCard(ctx, img, data, template);
+        drawCard(ctx, img, data, template, mode);
         resolve(canvas.toDataURL('image/jpeg', 0.95));
       };
       img.onerror = () => reject(new Error('image load failed'));
       img.src = imgSrc;
     });
-  }, [activeImageUrl, data, template]);
+  }, [activeImageUrl, data, template, mode]);
 
   const handleRender = async () => {
     if (!imageUrl) return;
