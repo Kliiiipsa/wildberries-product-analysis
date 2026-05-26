@@ -88,19 +88,35 @@ Rules:
 - ALL values must be plain strings`;
 
 // ── Prompt 2b: STYLE image → OCR only (dedicated text extraction) ────────────
-const STYLE_OCR_PROMPT = `Extract ALL text visible in this image.
-Return ONLY valid JSON (no markdown):
+const STYLE_OCR_PROMPT = `You are an OCR engine. Your ONLY task is to read and transcribe every word of text visible in this image.
 
+IMPORTANT: Look carefully at ALL parts of the image — text boxes, banners, overlaid notices, labels, watermarks, and captions. Include Russian and Cyrillic text.
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
-  "headline": "copy the largest boldest text EXACTLY",
-  "body": "copy all body/paragraph text EXACTLY, joined with space",
-  "footer": "copy any footer or signature text EXACTLY",
-  "badge": "copy any badge or label text EXACTLY",
-  "brand": "copy any brand name EXACTLY"
+  "headline": "largest and boldest text, word for word",
+  "body": "all smaller body/paragraph text, word for word, joined with single space",
+  "footer": "footer, signature, or closing text",
+  "badge": "badge, label, or tag text",
+  "brand": "brand or company name"
 }
 
-If a field has no text, set it to empty string "".
-Do NOT paraphrase — copy text character by character.`;
+Rules:
+- Copy text EXACTLY character by character — no paraphrasing, no summarizing
+- If a field has no text, use empty string ""
+- If there is ANY text in the image, at least headline or body MUST be non-empty
+- Russian/Cyrillic text is expected and valid`;
+
+// Fallback OCR prompt used if primary returns all empty
+const STYLE_OCR_FALLBACK_PROMPT = `Read every Russian word you see in this image. List all text from top to bottom.
+Return ONLY valid JSON:
+{
+  "headline": "first/largest text block",
+  "body": "remaining text combined",
+  "footer": "",
+  "badge": "",
+  "brand": ""
+}`;
 
 // ── Build FLUX [CHANGE] instruction server-side ────────────────────────────
 // Qwen provides facts; we construct the FLUX instruction from those facts.
@@ -320,6 +336,32 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[style-transfer] ocr headline="${ocrParsed.headline?.slice(0,50)}" body="${ocrParsed.body?.slice(0,50)}"`);
+
+    // ── Fallback OCR: retry if primary returned empty ─────────────────────
+    // Qwen sometimes misses text on complex layered images — retry with simpler prompt
+    if (!ocrParsed.headline && !ocrParsed.body && !ocrParsed.badge) {
+      console.log(`[style-transfer] OCR empty — retrying with fallback prompt`);
+      try {
+        const fbAc = new AbortController();
+        const fbTimer = setTimeout(() => fbAc.abort(), 20_000);
+        const fbContent = await callQwen(yandexKey, folderId, STYLE_OCR_FALLBACK_PROMPT, styleData, fbAc.signal, 600);
+        clearTimeout(fbTimer);
+        console.log(`[style-transfer] ocr_fallback_raw(200): ${fbContent.slice(0, 200)}`);
+        const fbParsed: OcrFacts = tryParse<OcrFacts>(fbContent) ?? {};
+        if (!fbParsed.headline && !fbParsed.body) {
+          fbParsed.headline = field(fbContent, 'headline');
+          fbParsed.body     = field(fbContent, 'body');
+        }
+        if (fbParsed.headline) ocrParsed.headline = fbParsed.headline;
+        if (fbParsed.body)     ocrParsed.body     = fbParsed.body;
+        if (fbParsed.footer)   ocrParsed.footer   = fbParsed.footer;
+        if (fbParsed.badge)    ocrParsed.badge    = fbParsed.badge;
+        if (fbParsed.brand)    ocrParsed.brand    = fbParsed.brand;
+        console.log(`[style-transfer] ocr fallback headline="${ocrParsed.headline?.slice(0,50)}"`);
+      } catch (e) {
+        console.log(`[style-transfer] OCR fallback failed (non-fatal): ${e}`);
+      }
+    }
 
     // ── Merge into StyleFacts ─────────────────────────────────────────────
     const styleFacts: StyleFacts = {
