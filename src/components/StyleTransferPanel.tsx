@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, RefObject } from 'react';
 import { ArrowLeft, Upload, Loader2, Wand2, ArrowRight, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -95,7 +95,7 @@ export function StyleTransferPanel({ onBack }: Props) {
     sublabel: string;
     badge: string;
     image: string;
-    inputRef: React.RefObject<HTMLInputElement>;
+    inputRef: RefObject<HTMLInputElement | null>;
     target: 'source' | 'style';
   }) => (
     <div className="space-y-2">
