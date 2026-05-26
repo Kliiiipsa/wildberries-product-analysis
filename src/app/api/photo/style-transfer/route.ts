@@ -15,7 +15,6 @@ async function toBase64DataUrl(url: string): Promise<string> {
   return `data:${mime};base64,${btoa(chunks.join(''))}`;
 }
 
-// Repair truncated JSON (same pattern as analyze route)
 function repairJson(s: string): string {
   let inString = false, escaped = false, openBraces = 0, openBrackets = 0;
   for (let i = 0; i < s.length; i++) {
@@ -36,44 +35,59 @@ function repairJson(s: string): string {
   return result;
 }
 
-// ── Qwen prompt: returns FLAT fields (no big string inside JSON → no parse errors) ──
 const STYLE_ANALYSIS_PROMPT = `You receive TWO fashion/product photos for a style transfer task.
 
 IMAGE 1 = SOURCE PHOTO — clothing and model to PRESERVE exactly.
 IMAGE 2 = STYLE REFERENCE — find its MOST VISUALLY DOMINANT element to transfer.
 
-━━━ STEP 1: Scan IMAGE 2 for elements (priority order) ━━━
-1. TEXT OVERLAYS / INFOGRAPHICS — text blocks, warnings, promotional notices printed ON the photo
-2. GRAPHIC ELEMENTS — colored banners, sale badges, price tags, watermarks, borders, frames
-3. BACKGROUND — studio, lifestyle location, outdoor scene, interior
-4. LIGHTING — color temperature, shadows, mood, film effect
+━━━ STEP 1: Identify the dominant element in IMAGE 2 ━━━
+Priority order:
+1. TEXT OVERLAYS / INFOGRAPHICS — any text blocks, warning notices, headlines, body text, badges
+2. GRAPHIC ELEMENTS — colored banners, watermarks, borders, frames
+3. BACKGROUND — studio, lifestyle location
+4. LIGHTING / COLOR GRADE
 
-━━━ STEP 2: Pick the SINGLE most visually dominant element ━━━
-What makes IMAGE 2 instantly recognizable? That's the element to transfer.
+━━━ STEP 2: If dominant element is TEXT OVERLAY or GRAPHIC BADGE — do full OCR ━━━
+Extract EVERY piece of text you can read from IMAGE 2:
+- headline: the largest, boldest text (keep original language)
+- bodyText: smaller paragraph text below headline (keep original language)
+- footerText: small text at the bottom of the text block (keep original language)
+- badgeText: text on any badge/label (e.g. "РАСПРОДАЖА", "SALE")
+- badgeColor: the color of the badge background (hex if possible, else CSS color name)
+- brandText: any brand name visible (e.g. "ESSENTIALS MINNIM")
+- textBoxPosition: where the text box sits — "top", "center", or "bottom"
+- textBoxWidthPct: estimated width of text box as percentage of image width (50–100)
 
-━━━ STEP 3: Return JSON with SEPARATE fields (do NOT put the full prompt in one field) ━━━
+━━━ STEP 3: Return flat JSON fields ━━━
 
-Return ONLY valid JSON, no markdown, no explanation:
+Return ONLY valid JSON, no markdown:
 {
-  "dominantElement": "One clear sentence describing the single most striking visual element from IMAGE 2",
+  "dominantElement": "One sentence describing the most visually striking element from IMAGE 2",
   "dominantType": "text_overlay",
-  "sourceClothing": "Precise description of IMAGE 1 clothing: exact colors, cut, fabric, accessories, visible body parts and pose",
-  "styleEnvironment": "What will be visually applied from IMAGE 2 to IMAGE 1",
-  "preserve": "Exhaustive comma-separated list of everything to keep from IMAGE 1 unchanged: all clothing items with exact colors, cut, fabric details, accessories; model pose; visible body parts",
-  "change": "Precise English description of what to ADD or CHANGE based on IMAGE 2 dominant element. If text overlay: describe text content in English, font weight, text color, block background color, exact position. If graphic badge: shape, color, text, corner. If background: scene details. If lighting: light quality and color.",
-  "scene": "Detailed scene description: model wearing IMAGE 1 outfit combined with the visual treatment from IMAGE 2"
+  "sourceClothing": "Precise description of IMAGE 1 clothing and model",
+  "styleEnvironment": "What will be applied from IMAGE 2",
+  "extractedText": {
+    "headline": "exact headline text from IMAGE 2 or empty string",
+    "bodyText": "exact body text from IMAGE 2 or empty string",
+    "footerText": "exact footer text or empty string",
+    "badgeText": "badge label text or empty string",
+    "badgeColor": "#FF1493",
+    "brandText": "brand name or empty string",
+    "textBoxPosition": "center",
+    "textBoxWidthPct": 75
+  },
+  "preserve": "Exhaustive English list of everything to keep from IMAGE 1: all clothing items with exact colors, cut, fabric; model pose; visible body parts",
+  "change": "For text_overlay: Add a clean white rectangular text frame with thin light-grey border and rounded corners at [textBoxPosition] of image — the frame must be COMPLETELY EMPTY inside with NO text, no characters, no numbers, perfectly blank white interior. Also describe badge: empty [badgeColor] rectangular badge shape at bottom-left corner with no text. For other types: describe the visual change needed.",
+  "scene": "Detailed description: model in IMAGE 1 outfit with the visual layout from IMAGE 2 applied"
 }
 
-For dominantType use EXACTLY ONE of these values (no quotes variations):
-- text_overlay  (if IMAGE 2 has text printed over the photo)
-- graphic_badge  (if IMAGE 2 has sale badge, logo, watermark, price tag, colored banner)
-- background  (if main element is the scene/location/backdrop)
-- lighting  (if main element is color grading, mood, film effect)
+dominantType must be exactly one of: text_overlay, graphic_badge, background, lighting
 
-RULES:
-- All values must be valid JSON strings (escape any quotes inside strings with backslash)
-- preserve and change must be in English only
-- Do NOT translate or summarize — be specific and detailed in every field`;
+STRICT RULES:
+- All JSON string values must be properly escaped
+- preserve and change fields must be in English only
+- extractedText fields keep the ORIGINAL language of the text found in IMAGE 2
+- If no text overlay found, set extractedText to null`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -95,15 +109,13 @@ export async function POST(req: NextRequest) {
   const ac = new AbortController();
 
   try {
-    // ── Step 1: Convert both images to base64 ─────────────────────────────
     console.log('[style-transfer] converting images...');
     const [sourceData, styleData] = await Promise.all([
       toBase64DataUrl(sourceImageUrl),
       toBase64DataUrl(styleImageUrl),
     ]);
-    console.log(`[style-transfer] source=${Math.round(sourceData.length / 1024)}KB style=${Math.round(styleData.length / 1024)}KB`);
 
-    // ── Step 2: Qwen analyzes both images ─────────────────────────────────
+    // ── Qwen: analyze both images, OCR text ────────────────────────────────
     const qwenTimer = setTimeout(() => ac.abort(), 30_000);
     const qwenResp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
       method: 'POST',
@@ -125,7 +137,7 @@ export async function POST(req: NextRequest) {
             ],
           },
         ],
-        max_tokens: 1500,
+        max_tokens: 1800,
         temperature: 0.2,
       }),
     });
@@ -140,12 +152,23 @@ export async function POST(req: NextRequest) {
     const content: string = qwenData?.choices?.[0]?.message?.content ?? '';
     console.log(`[style-transfer] Qwen content_len=${content.length}`);
 
-    // ── Parse Qwen JSON response ───────────────────────────────────────────
+    interface ExtractedText {
+      headline?: string;
+      bodyText?: string;
+      footerText?: string;
+      badgeText?: string;
+      badgeColor?: string;
+      brandText?: string;
+      textBoxPosition?: string;
+      textBoxWidthPct?: number;
+    }
+
     interface QwenResult {
       dominantElement?: string;
       dominantType?: string;
       sourceClothing?: string;
       styleEnvironment?: string;
+      extractedText?: ExtractedText | null;
       preserve?: string;
       change?: string;
       scene?: string;
@@ -153,21 +176,13 @@ export async function POST(req: NextRequest) {
 
     let parsed: QwenResult = {};
     try {
-      const clean = content
-        .replace(/```json\s*/g, '')
-        .replace(/```\s*/g, '')
-        .trim();
+      const clean = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       parsed = JSON.parse(clean);
     } catch {
-      // Try to repair truncated JSON
       try {
-        const clean = content
-          .replace(/```json\s*/g, '')
-          .replace(/```\s*/g, '')
-          .trim();
+        const clean = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
         parsed = JSON.parse(repairJson(clean));
       } catch {
-        // Last resort: extract individual fields via regex
         const extract = (key: string) => {
           const m = content.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
           return m ? m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : '';
@@ -181,48 +196,42 @@ export async function POST(req: NextRequest) {
           change: extract('change'),
           scene: extract('scene'),
         };
-        console.log(`[style-transfer] used regex fallback, preserve_len=${parsed.preserve?.length}`);
+        console.log('[style-transfer] used regex fallback');
       }
     }
 
-    // ── Build FLUX prompt from separate fields (avoids JSON escape issues) ─
     const preserve = parsed.preserve?.trim() || '';
     const change = parsed.change?.trim() || '';
     const scene = parsed.scene?.trim() || '';
 
     if (!preserve || !change) {
-      console.log(`[style-transfer] Qwen raw (first 600): ${content.slice(0, 600)}`);
+      console.log(`[style-transfer] parse failed. raw: ${content.slice(0, 500)}`);
       return Response.json(
-        {
-          error: `Qwen не смог разобрать фото. Попробуйте более чёткое фото 2 (без размытия). Debug: preserve="${preserve.slice(0, 80)}" change="${change.slice(0, 80)}"`,
-        },
+        { error: `Не удалось разобрать фото. Попробуйте другой референс. preserve="${preserve.slice(0, 60)}"` },
         { status: 500 },
       );
     }
 
+    // Build FLUX prompt — for text overlay: empty frame, no text inside
     let fluxPrompt =
       `[PRESERVE] Keep unchanged: ${preserve} ` +
       `[CHANGE] ${change} ` +
       (scene ? `[SCENE] ${scene} ` : '') +
       `[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.`;
 
-    // Append user note
     if (userNote) {
       fluxPrompt += ` [USER] Additional requirement: ${userNote}`;
     }
 
     console.log(`[style-transfer] dominantType=${parsed.dominantType} prompt_len=${fluxPrompt.length}`);
 
-    // ── Step 3: FLUX generates ─────────────────────────────────────────────
+    // ── FLUX: generate ─────────────────────────────────────────────────────
     const ac2 = new AbortController();
     const fluxTimer = setTimeout(() => ac2.abort(), 55_000);
     const fluxResp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: ac2.signal,
-      headers: {
-        'Authorization': `Bearer ${sfKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${sfKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-max',
         prompt: fluxPrompt,
@@ -240,16 +249,11 @@ export async function POST(req: NextRequest) {
     console.log(`[style-transfer] FLUX status=${fluxResp.status} inference=${inference}s`);
 
     if (!fluxResp.ok) {
-      return Response.json(
-        { error: `FLUX ${fluxResp.status}: ${fluxText.slice(0, 200)}` },
-        { status: 500 },
-      );
+      return Response.json({ error: `FLUX ${fluxResp.status}: ${fluxText.slice(0, 200)}` }, { status: 500 });
     }
 
     const resultUrl = (fluxParsed?.images as Array<{ url: string }>)?.[0]?.url ?? null;
-    if (!resultUrl) {
-      return Response.json({ error: 'FLUX не вернул URL' }, { status: 500 });
-    }
+    if (!resultUrl) return Response.json({ error: 'FLUX не вернул URL' }, { status: 500 });
 
     const dataUrl = await toBase64DataUrl(resultUrl).catch(() => null);
     console.log(`[style-transfer] done, dataUrl=${!!dataUrl}`);
@@ -261,6 +265,8 @@ export async function POST(req: NextRequest) {
       styleEnvironment: parsed.styleEnvironment ?? '',
       dominantElement: parsed.dominantElement ?? '',
       dominantType: parsed.dominantType ?? '',
+      // Send extracted text back to client for Canvas compositing
+      extractedText: parsed.extractedText ?? null,
     });
 
   } catch (e) {
