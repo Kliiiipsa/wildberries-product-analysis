@@ -65,35 +65,42 @@ Return ONLY valid JSON (no markdown):
 
 Example preserve value: "loose oversized white linen long-sleeve shirt open collar, wide-leg high-waist white linen trousers, leopard-print turban headband, black oval sunglasses, pearl earrings, tan leather flat slides, black sports bra visible, right hand on hip"`;
 
-// ── Prompt 2: STYLE image → WHAT TO APPLY (facts only, no instructions) ────
-// Qwen describes what it observes. Server builds FLUX instructions from these facts.
-const STYLE_PROMPT = `Look at this product/fashion photo and describe what you observe.
-Return ONLY valid JSON with ALL flat string fields (no nested objects, no markdown):
+// ── Prompt 2a: STYLE image → visual classification only (no OCR) ────────────
+const STYLE_VISUAL_PROMPT = `Look at this product/fashion photo. Classify it and describe the visual style.
+Return ONLY valid JSON (no markdown, no nested objects):
 
 {
   "dominantType": "text_overlay",
-  "dominantElement": "one sentence: the single most visually striking element in this photo",
-  "styleEnvironment": "one sentence: what visual style exists here that could be applied to another photo",
-  "backgroundDescription": "describe the background: color, material, type",
-  "lightingDescription": "describe the lighting: direction, quality, color temperature",
+  "dominantElement": "one sentence describing the single most striking visual element",
+  "styleEnvironment": "one sentence describing the visual style that could be applied to another photo",
+  "backgroundDescription": "background color, material, setting",
+  "lightingDescription": "lighting direction, quality, color temperature",
   "textBoxPosition": "center",
   "textBoxWidthPct": "75",
   "textBoxStyle": "white box with thin grey border and rounded corners",
-  "badgePosition": "bottom-left",
-  "ocr_headline": "copy the largest boldest text EXACTLY as written",
-  "ocr_body": "copy the body paragraph text EXACTLY as written",
-  "ocr_footer": "copy any footer or signature text EXACTLY as written",
-  "ocr_badge": "copy any badge or label text EXACTLY as written",
-  "ocr_badge_color": "#FF1493",
-  "ocr_brand": "copy any brand name EXACTLY as written"
+  "badgePosition": "bottom-left"
 }
 
 Rules:
 - dominantType must be EXACTLY one of: text_overlay, graphic_badge, background, lighting
+- text_overlay = the photo has a text notice/box overlaid on it (ANY text panel counts)
 - textBoxPosition must be: top, center, or bottom
-- If no text overlay found: set ocr_ fields to empty string, textBoxPosition to empty string
-- ALL values must be strings (including textBoxWidthPct)
-- Do NOT include any nested objects`;
+- ALL values must be plain strings`;
+
+// ── Prompt 2b: STYLE image → OCR only (dedicated text extraction) ────────────
+const STYLE_OCR_PROMPT = `Extract ALL text visible in this image.
+Return ONLY valid JSON (no markdown):
+
+{
+  "headline": "copy the largest boldest text EXACTLY",
+  "body": "copy all body/paragraph text EXACTLY, joined with space",
+  "footer": "copy any footer or signature text EXACTLY",
+  "badge": "copy any badge or label text EXACTLY",
+  "brand": "copy any brand name EXACTLY"
+}
+
+If a field has no text, set it to empty string "".
+Do NOT paraphrase — copy text character by character.`;
 
 // ── Build FLUX [CHANGE] instruction server-side ────────────────────────────
 // Qwen provides facts; we construct the FLUX instruction from those facts.
@@ -228,18 +235,21 @@ export async function POST(req: NextRequest) {
     ]);
     console.log(`[style-transfer] src=${Math.round(sourceData.length / 1024)}KB sty=${Math.round(styleData.length / 1024)}KB`);
 
-    // ── Step 2: Two Qwen calls in parallel (one image each) ───────────────
+    // ── Step 2: THREE Qwen calls in parallel ─────────────────────────────
+    // source → clothing, style-visual → classification, style-ocr → text extraction
     const qwenAc = new AbortController();
-    const qwenTimer = setTimeout(() => qwenAc.abort(), 35_000);
+    const qwenTimer = setTimeout(() => qwenAc.abort(), 40_000);
 
-    const [sourceContent, styleContent] = await Promise.all([
-      callQwen(yandexKey, folderId, SOURCE_PROMPT, sourceData, qwenAc.signal, 500),
-      callQwen(yandexKey, folderId, STYLE_PROMPT, styleData, qwenAc.signal, 1000),
+    const [sourceContent, styleVisualContent, styleOcrContent] = await Promise.all([
+      callQwen(yandexKey, folderId, SOURCE_PROMPT,       sourceData, qwenAc.signal, 500),
+      callQwen(yandexKey, folderId, STYLE_VISUAL_PROMPT, styleData,  qwenAc.signal, 600),
+      callQwen(yandexKey, folderId, STYLE_OCR_PROMPT,    styleData,  qwenAc.signal, 800),
     ]);
     clearTimeout(qwenTimer);
 
-    console.log(`[style-transfer] src_len=${sourceContent.length} sty_len=${styleContent.length}`);
-    console.log(`[style-transfer] style_raw(300): ${styleContent.slice(0, 300)}`);
+    console.log(`[style-transfer] src_len=${sourceContent.length} vis_len=${styleVisualContent.length} ocr_len=${styleOcrContent.length}`);
+    console.log(`[style-transfer] vis_raw(200): ${styleVisualContent.slice(0, 200)}`);
+    console.log(`[style-transfer] ocr_raw(200): ${styleOcrContent.slice(0, 200)}`);
 
     // ── Parse source: preserve ────────────────────────────────────────────
     const srcParsed = tryParse<{ preserve?: string }>(sourceContent);
@@ -248,30 +258,58 @@ export async function POST(req: NextRequest) {
       field(sourceContent, 'preserve') ||
       'all clothing items and accessories from the original photo';
 
-    // ── Parse style: flat facts ───────────────────────────────────────────
-    const styleFacts: StyleFacts = tryParse<StyleFacts>(styleContent) ?? {};
-
-    // Fallback: extract each field independently via regex
-    if (!styleFacts.dominantType) {
-      styleFacts.dominantType      = field(styleContent, 'dominantType');
-      styleFacts.dominantElement   = field(styleContent, 'dominantElement');
-      styleFacts.styleEnvironment  = field(styleContent, 'styleEnvironment');
-      styleFacts.backgroundDescription = field(styleContent, 'backgroundDescription');
-      styleFacts.lightingDescription   = field(styleContent, 'lightingDescription');
-      styleFacts.textBoxPosition   = field(styleContent, 'textBoxPosition');
-      styleFacts.textBoxWidthPct   = field(styleContent, 'textBoxWidthPct');
-      styleFacts.textBoxStyle      = field(styleContent, 'textBoxStyle');
-      styleFacts.badgePosition     = field(styleContent, 'badgePosition');
-      styleFacts.ocr_headline      = field(styleContent, 'ocr_headline');
-      styleFacts.ocr_body          = field(styleContent, 'ocr_body');
-      styleFacts.ocr_footer        = field(styleContent, 'ocr_footer');
-      styleFacts.ocr_badge         = field(styleContent, 'ocr_badge');
-      styleFacts.ocr_badge_color   = field(styleContent, 'ocr_badge_color');
-      styleFacts.ocr_brand         = field(styleContent, 'ocr_brand');
+    // ── Parse style visual: classification facts ──────────────────────────
+    interface VisualFacts {
+      dominantType?: string; dominantElement?: string; styleEnvironment?: string;
+      backgroundDescription?: string; lightingDescription?: string;
+      textBoxPosition?: string; textBoxWidthPct?: string;
+      textBoxStyle?: string; badgePosition?: string;
+    }
+    const visualParsed: VisualFacts = tryParse<VisualFacts>(styleVisualContent) ?? {};
+    if (!visualParsed.dominantType) {
+      visualParsed.dominantType         = field(styleVisualContent, 'dominantType');
+      visualParsed.dominantElement      = field(styleVisualContent, 'dominantElement');
+      visualParsed.styleEnvironment     = field(styleVisualContent, 'styleEnvironment');
+      visualParsed.backgroundDescription= field(styleVisualContent, 'backgroundDescription');
+      visualParsed.lightingDescription  = field(styleVisualContent, 'lightingDescription');
+      visualParsed.textBoxPosition      = field(styleVisualContent, 'textBoxPosition');
+      visualParsed.textBoxWidthPct      = field(styleVisualContent, 'textBoxWidthPct');
+      visualParsed.textBoxStyle         = field(styleVisualContent, 'textBoxStyle');
+      visualParsed.badgePosition        = field(styleVisualContent, 'badgePosition');
     }
 
-    // OCR text presence overrides dominantType — if we found text, it IS a text_overlay
-    // (Qwen sometimes misclassifies text_overlay as "background" — OCR is ground truth)
+    // ── Parse style OCR: dedicated text extraction ────────────────────────
+    interface OcrFacts { headline?: string; body?: string; footer?: string; badge?: string; brand?: string; }
+    const ocrParsed: OcrFacts = tryParse<OcrFacts>(styleOcrContent) ?? {};
+    if (!ocrParsed.headline && !ocrParsed.body) {
+      ocrParsed.headline = field(styleOcrContent, 'headline');
+      ocrParsed.body     = field(styleOcrContent, 'body');
+      ocrParsed.footer   = field(styleOcrContent, 'footer');
+      ocrParsed.badge    = field(styleOcrContent, 'badge');
+      ocrParsed.brand    = field(styleOcrContent, 'brand');
+    }
+
+    console.log(`[style-transfer] ocr headline="${ocrParsed.headline?.slice(0,50)}" body="${ocrParsed.body?.slice(0,50)}"`);
+
+    // ── Merge into StyleFacts ─────────────────────────────────────────────
+    const styleFacts: StyleFacts = {
+      dominantType:         visualParsed.dominantType,
+      dominantElement:      visualParsed.dominantElement,
+      styleEnvironment:     visualParsed.styleEnvironment,
+      backgroundDescription:visualParsed.backgroundDescription,
+      lightingDescription:  visualParsed.lightingDescription,
+      textBoxPosition:      visualParsed.textBoxPosition,
+      textBoxWidthPct:      visualParsed.textBoxWidthPct,
+      textBoxStyle:         visualParsed.textBoxStyle,
+      badgePosition:        visualParsed.badgePosition,
+      ocr_headline: ocrParsed.headline,
+      ocr_body:     ocrParsed.body,
+      ocr_footer:   ocrParsed.footer,
+      ocr_badge:    ocrParsed.badge,
+      ocr_brand:    ocrParsed.brand,
+    };
+
+    // OCR text presence overrides dominantType — dedicated OCR call is ground truth
     if (styleFacts.ocr_headline || styleFacts.ocr_body || styleFacts.ocr_badge) {
       styleFacts.dominantType = 'text_overlay';
     } else if (!styleFacts.dominantType) {
@@ -343,7 +381,7 @@ export async function POST(req: NextRequest) {
           badgeColor: styleFacts.ocr_badge_color || '#FF1493',
           brandText: styleFacts.ocr_brand || '',
           textBoxPosition: styleFacts.textBoxPosition || 'center',
-          textBoxWidthPct: (fieldNum(styleContent, 'textBoxWidthPct') ?? parseInt(styleFacts.textBoxWidthPct || '75', 10)) || 75,
+          textBoxWidthPct: (fieldNum(styleVisualContent, 'textBoxWidthPct') ?? parseInt(styleFacts.textBoxWidthPct || '75', 10)) || 75,
         }
       : null;
 
