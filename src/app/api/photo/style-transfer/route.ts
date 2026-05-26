@@ -102,15 +102,15 @@ Rules:
 - Set "" for fields with no content`;
 
 // ── Prompt 3: Visual style analysis ──────────────────────────────────────────
-const STYLE_VISUAL_PROMPT = `Analyze the visual style of this image: lighting, colors, and atmosphere ONLY.
-DO NOT describe people, models, faces, clothing, body parts or poses — ignore all humans in the image.
-Focus exclusively on: background surface/color/texture, light quality and direction, color palette, mood.
+const STYLE_VISUAL_PROMPT = `You are a set designer reading a photo reference. Describe ONLY the non-human environment.
+Completely ignore all people, models, faces, clothing, body parts — they do not exist.
 
 Return ONLY valid JSON (no markdown):
 {
-  "lighting": "e.g. soft diffused studio light, warm color temperature, gentle shadows",
-  "colorPalette": "3-5 color names e.g. warm amber, ivory, dusty gold, cream",
-  "mood": "overall non-human aesthetic e.g. warm editorial, clean minimalist, moody dramatic",
+  "background": "describe ONLY walls/floor/surfaces/props/objects/environment. Be specific and visual. Example: 'rough concrete wall with yellow paint splashes, grey cement floor, moody industrial setting'",
+  "lighting": "light quality, direction, temperature. Example: 'dramatic side lighting, high contrast, cool tones'",
+  "colorPalette": "3-5 dominant non-human colors. Example: 'concrete grey, yellow, white, dark charcoal'",
+  "mood": "overall atmosphere. Example: 'gritty urban, raw industrial, high-energy streetwear'",
   "hasPanel": "yes",
   "panelSide": "right",
   "panelWidthPct": "40",
@@ -118,10 +118,11 @@ Return ONLY valid JSON (no markdown):
   "panelOpacity": "0.95"
 }
 
-- hasPanel: "yes" if there is a text panel/overlay area separate from photo, "no" if no panel
+- background: REQUIRED. Describe walls, floor, surfaces, objects. Never mention people.
+- hasPanel: "yes" if there is a separate text/info panel area in the image, "no" otherwise
 - panelSide: "right" / "left" / "bottom" / "center"
 - panelWidthPct: integer 25–80
-- panelColor: hex color of the panel (if no panel, use dominant background color hex)
+- panelColor: hex color of the panel background (if no panel, dominant background color)
 - panelOpacity: 0.7–1.0`;
 
 async function callQwen(
@@ -173,6 +174,7 @@ interface OcrFacts {
 }
 
 interface VisualFacts {
+  background?: string;   // non-human environment: walls, floor, surfaces, props
   lighting?: string;
   colorPalette?: string;
   mood?: string;
@@ -196,30 +198,33 @@ export interface LayoutData {
   brand: string;
 }
 
-function buildFluxPrompt(preserve: string, v: VisualFacts, userNote: string, hasText: boolean): string {
-  // FLUX.1-Kontext sees the source image directly — no need to describe the subject.
-  // Prompt describes ONLY the target lighting/color/mood (no people, no clothing).
-  // This avoids content-moderation false positives from reference-model descriptions.
-  void preserve;
-
-  const lighting = sanitizeForFlux(v.lighting    || '');
+function buildFluxPrompt(v: VisualFacts, userNote: string): string {
+  const bg       = sanitizeForFlux(v.background   || '');
+  const lighting = sanitizeForFlux(v.lighting     || '');
   const palette  = sanitizeForFlux(v.colorPalette || '');
   const mood     = sanitizeForFlux(v.mood         || '');
 
   const parts: string[] = [];
+
+  // Background is the most important instruction — tells FLUX what to change
+  if (bg) {
+    parts.push(`Replace the background with: ${bg}`);
+  }
+
+  // Lighting / color / mood supplement
   if (lighting) parts.push(`Lighting: ${lighting}`);
   if (palette)  parts.push(`Colors: ${palette}`);
   if (mood)     parts.push(mood);
 
-  const styleDesc = parts.length > 0
-    ? parts.join('. ')
-    : 'soft professional studio lighting, neutral warm tones';
-
-  let prompt = `Apply this visual style to the photo: ${styleDesc}. Keep everything else unchanged. No text.`;
-
-  if (userNote && !hasText) {
-    prompt += ` ${sanitizeForFlux(userNote)}`;
+  if (parts.length === 0) {
+    parts.push('Apply soft professional studio lighting with a neutral background');
   }
+
+  let prompt = parts.join('. ');
+  prompt += '. Keep the person, their clothing, and pose EXACTLY as in the original photo. Do not add any text or graphics.';
+
+  if (userNote) prompt += ` ${sanitizeForFlux(userNote)}`;
+
   return prompt;
 }
 
@@ -284,7 +289,7 @@ export async function POST(req: NextRequest) {
 
     // ── Parse visual ──────────────────────────────────────────────────────
     const visualFacts: VisualFacts = tryParse<VisualFacts>(visualContent) ?? {};
-    const visKeys: (keyof VisualFacts)[] = ['lighting','colorPalette','mood','hasPanel','panelSide','panelWidthPct','panelColor','panelOpacity'];
+    const visKeys: (keyof VisualFacts)[] = ['background','lighting','colorPalette','mood','hasPanel','panelSide','panelWidthPct','panelColor','panelOpacity'];
     for (const k of visKeys) {
       if (!visualFacts[k]) (visualFacts as Record<string, string>)[k] = field(visualContent, k);
     }
@@ -297,7 +302,7 @@ export async function POST(req: NextRequest) {
     console.log(`[style-transfer] dominantType=${dominantType} panelSide=${ocrFacts.panelSide} headline="${ocrFacts.textHeadline?.slice(0,40)}" features="${ocrFacts.textFeatures?.slice(0,60)}"`);
 
     // ── Build FLUX prompt — visual only, zero text ────────────────────────
-    const fluxPrompt = buildFluxPrompt(sanitizeForFlux(preserve), visualFacts, userNote, hasText);
+    const fluxPrompt = buildFluxPrompt(visualFacts, userNote);
     console.log(`[style-transfer] fluxPrompt(200): ${fluxPrompt.slice(0, 200)}`);
 
     // ── Step 3: FLUX ──────────────────────────────────────────────────────
