@@ -65,57 +65,56 @@ Return ONLY valid JSON (no markdown):
 
 Example preserve value: "loose oversized white linen long-sleeve shirt open collar, wide-leg high-waist white linen trousers, leopard-print turban headband, black oval sunglasses, pearl earrings, tan leather flat slides, black sports bra visible, right hand on hip"`;
 
-// ── Prompt 2a: STYLE image → visual classification + atmosphere ──────────────
-const STYLE_VISUAL_PROMPT = `Analyze this product/fashion photo and classify its visual style.
-Return ONLY valid JSON (no markdown, no nested objects):
+// ── Prompt 2a: STYLE image → deep visual analysis for full style transfer ──────
+const STYLE_VISUAL_PROMPT = `You are analyzing a fashion/product photo as a style reference for AI image editing.
+Describe EVERYTHING needed to recreate this visual style on a different photo.
+Return ONLY valid JSON (no markdown, no nested objects, all values plain strings):
 
 {
   "dominantType": "text_overlay",
-  "dominantElement": "one sentence: the single most striking visual element",
-  "styleEnvironment": "one sentence: overall visual style/mood that could be applied to another photo",
-  "backgroundDescription": "SPECIFIC background: exact colors (e.g. warm golden-orange gradient), texture, props, atmosphere, any decorative elements",
-  "lightingDescription": "lighting direction, quality, color temperature",
-  "colorPalette": "2-4 dominant colors in the image, comma-separated",
+  "backgroundDescription": "EXACT background: colors with names/hex, gradient direction, texture, materials, props, atmosphere",
+  "colorPalette": "3-5 dominant colors as specific names (e.g. warm golden-amber, cream, deep brown)",
+  "lightingDescription": "lighting: direction, quality, color temperature, shadows",
+  "layoutDescription": "composition layout: where is the model, where are text panels, how is space divided",
+  "graphicElements": "ALL decorative/graphic elements: arrows, lines, boxes, badges, icons, frames, dividers — describe each",
+  "textPanelDescription": "describe text panels: position (left/right/center/top/bottom), size relative to image, style (white box / semi-transparent / colored)",
+  "overallMood": "overall visual style in one sentence (e.g. luxury editorial infographic, clean minimalist product card)",
   "textBoxPosition": "center",
-  "textBoxWidthPct": "65",
-  "textBoxStyle": "semi-transparent white box with soft shadow and rounded corners",
+  "textBoxWidthPct": "55",
   "badgePosition": "bottom-right"
 }
 
-STRICT RULES for dominantType:
-- "text_overlay": ANY image with visible text — notices, product descriptions, infographics, feature lists, size charts, titles, labels, captions — even if text is stylized, italic, or decorative
-- "background": clean background/setting with ZERO significant text
-- "lighting": special lighting is the ONLY main feature, ZERO significant text
-When in doubt — choose "text_overlay".
-ALL values must be plain strings.`;
+RULES for dominantType:
+- "text_overlay": ANY image with text elements (infographics, notices, product cards, labels, feature lists, titles) — even stylized
+- "background": ONLY if zero text and background/setting is the main feature
+- "lighting": ONLY if zero text and special lighting is the only feature
+When unsure — choose "text_overlay".`;
 
-// ── Prompt 2b: STYLE image → OCR only (dedicated text extraction) ────────────
-const STYLE_OCR_PROMPT = `You are an expert OCR engine. Extract EVERY word of text visible in this image.
+// ── Prompt 2b: STYLE image → OCR only ────────────────────────────────────────
+const STYLE_OCR_PROMPT = `You are an expert OCR engine. Extract EVERY word of text from this image.
 
-CRITICAL: This may include stylized, italic, decorative, handwritten-looking, or artistic text. Read ALL of it.
-Look at: large titles, product feature lists, size charts, arrows with labels, brand names, any captions.
+This may include: stylized titles, italic text, decorative fonts, product feature lists, size charts, arrows with labels, brand names, captions.
 
 Return ONLY valid JSON (no markdown):
 {
-  "headline": "largest/most prominent text — copy word for word",
-  "body": "ALL remaining text items joined with space — product features, descriptions, labels",
-  "footer": "any footer, signature, or closing text",
-  "badge": "any badge, tag, or label text",
+  "headline": "largest/most prominent text, word for word",
+  "body": "ALL other text joined with space — features, descriptions, labels, size info",
+  "footer": "footer or signature text",
+  "badge": "badge or tag text",
   "brand": "brand or company name"
 }
 
-Rules:
-- Copy text EXACTLY, character by character — no paraphrasing
-- Include Russian/Cyrillic text — it is expected
-- If ANY text is visible in the image, headline OR body MUST be non-empty
-- Set "" only if truly no text exists for that field`;
+- Copy EXACTLY — no paraphrasing
+- Russian/Cyrillic text is expected and valid
+- If ANY text is visible: headline OR body MUST be non-empty
+- Use "" only if truly no text for that field`;
 
-// Fallback OCR prompt used if primary returns all empty
-const STYLE_OCR_FALLBACK_PROMPT = `List every word of Russian text visible in this image, from top to bottom.
+// Fallback OCR prompt
+const STYLE_OCR_FALLBACK_PROMPT = `List every word of text you can see in this image, top to bottom.
 Return ONLY valid JSON:
 {
-  "headline": "first/largest text block",
-  "body": "all other text combined",
+  "headline": "first or largest text",
+  "body": "all remaining text combined",
   "footer": "",
   "badge": "",
   "brand": ""
@@ -129,9 +128,12 @@ interface StyleFacts {
   backgroundDescription?: string;
   lightingDescription?: string;
   colorPalette?: string;
+  layoutDescription?: string;
+  graphicElements?: string;
+  textPanelDescription?: string;
+  overallMood?: string;
   textBoxPosition?: string;
   textBoxWidthPct?: string;
-  textBoxStyle?: string;
   badgePosition?: string;
   ocr_headline?: string;
   ocr_body?: string;
@@ -144,65 +146,59 @@ interface StyleFacts {
 function buildChangeInstruction(f: StyleFacts): string {
   const dt = (f.dominantType || '').toLowerCase();
 
-  // Rich background phrase — used across multiple types
-  const bgPhrase = [f.backgroundDescription, f.colorPalette ? `color palette: ${f.colorPalette}` : '']
-    .filter(Boolean).join(', ');
-
   if (dt === 'text_overlay') {
-    const pos   = f.textBoxPosition || 'center';
-    const w     = f.textBoxWidthPct || '65';
-    const style = f.textBoxStyle    || 'semi-transparent white box with soft shadow and rounded corners';
-    const badgePos   = f.badgePosition   || 'bottom-right';
-    const badgeColor = f.ocr_badge_color || 'pink';
+    // Full style transfer: background + layout + graphic elements + empty text areas
+    const parts: string[] = [];
 
-    // Apply background FIRST, then add empty text frame
-    let instruction = '';
-    if (bgPhrase) {
-      instruction += `Apply this background and atmosphere: ${bgPhrase}. `;
+    parts.push(`Transform this photo into the visual style of the reference image.`);
+
+    if (f.backgroundDescription) parts.push(`Background: ${f.backgroundDescription}.`);
+    if (f.colorPalette)          parts.push(`Color palette: ${f.colorPalette}.`);
+    if (f.lightingDescription)   parts.push(`Lighting: ${f.lightingDescription}.`);
+    if (f.layoutDescription)     parts.push(`Layout: ${f.layoutDescription}.`);
+    if (f.graphicElements)       parts.push(`Graphic elements to add: ${f.graphicElements}.`);
+    if (f.textPanelDescription)  parts.push(`Text panels: add empty placeholder areas matching this description — ${f.textPanelDescription} — leave them COMPLETELY BLANK (no text).`);
+    else {
+      const pos = f.textBoxPosition || 'right';
+      const w   = f.textBoxWidthPct || '50';
+      parts.push(`Add empty clean text placeholder area at ${pos}, approximately ${w}% of image width — no text inside.`);
     }
-    instruction +=
-      `Add a completely blank white rectangular frame with ${style}, `
-      + `positioned at the ${pos} of the image, occupying approximately ${w}% of image width. `
-      + `The frame interior must be PERFECTLY EMPTY — zero text, zero characters, no symbols, just clean white space. `;
+    if (f.overallMood) parts.push(`Overall style: ${f.overallMood}.`);
+    parts.push(`Keep the model and all clothing UNCHANGED.`);
 
-    if (f.ocr_badge) {
-      instruction += `Also add an empty ${badgeColor} rectangular label at the ${badgePos} corner — no text. `;
-    }
-    return instruction.trim();
-  }
-
-  if (dt === 'graphic_badge') {
-    return `Apply graphic overlay elements from the reference image: ${f.dominantElement || ''}. Keep clothing unchanged.`;
+    return parts.join(' ');
   }
 
   if (dt === 'background') {
-    const bg = bgPhrase || f.dominantElement || f.styleEnvironment || '';
-    if (!bg || bg.length < 8) {
-      return `Apply the visual style and atmosphere from the reference image. Keep the model and clothing perfectly unchanged.`;
-    }
-    return `Replace the background with: ${bg}. Keep the model and clothing perfectly unchanged.`;
+    const bg = [f.backgroundDescription, f.colorPalette, f.lightingDescription, f.overallMood]
+      .filter(Boolean).join(', ');
+    return bg
+      ? `Replace the background with: ${bg}. Keep the model and clothing perfectly unchanged.`
+      : `Apply the visual style and atmosphere from the reference image. Keep the model and clothing perfectly unchanged.`;
   }
 
   if (dt === 'lighting') {
-    const light = f.lightingDescription || f.dominantElement || 'similar lighting';
-    return `Apply this lighting: ${light}. Keep everything else unchanged.`;
+    const light = [f.lightingDescription, f.colorPalette, f.overallMood].filter(Boolean).join(', ');
+    return `Apply this lighting treatment: ${light || 'similar lighting from reference'}. Keep everything else unchanged.`;
   }
 
-  // Fallback
-  const fallback = bgPhrase || f.dominantElement || f.styleEnvironment || 'reference visual style';
-  return `Apply this visual style: ${fallback}. Keep model and clothing unchanged.`;
+  if (dt === 'graphic_badge') {
+    return `Apply the graphic overlay style from the reference: ${f.graphicElements || f.overallMood || 'reference graphic elements'}. Keep clothing unchanged.`;
+  }
+
+  // Universal fallback
+  const desc = [f.backgroundDescription, f.colorPalette, f.layoutDescription, f.overallMood]
+    .filter(Boolean).join(', ');
+  return `Apply the complete visual style of the reference image: ${desc || 'match reference visual style'}. Keep model and clothing unchanged.`;
 }
 
 function buildSceneInstruction(f: StyleFacts): string {
   const dt = (f.dominantType || '').toLowerCase();
   if (dt === 'text_overlay') {
-    const bg = f.backgroundDescription ? ` Background: ${f.backgroundDescription}.` : '';
-    return `Product photo: model in original outfit with clean white text frame overlaid at ${f.textBoxPosition || 'center'} of image.${bg}`;
+    return [f.overallMood, f.backgroundDescription].filter(Boolean).join('. ') || '';
   }
-  if (dt === 'background') {
-    return f.backgroundDescription || '';
-  }
-  return f.styleEnvironment || '';
+  if (dt === 'background') return f.backgroundDescription || f.overallMood || '';
+  return f.overallMood || f.styleEnvironment || '';
 }
 
 
@@ -295,21 +291,25 @@ export async function POST(req: NextRequest) {
     interface VisualFacts {
       dominantType?: string; dominantElement?: string; styleEnvironment?: string;
       backgroundDescription?: string; lightingDescription?: string; colorPalette?: string;
-      textBoxPosition?: string; textBoxWidthPct?: string;
-      textBoxStyle?: string; badgePosition?: string;
+      layoutDescription?: string; graphicElements?: string;
+      textPanelDescription?: string; overallMood?: string;
+      textBoxPosition?: string; textBoxWidthPct?: string; badgePosition?: string;
     }
     const visualParsed: VisualFacts = tryParse<VisualFacts>(styleVisualContent) ?? {};
     if (!visualParsed.dominantType) {
-      visualParsed.dominantType         = field(styleVisualContent, 'dominantType');
-      visualParsed.dominantElement      = field(styleVisualContent, 'dominantElement');
-      visualParsed.styleEnvironment     = field(styleVisualContent, 'styleEnvironment');
-      visualParsed.backgroundDescription= field(styleVisualContent, 'backgroundDescription');
-      visualParsed.lightingDescription  = field(styleVisualContent, 'lightingDescription');
-      visualParsed.colorPalette         = field(styleVisualContent, 'colorPalette');
-      visualParsed.textBoxPosition      = field(styleVisualContent, 'textBoxPosition');
-      visualParsed.textBoxWidthPct      = field(styleVisualContent, 'textBoxWidthPct');
-      visualParsed.textBoxStyle         = field(styleVisualContent, 'textBoxStyle');
-      visualParsed.badgePosition        = field(styleVisualContent, 'badgePosition');
+      visualParsed.dominantType          = field(styleVisualContent, 'dominantType');
+      visualParsed.dominantElement       = field(styleVisualContent, 'dominantElement');
+      visualParsed.styleEnvironment      = field(styleVisualContent, 'styleEnvironment');
+      visualParsed.backgroundDescription = field(styleVisualContent, 'backgroundDescription');
+      visualParsed.lightingDescription   = field(styleVisualContent, 'lightingDescription');
+      visualParsed.colorPalette          = field(styleVisualContent, 'colorPalette');
+      visualParsed.layoutDescription     = field(styleVisualContent, 'layoutDescription');
+      visualParsed.graphicElements       = field(styleVisualContent, 'graphicElements');
+      visualParsed.textPanelDescription  = field(styleVisualContent, 'textPanelDescription');
+      visualParsed.overallMood           = field(styleVisualContent, 'overallMood');
+      visualParsed.textBoxPosition       = field(styleVisualContent, 'textBoxPosition');
+      visualParsed.textBoxWidthPct       = field(styleVisualContent, 'textBoxWidthPct');
+      visualParsed.badgePosition         = field(styleVisualContent, 'badgePosition');
     }
 
     // ── Parse style OCR: dedicated text extraction ────────────────────────
@@ -361,8 +361,11 @@ export async function POST(req: NextRequest) {
       colorPalette:         visualParsed.colorPalette,
       textBoxPosition:      visualParsed.textBoxPosition,
       textBoxWidthPct:      visualParsed.textBoxWidthPct,
-      textBoxStyle:         visualParsed.textBoxStyle,
       badgePosition:        visualParsed.badgePosition,
+      layoutDescription:    visualParsed.layoutDescription,
+      graphicElements:      visualParsed.graphicElements,
+      textPanelDescription: visualParsed.textPanelDescription,
+      overallMood:          visualParsed.overallMood,
       ocr_headline: ocrParsed.headline,
       ocr_body:     ocrParsed.body,
       ocr_footer:   ocrParsed.footer,
