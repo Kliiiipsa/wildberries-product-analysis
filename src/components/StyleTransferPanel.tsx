@@ -1,73 +1,22 @@
 'use client';
 
 import { useState, useRef, useCallback, RefObject } from 'react';
-import { ArrowLeft, Upload, Loader2, Wand2, ArrowRight, ChevronDown, Type, Layers, Image as ImageIcon, Sun, Check } from 'lucide-react';
+import { ArrowLeft, Upload, Loader2, Wand2, ArrowRight, ChevronDown, Image as ImageIcon, Sun, Check, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-interface Props {
-  onBack: () => void;
-}
+interface Props { onBack: () => void; }
 
-interface ExtractedText {
-  headline?: string;
-  bodyText?: string;
-  footerText?: string;
-  badgeText?: string;
-  badgeColor?: string;
-  brandText?: string;
-  textBoxPosition?: string;   // "top" | "center" | "bottom"
-  textBoxWidthPct?: number;   // 50–100
-}
-
-/** Escape special regex characters */
-function escapeRx(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Apply userNote text instructions to extracted OCR text client-side.
- * Handles patterns:
- *   замени "X" на "Y"  /  замени "X" НА "Y"
- *   убери "X" из текста  /  убери слова "X"  /  убери из текста "X"
- * Also handles without quotes for single words.
- */
-function applyUserNoteToText(text: ExtractedText, note: string): ExtractedText {
-  if (!note.trim()) return text;
-  const result = { ...text };
-
-  const rep = (s: string | undefined, from: string, to: string): string | undefined =>
-    s ? s.replace(new RegExp(escapeRx(from), 'gi'), to).replace(/\s{2,}/g, ' ').trim() : s;
-
-  const applyReplace = (from: string, to: string) => {
-    result.headline  = rep(result.headline,  from, to);
-    result.bodyText  = rep(result.bodyText,  from, to);
-    result.footerText= rep(result.footerText,from, to);
-    result.badgeText = rep(result.badgeText, from, to);
-    result.brandText = rep(result.brandText, from, to);
-  };
-  const applyRemove = (what: string) => {
-    result.headline  = rep(result.headline,  what, '');
-    result.bodyText  = rep(result.bodyText,  what, '');
-    result.footerText= rep(result.footerText,what, '');
-  };
-
-  // замени "X" на/НА "Y"  (with quotes)
-  const rxQ = /замени\s+"([^"]+)"\s+(?:на|НА)\s+"([^"]+)"/gi;
-  let m: RegExpExecArray | null;
-  while ((m = rxQ.exec(note)) !== null) applyReplace(m[1], m[2]);
-
-  // замени X на/НА Y  (without quotes, single token)
-  const rxNQ = /замени\s+(\S+)\s+(?:на|НА)\s+(\S+)/gi;
-  while ((m = rxNQ.exec(note)) !== null) {
-    // Skip if it was already handled by quoted version
-    if (!m[1].startsWith('"')) applyReplace(m[1], m[2]);
-  }
-
-  // убери "X" из текста / убери слова "X" / убери из текста "X"
-  const rxRem = /убери\s+(?:из\s+текста\s+)?(?:слова?\s+)?"([^"]+)"(?:\s+из\s+текста)?/gi;
-  while ((m = rxRem.exec(note)) !== null) applyRemove(m[1]);
-
-  return result;
+interface LayoutData {
+  panelSide: string;      // 'left' | 'right' | 'center' | 'bottom'
+  panelWidthPct: number;  // 30–85
+  panelColor: string;
+  panelOpacity: number;
+  headline: string;
+  subheadline: string;
+  features: string[];
+  sizes: string[];
+  footer: string;
+  brand: string;
 }
 
 /** Resize file to max 1024px → JPEG base64 */
@@ -97,207 +46,272 @@ function resizeToBase64(file: File): Promise<string> {
   });
 }
 
-/** Wrap text in canvas ctx */
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number, y: number,
-  maxWidth: number,
-  lineHeight: number,
-  maxLines = 6,
-): number {
-  const words = text.split(' ');
-  let line = '';
-  let lineCount = 0;
-  for (const word of words) {
-    if (lineCount >= maxLines) break;
-    const test = line + (line ? ' ' : '') + word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line, x, y + lineCount * lineHeight);
-      line = word;
-      lineCount++;
-    } else {
-      line = test;
-    }
+/** Escape special regex characters */
+function escapeRx(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/** Apply userNote substitutions to layout data */
+function applyNoteToLayout(ld: LayoutData, note: string): LayoutData {
+  if (!note.trim()) return ld;
+  const result = { ...ld, features: [...ld.features], sizes: [...ld.sizes] };
+
+  const rep = (s: string, from: string, to: string) =>
+    s.replace(new RegExp(escapeRx(from), 'gi'), to).replace(/\s{2,}/g, ' ').trim();
+
+  const applyReplace = (from: string, to: string) => {
+    result.headline    = rep(result.headline,    from, to);
+    result.subheadline = rep(result.subheadline, from, to);
+    result.footer      = rep(result.footer,      from, to);
+    result.brand       = rep(result.brand,        from, to);
+    result.features    = result.features.map(f => rep(f, from, to));
+  };
+
+  // замени "X" на/НА "Y"
+  const rxQ = /замени\s+"([^"]+)"\s+(?:на|НА)\s+"([^"]+)"/gi;
+  let m: RegExpExecArray | null;
+  while ((m = rxQ.exec(note)) !== null) applyReplace(m[1], m[2]);
+
+  // замени X на/НА Y (without quotes)
+  const rxNQ = /замени\s+(\S+)\s+(?:на|НА)\s+(\S+)/gi;
+  while ((m = rxNQ.exec(note)) !== null) {
+    if (!m[1].startsWith('"')) applyReplace(m[1], m[2]);
   }
-  if (line && lineCount < maxLines) {
-    ctx.fillText(line, x, y + lineCount * lineHeight);
-    lineCount++;
+
+  // убери "X" из текста
+  const rxRem = /убери\s+(?:из\s+текста\s+)?(?:слова?\s+)?"([^"]+)"(?:\s+из\s+текста)?/gi;
+  while ((m = rxRem.exec(note)) !== null) {
+    const what = m[1];
+    const remFn = (s: string) => s.replace(new RegExp(escapeRx(what), 'gi'), '').replace(/\s{2,}/g, ' ').trim();
+    result.headline    = remFn(result.headline);
+    result.subheadline = remFn(result.subheadline);
+    result.features    = result.features.map(remFn).filter(Boolean);
   }
-  return lineCount;
+
+  return result;
 }
 
-/** Draw rounded rectangle path */
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
-) {
+/** Parse hex color to RGB */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace('#', '');
+  if (h.length === 3) {
+    return { r: parseInt(h[0] + h[0], 16), g: parseInt(h[1] + h[1], 16), b: parseInt(h[2] + h[2], 16) };
+  }
+  return { r: parseInt(h.slice(0,2), 16), g: parseInt(h.slice(2,4), 16), b: parseInt(h.slice(4,6), 16) };
+}
+
+/** Draw rounded rectangle */
+function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
 
+/** Wrap text, returns number of lines drawn */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number, maxL = 8): number {
+  const words = text.split(' ');
+  let line = '', count = 0;
+  for (const w of words) {
+    if (count >= maxL) break;
+    const test = line + (line ? ' ' : '') + w;
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, y + count * lh);
+      line = w; count++;
+    } else { line = test; }
+  }
+  if (line && count < maxL) { ctx.fillText(line, x, y + count * lh); count++; }
+  return count;
+}
+
 /**
- * Composite correct text on top of FLUX result image.
- * FLUX draws the empty frame layout; Canvas draws the actual text.
+ * Composite layout panel with text on top of FLUX result.
+ * Supports: right-panel, left-panel, center-overlay, bottom-panel
  */
-async function composeTextOverlay(
-  imageDataUrl: string,
-  text: ExtractedText,
-): Promise<string> {
+async function composeLayout(imageDataUrl: string, ld: LayoutData): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const W = img.width;
-      const H = img.height;
+      const W = img.width, H = img.height;
       const canvas = document.createElement('canvas');
       canvas.width = W; canvas.height = H;
       const ctx = canvas.getContext('2d')!;
-
-      // Draw FLUX result
       ctx.drawImage(img, 0, 0);
 
-      // ── Text box dimensions ──────────────────────────────────────────────
-      const widthPct = (text.textBoxWidthPct ?? 75) / 100;
-      const boxW = Math.round(W * widthPct);
-      const boxX = Math.round((W - boxW) / 2);
-      const pad = Math.round(boxW * 0.06);
-      const innerW = boxW - pad * 2;
+      // ── Panel geometry ────────────────────────────────────────────────────
+      const side = ld.panelSide || 'right';
+      const wPct = Math.max(25, Math.min(90, ld.panelWidthPct || 45));
+      const panelW = Math.round(W * wPct / 100);
+      const margin = Math.round(W * 0.03);
 
-      // Font sizes (scale with image width)
-      const headlineFontSize = Math.round(W * 0.065);
-      const bodyFontSize = Math.round(W * 0.032);
-      const footerFontSize = Math.round(W * 0.026);
-      const brandFontSize = Math.round(W * 0.028);
-      const badgeFontSize = Math.round(W * 0.032);
+      let panelX: number, panelY: number, panelH: number;
+      if (side === 'right')  { panelX = W - panelW - margin; panelY = margin; panelH = H - margin * 2; }
+      else if (side === 'left')   { panelX = margin;             panelY = margin; panelH = H - margin * 2; }
+      else if (side === 'bottom') { panelX = margin; panelY = Math.round(H * 0.55); panelW; panelH = H - panelY - margin; }
+      else { /* center */ panelX = Math.round((W - panelW) / 2); panelY = Math.round(H * 0.08); panelH = Math.round(H * 0.84); }
 
-      // Estimate box height from content
-      const headlineLines = text.headline ? Math.ceil((text.headline.length * headlineFontSize * 0.55) / innerW) + 1 : 0;
-      const bodyLines = text.bodyText ? Math.min(6, Math.ceil((text.bodyText.length * bodyFontSize * 0.52) / innerW) + 1) : 0;
-      const boxH = Math.round(
-        pad +
-        (headlineLines > 0 ? headlineLines * (headlineFontSize * 1.2) + pad : 0) +
-        (bodyLines > 0 ? bodyLines * (bodyFontSize * 1.4) + pad * 0.5 : 0) +
-        (text.footerText ? footerFontSize * 1.6 + pad * 0.5 : 0) +
-        pad,
-      );
+      const pad = Math.round(panelW * 0.09);
+      const innerW = panelW - pad * 2;
+      const radius = Math.round(W * 0.015);
 
-      // Box vertical position
-      const pos = text.textBoxPosition ?? 'center';
-      const margin = Math.round(H * 0.05);
-      const boxY =
-        pos === 'top' ? margin :
-        pos === 'bottom' ? H - boxH - margin :
-        Math.round((H - boxH) / 2);
-
-      // ── Draw white box ──────────────────────────────────────────────────
-      const radius = Math.round(W * 0.018);
-      roundRect(ctx, boxX, boxY, boxW, boxH, radius);
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      // ── Draw panel background ────────────────────────────────────────────
+      const rgb = hexToRgb(ld.panelColor || '#FFFFFF');
+      const op  = Math.max(0.5, Math.min(1, ld.panelOpacity || 0.95));
+      rrect(ctx, panelX, panelY, panelW, panelH, radius);
+      ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${op})`;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(190,190,190,0.7)';
-      ctx.lineWidth = Math.max(1, Math.round(W * 0.002));
-      ctx.stroke();
 
-      let cursorY = boxY + pad;
+      // ── Typography ───────────────────────────────────────────────────────
+      // Determine text color based on panel brightness
+      const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+      const isDark = brightness < 128;
+      const textPrimary   = isDark ? '#FFFFFF' : '#111111';
+      const textSecondary = isDark ? 'rgba(255,255,255,0.75)' : '#444444';
+      const textMuted     = isDark ? 'rgba(255,255,255,0.55)' : '#777777';
 
-      // ── Brand text (top-right inside box) ───────────────────────────────
-      if (text.brandText) {
-        ctx.fillStyle = '#555';
-        ctx.font = `600 ${brandFontSize}px sans-serif`;
-        ctx.textAlign = 'right';
-        ctx.fillText(text.brandText, boxX + boxW - pad, cursorY + brandFontSize);
+      let cy = panelY + pad;
+      const tx = panelX + pad;
+
+      // Brand (small, top)
+      if (ld.brand) {
+        const fs = Math.round(W * 0.02);
+        ctx.fillStyle = textMuted;
+        ctx.font = `500 ${fs}px sans-serif`;
         ctx.textAlign = 'left';
-        cursorY += brandFontSize * 1.6;
+        ctx.fillText(ld.brand.toUpperCase(), tx, cy + fs);
+        cy += Math.round(fs * 2.2);
       }
 
-      // ── Headline ─────────────────────────────────────────────────────────
-      if (text.headline) {
-        ctx.fillStyle = '#111';
-        ctx.font = `bold ${headlineFontSize}px sans-serif`;
-        const lh = headlineFontSize * 1.15;
-        const linesDone = wrapText(ctx, text.headline, boxX + pad, cursorY + headlineFontSize, innerW, lh, 3);
-        cursorY += linesDone * lh + pad * 0.6;
+      // Divider line
+      if (ld.brand && ld.headline) {
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(tx, cy); ctx.lineTo(tx + innerW, cy); ctx.stroke();
+        cy += Math.round(W * 0.015);
       }
 
-      // ── Body text ────────────────────────────────────────────────────────
-      if (text.bodyText) {
-        ctx.fillStyle = '#333';
-        ctx.font = `${bodyFontSize}px sans-serif`;
-        const lh = bodyFontSize * 1.5;
-        const linesDone = wrapText(ctx, text.bodyText, boxX + pad, cursorY + bodyFontSize, innerW, lh, 6);
-        cursorY += linesDone * lh + pad * 0.5;
+      // Headline (large, bold)
+      if (ld.headline) {
+        const fs = Math.round(W * 0.062);
+        const lh = Math.round(fs * 1.1);
+        ctx.fillStyle = textPrimary;
+        ctx.font = `bold ${fs}px serif`;
+        const lines = wrapText(ctx, ld.headline, tx, cy + fs, innerW, lh, 3);
+        cy += lines * lh + Math.round(W * 0.018);
       }
 
-      // ── Footer text ──────────────────────────────────────────────────────
-      if (text.footerText) {
-        ctx.fillStyle = '#666';
-        ctx.font = `italic ${footerFontSize}px sans-serif`;
-        ctx.textAlign = 'right';
-        ctx.fillText(text.footerText, boxX + boxW - pad, cursorY + footerFontSize);
-        ctx.textAlign = 'left';
+      // Subheadline
+      if (ld.subheadline) {
+        const fs = Math.round(W * 0.03);
+        const lh = Math.round(fs * 1.4);
+        ctx.fillStyle = textSecondary;
+        ctx.font = `${fs}px sans-serif`;
+        const lines = wrapText(ctx, ld.subheadline, tx, cy + fs, innerW, lh, 2);
+        cy += lines * lh + Math.round(W * 0.02);
       }
 
-      // ── Badge ─────────────────────────────────────────────────────────────
-      if (text.badgeText) {
-        const badgeColor = text.badgeColor || '#FF1493';
-        const badgePadX = Math.round(W * 0.025);
-        const badgePadY = Math.round(W * 0.012);
-        const badgeTextW = ctx.measureText(text.badgeText).width;
-        const badgeW = badgeTextW + badgePadX * 2;
-        const badgeH = badgeFontSize + badgePadY * 2;
-        const badgeX = boxX;
-        const badgeY = boxY + boxH + Math.round(H * 0.012);
-
-        ctx.fillStyle = badgeColor;
-        roundRect(ctx, badgeX, badgeY, badgeW, badgeH, Math.round(badgeH * 0.12));
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${badgeFontSize}px sans-serif`;
-        ctx.fillText(text.badgeText, badgeX + badgePadX, badgeY + badgePadY + badgeFontSize * 0.85);
+      // Feature list
+      if (ld.features.length > 0) {
+        const fs = Math.round(W * 0.026);
+        const lh = Math.round(fs * 1.7);
+        ctx.fillStyle = textSecondary;
+        ctx.font = `${fs}px sans-serif`;
+        for (const feat of ld.features) {
+          if (!feat.trim() || cy + lh > panelY + panelH - pad) break;
+          // Arrow bullet
+          ctx.fillStyle = textMuted;
+          ctx.fillText('›', tx, cy + fs);
+          ctx.fillStyle = textSecondary;
+          ctx.fillText(feat.trim(), tx + Math.round(fs * 1.3), cy + fs);
+          cy += lh;
+        }
+        cy += Math.round(W * 0.01);
       }
 
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
+      // Size selector
+      if (ld.sizes.length > 0 && cy + Math.round(W * 0.08) < panelY + panelH - pad) {
+        cy += Math.round(W * 0.01);
+        const boxSz  = Math.round(W * 0.05);
+        const boxGap = Math.round(W * 0.012);
+        const fs     = Math.round(W * 0.022);
+        let sx = tx;
+        for (const sz of ld.sizes) {
+          rrect(ctx, sx, cy, boxSz, boxSz, Math.round(boxSz * 0.15));
+          ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)';
+          ctx.lineWidth = Math.max(1, Math.round(W * 0.0015));
+          ctx.stroke();
+          ctx.fillStyle = textPrimary;
+          ctx.font = `500 ${fs}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(sz.trim(), sx + boxSz / 2, cy + boxSz * 0.67);
+          ctx.textAlign = 'left';
+          sx += boxSz + boxGap;
+        }
+        cy += boxSz + Math.round(W * 0.018);
+      }
+
+      // Footer / signature
+      if (ld.footer) {
+        const fs = Math.round(W * 0.021);
+        ctx.fillStyle = textMuted;
+        ctx.font = `italic ${fs}px serif`;
+        const footerY = Math.min(cy + fs, panelY + panelH - pad);
+        ctx.fillText(ld.footer, tx, footerY);
+      }
+
+      resolve(canvas.toDataURL('image/jpeg', 0.93));
     };
     img.src = imageDataUrl;
   });
 }
 
-const DOMINANT_TYPE_LABEL: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  text_overlay:  { label: 'Текстовый оверлей',  icon: <Type className="h-3 w-3" />,      color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
-  graphic_badge: { label: 'Графический элемент', icon: <Layers className="h-3 w-3" />,    color: 'text-rose-400 border-rose-500/30 bg-rose-500/10' },
-  background:    { label: 'Фон и окружение',     icon: <ImageIcon className="h-3 w-3" />, color: 'text-blue-400 border-blue-500/30 bg-blue-500/10' },
-  lighting:      { label: 'Свет и цвет',         icon: <Sun className="h-3 w-3" />,       color: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' },
-};
-
 export function StyleTransferPanel({ onBack }: Props) {
-  const [sourceImage, setSourceImage] = useState('');
-  const [styleImage, setStyleImage] = useState('');
-  const [fluxResult, setFluxResult] = useState('');    // raw FLUX output
-  const [result, setResult] = useState('');             // final (with text composited)
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [sourceImage,   setSourceImage]   = useState('');
+  const [styleImage,    setStyleImage]    = useState('');
+  const [fluxResult,    setFluxResult]    = useState('');
+  const [result,        setResult]        = useState('');
+  const [isGenerating,  setIsGenerating]  = useState(false);
   const [isCompositing, setIsCompositing] = useState(false);
-  const [error, setError] = useState('');
-  const [userNote, setUserNote] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [sourceClothing, setSourceClothing] = useState('');
-  const [styleEnvironment, setStyleEnvironment] = useState('');
-  const [dominantElement, setDominantElement] = useState('');
-  const [dominantType, setDominantType] = useState('');
-  const [extractedText, setExtractedText] = useState<ExtractedText | null>(null);
-  const [textApplied, setTextApplied] = useState(false);
+  const [error,         setError]         = useState('');
+  const [userNote,      setUserNote]      = useState('');
+  const [prompt,        setPrompt]        = useState('');
+  const [promptOpen,    setPromptOpen]    = useState(false);
+  const [dominantType,  setDominantType]  = useState('');
+  const [visualMood,    setVisualMood]    = useState('');
+  const [layoutData,    setLayoutData]    = useState<LayoutData | null>(null);
+  const [textApplied,   setTextApplied]   = useState(false);
+  const [editMode,      setEditMode]      = useState(false);
+
+  // Editable layout fields
+  const [editHeadline,    setEditHeadline]    = useState('');
+  const [editSubheadline, setEditSubheadline] = useState('');
+  const [editFeatures,    setEditFeatures]    = useState('');
+  const [editSizes,       setEditSizes]       = useState('');
+  const [editFooter,      setEditFooter]      = useState('');
+  const [editBrand,       setEditBrand]       = useState('');
 
   const sourceRef = useRef<HTMLInputElement>(null);
-  const styleRef = useRef<HTMLInputElement>(null);
+  const styleRef  = useRef<HTMLInputElement>(null);
+
+  const populateEditFields = (ld: LayoutData) => {
+    setEditHeadline(ld.headline);
+    setEditSubheadline(ld.subheadline);
+    setEditFeatures(ld.features.join('\n'));
+    setEditSizes(ld.sizes.join(', '));
+    setEditFooter(ld.footer);
+    setEditBrand(ld.brand);
+  };
+
+  const buildEditedLayout = (base: LayoutData): LayoutData => ({
+    ...base,
+    headline:    editHeadline,
+    subheadline: editSubheadline,
+    features:    editFeatures.split('\n').map(s => s.trim()).filter(Boolean),
+    sizes:       editSizes.split(',').map(s => s.trim()).filter(Boolean),
+    footer:      editFooter,
+    brand:       editBrand,
+  });
 
   const handleFile = useCallback(async (file: File, target: 'source' | 'style') => {
     if (!file.type.startsWith('image/')) return;
@@ -306,7 +320,7 @@ export function StyleTransferPanel({ onBack }: Props) {
       if (target === 'source') setSourceImage(b64);
       else setStyleImage(b64);
       setResult(''); setFluxResult(''); setError('');
-      setDominantElement(''); setDominantType(''); setExtractedText(null); setTextApplied(false);
+      setDominantType(''); setLayoutData(null); setTextApplied(false); setEditMode(false);
     } catch { /* ignore */ }
   }, []);
 
@@ -316,8 +330,8 @@ export function StyleTransferPanel({ onBack }: Props) {
     setError('');
     setResult(''); setFluxResult('');
     setPrompt(''); setPromptOpen(false);
-    setDominantElement(''); setDominantType('');
-    setExtractedText(null); setTextApplied(false);
+    setDominantType(''); setVisualMood('');
+    setLayoutData(null); setTextApplied(false); setEditMode(false);
 
     try {
       const res = await fetch('/api/photo/style-transfer', {
@@ -325,8 +339,8 @@ export function StyleTransferPanel({ onBack }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sourceImageUrl: sourceImage,
-          styleImageUrl: styleImage,
-          userNote: userNote.trim(),
+          styleImageUrl:  styleImage,
+          userNote:       userNote.trim(),
         }),
       });
       const data = await res.json();
@@ -334,28 +348,23 @@ export function StyleTransferPanel({ onBack }: Props) {
 
       const rawImage: string = data.imageUrl;
       setFluxResult(rawImage);
-      if (data.prompt) setPrompt(data.prompt);
-      if (data.sourceClothing) setSourceClothing(data.sourceClothing);
-      if (data.styleEnvironment) setStyleEnvironment(data.styleEnvironment);
-      if (data.dominantElement) setDominantElement(data.dominantElement);
+      if (data.prompt)      setPrompt(data.prompt);
       if (data.dominantType) setDominantType(data.dominantType);
+      if (data.visualMood)   setVisualMood(data.visualMood);
 
-      // ── Auto-composite text if text overlay detected ──────────────────
-      if (
-        data.dominantType === 'text_overlay' &&
-        data.extractedText &&
-        (data.extractedText.headline || data.extractedText.bodyText)
-      ) {
-        // Apply userNote substitutions client-side (reliable, instant)
-        const modifiedText = applyUserNoteToText(data.extractedText, userNote);
-        setExtractedText(modifiedText);
+      // ── Canvas compositing if layout data received ─────────────────────
+      if (data.dominantType === 'text_overlay' && data.layoutData) {
+        // Apply userNote substitutions client-side
+        const ld: LayoutData = applyNoteToLayout(data.layoutData, userNote);
+        setLayoutData(ld);
+        populateEditFields(ld);
         setIsCompositing(true);
         try {
-          const composed = await composeTextOverlay(rawImage, modifiedText);
+          const composed = await composeLayout(rawImage, ld);
           setResult(composed);
           setTextApplied(true);
         } catch {
-          setResult(rawImage); // fallback to raw FLUX
+          setResult(rawImage);
         } finally {
           setIsCompositing(false);
         }
@@ -369,34 +378,35 @@ export function StyleTransferPanel({ onBack }: Props) {
     }
   };
 
-  // Manually re-apply / remove text compositing
-  const handleToggleText = async () => {
-    if (!fluxResult || !extractedText) return;
-    if (textApplied) {
-      setResult(fluxResult);
-      setTextApplied(false);
-    } else {
-      setIsCompositing(true);
-      try {
-        const composed = await composeTextOverlay(fluxResult, extractedText);
-        setResult(composed);
-        setTextApplied(true);
-      } catch { /* ignore */ } finally {
-        setIsCompositing(false);
-      }
+  // Re-composite with current edited fields
+  const handleApplyEdits = async () => {
+    if (!fluxResult || !layoutData) return;
+    const edited = buildEditedLayout(layoutData);
+    setIsCompositing(true);
+    try {
+      const composed = await composeLayout(fluxResult, edited);
+      setResult(composed);
+      setTextApplied(true);
+      setLayoutData(edited);
+    } catch { /* ignore */ } finally {
+      setIsCompositing(false);
     }
   };
 
-  // ── Upload zone ─────────────────────────────────────────────────────────────
-  const UploadZone = ({
-    label, sublabel, badge, image, inputRef, target,
-  }: {
-    label: string;
-    sublabel: string;
-    badge: string;
-    image: string;
-    inputRef: RefObject<HTMLInputElement | null>;
-    target: 'source' | 'style';
+  const handleShowFlux = () => { setResult(fluxResult); setTextApplied(false); };
+
+  const handleShowComposed = async () => {
+    if (!fluxResult || !layoutData) return;
+    setIsCompositing(true);
+    try {
+      const composed = await composeLayout(fluxResult, layoutData);
+      setResult(composed); setTextApplied(true);
+    } catch { /* ignore */ } finally { setIsCompositing(false); }
+  };
+
+  const UploadZone = ({ label, sublabel, badge, image, inputRef, target }: {
+    label: string; sublabel: string; badge: string; image: string;
+    inputRef: RefObject<HTMLInputElement | null>; target: 'source' | 'style';
   }) => (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -443,12 +453,14 @@ export function StyleTransferPanel({ onBack }: Props) {
   );
 
   const isBusy = isGenerating || isCompositing;
-  const dtInfo = dominantType ? DOMINANT_TYPE_LABEL[dominantType] : null;
+  const dominantLabel: Record<string, string> = {
+    text_overlay: 'Инфографика / текст', background: 'Фон и окружение', lighting: 'Свет и цвет',
+  };
 
   return (
     <div className="w-full max-w-6xl mx-auto">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={onBack} className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm">
           <ArrowLeft className="h-4 w-4" />Назад
@@ -457,35 +469,37 @@ export function StyleTransferPanel({ onBack }: Props) {
         <Wand2 className="h-4 w-4 text-purple-400" />
         <h2 className="text-base font-semibold text-white">Перенос стиля</h2>
         <span className="text-xs text-slate-600 hidden md:block">
-          — AI определит главный элемент фото 2 и перенесёт его на фото 1
+          — Qwen анализирует стиль → FLUX генерирует визуал → Canvas накладывает текст
         </span>
       </div>
 
-      {/* ── Hint ── */}
+      {/* Hint */}
       <div className="rounded-xl border border-purple-800/30 bg-purple-900/10 px-4 py-3 mb-6 flex items-start gap-3">
         <Wand2 className="h-4 w-4 text-purple-400 mt-0.5 shrink-0" />
         <p className="text-xs text-slate-400 leading-relaxed">
-          <span className="text-purple-300 font-medium">Как работает:</span> Qwen OCR считывает текст с фото 2,
-          FLUX воссоздаёт визуальный стиль, Canvas накладывает правильный текст — без искажений кириллицы.
+          <span className="text-purple-300 font-medium">Как работает:</span>{' '}
+          Qwen анализирует визуальный стиль, цвета, layout и текст референса.
+          FLUX генерирует чистое фото в этом стиле без текста.
+          Canvas накладывает текст из референса с правильной типографикой.
         </p>
       </div>
 
-      {/* ── 3-column layout ── */}
+      {/* 3-column layout */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-4 items-start mb-5">
 
         <UploadZone label="Исходное фото" sublabel="Одежда и модель сохранятся"
           badge="Фото 1" image={sourceImage} inputRef={sourceRef} target="source" />
 
         <div className="hidden md:flex flex-col items-center justify-center pt-28 px-1 gap-1">
-          <ArrowRight className="h-6 w-6 text-slate-600" />
-          <span className="text-[10px] text-slate-700 text-center leading-tight">главный<br/>элемент</span>
+          <ArrowRight className="h-5 w-5 text-slate-600" />
+          <span className="text-[10px] text-slate-700 text-center leading-tight">стиль</span>
         </div>
 
-        <UploadZone label="Стиль (референс)" sublabel="Отсюда возьмётся самый заметный элемент"
+        <UploadZone label="Стиль (референс)" sublabel="Полный стиль будет перенесён на фото 1"
           badge="Фото 2" image={styleImage} inputRef={styleRef} target="style" />
 
         <div className="hidden md:flex flex-col items-center justify-center pt-28 px-1 gap-1">
-          <ArrowRight className="h-6 w-6 text-slate-600" />
+          <ArrowRight className="h-5 w-5 text-slate-600" />
           <span className="text-[10px] text-slate-700 text-center leading-tight">результат</span>
         </div>
 
@@ -496,20 +510,16 @@ export function StyleTransferPanel({ onBack }: Props) {
               Результат
             </span>
             <p className="text-sm font-semibold text-white">Готовое фото</p>
-            {textApplied && (
-              <span className="text-[10px] flex items-center gap-1 text-emerald-400">
-                <Check className="h-3 w-3" />Текст наложен
-              </span>
-            )}
+            {textApplied && <span className="text-[10px] flex items-center gap-1 text-emerald-400"><Check className="h-3 w-3" />Текст наложен</span>}
           </div>
 
-          {dtInfo ? (
-            <div className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full border ${dtInfo.color}`}>
-              {dtInfo.icon}<span>Применено: {dtInfo.label}</span>
+          {dominantType && (
+            <div className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full border text-purple-400 border-purple-500/30 bg-purple-500/10">
+              <ImageIcon className="h-3 w-3" />
+              <span>{dominantLabel[dominantType] ?? dominantType}</span>
             </div>
-          ) : (
-            <p className="text-xs text-slate-500">Одежда из фото 1 + стиль из фото 2</p>
           )}
+          {visualMood && <p className="text-[10px] text-slate-600 leading-relaxed">{visualMood}</p>}
 
           <div className="relative rounded-2xl border border-slate-700/50 bg-slate-900 w-full aspect-[3/4] flex items-center justify-center overflow-hidden">
             {isBusy ? (
@@ -517,8 +527,9 @@ export function StyleTransferPanel({ onBack }: Props) {
                 <Loader2 className="h-10 w-10 animate-spin text-purple-400 mx-auto mb-3" />
                 {isCompositing
                   ? <><p className="text-sm text-slate-400 font-medium">Накладываю текст...</p><p className="text-xs text-slate-600 mt-1">Canvas compositing</p></>
-                  : <><p className="text-sm text-slate-400 font-medium">Анализирую и генерирую...</p><p className="text-xs text-slate-600 mt-1.5">OCR → FLUX → Canvas</p><p className="text-xs text-slate-700 mt-0.5">~40–80 сек</p></>
-                }
+                  : <><p className="text-sm text-slate-400 font-medium">Анализирую и генерирую...</p>
+                     <p className="text-xs text-slate-600 mt-1">Qwen → FLUX → Canvas</p>
+                     <p className="text-xs text-slate-700 mt-0.5">~40–90 сек</p></>}
               </div>
             ) : result ? (
               <img src={result} alt="Результат" className="w-full h-full object-contain" />
@@ -533,56 +544,94 @@ export function StyleTransferPanel({ onBack }: Props) {
             )}
           </div>
 
-          {/* Buttons under result */}
           {result && !isBusy && (
             <div className="space-y-1.5">
               <a href={result} download="style-transfer.jpg" target="_blank" rel="noreferrer"
                 className="flex items-center justify-center gap-2 w-full rounded-xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 text-xs text-slate-400 hover:text-white transition-all py-2.5">
                 ⬇ Скачать результат
               </a>
-              {/* Toggle text compositing */}
-              {extractedText && (extractedText.headline || extractedText.bodyText) && (
-                <button onClick={handleToggleText}
-                  className={`w-full text-xs rounded-xl border py-2 transition-all ${
-                    textApplied
-                      ? 'border-emerald-700/40 text-emerald-400 hover:bg-emerald-900/10'
-                      : 'border-purple-700/40 text-purple-400 hover:bg-purple-900/10'
-                  }`}>
-                  {textApplied ? '✕ Убрать текст (FLUX версия)' : '✓ Наложить правильный текст'}
-                </button>
+              {layoutData && (
+                <div className="flex gap-1.5">
+                  <button onClick={textApplied ? handleShowFlux : handleShowComposed}
+                    className={`flex-1 text-xs rounded-xl border py-2 transition-all ${
+                      textApplied
+                        ? 'border-slate-700/40 text-slate-500 hover:bg-slate-800/20'
+                        : 'border-purple-700/40 text-purple-400 hover:bg-purple-900/10'
+                    }`}>
+                    {textApplied ? '⊡ Только FLUX (без текста)' : '✦ Наложить текст'}
+                  </button>
+                  <button onClick={() => setEditMode(e => !e)}
+                    className={`px-3 text-xs rounded-xl border py-2 transition-all ${
+                      editMode ? 'border-amber-700/40 text-amber-400 bg-amber-900/10' : 'border-slate-700/40 text-slate-500 hover:bg-slate-800/20'
+                    }`}>
+                    <Edit3 className="h-3 w-3" />
+                  </button>
+                </div>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* ── User note input ── */}
+      {/* ── Text editor (shown when editMode) ── */}
+      {editMode && layoutData && !isBusy && (
+        <div className="rounded-xl border border-amber-800/30 bg-amber-900/10 p-4 mb-4">
+          <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3">✏ Редактор текста</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              { label: 'Бренд', value: editBrand, set: setEditBrand, rows: 1 },
+              { label: 'Заголовок', value: editHeadline, set: setEditHeadline, rows: 1 },
+              { label: 'Подзаголовок', value: editSubheadline, set: setEditSubheadline, rows: 1 },
+              { label: 'Подпись', value: editFooter, set: setEditFooter, rows: 1 },
+            ].map(({ label, value, set, rows }) => (
+              <div key={label}>
+                <label className="text-[10px] text-slate-500 font-semibold uppercase mb-1 block">{label}</label>
+                <textarea value={value} onChange={e => set(e.target.value)} rows={rows}
+                  className="w-full rounded-lg border border-slate-700/50 bg-slate-800/60 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50 resize-none" />
+              </div>
+            ))}
+            <div>
+              <label className="text-[10px] text-slate-500 font-semibold uppercase mb-1 block">Характеристики (каждая с новой строки)</label>
+              <textarea value={editFeatures} onChange={e => setEditFeatures(e.target.value)} rows={4}
+                className="w-full rounded-lg border border-slate-700/50 bg-slate-800/60 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50 resize-none" />
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-500 font-semibold uppercase mb-1 block">Размеры (через запятую)</label>
+              <textarea value={editSizes} onChange={e => setEditSizes(e.target.value)} rows={1}
+                className="w-full rounded-lg border border-slate-700/50 bg-slate-800/60 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50 resize-none" />
+            </div>
+          </div>
+          <Button onClick={handleApplyEdits} disabled={isBusy}
+            className="mt-3 w-full bg-amber-600 hover:bg-amber-500 text-white text-xs rounded-xl h-9">
+            {isCompositing ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Применяю...</> : '✓ Применить текст'}
+          </Button>
+        </div>
+      )}
+
+      {/* User note */}
       <div className="rounded-xl border border-slate-700/50 bg-slate-800/20 p-4 mb-4">
         <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
           Дополнительные пожелания
-          <span className="ml-2 text-[10px] font-normal text-slate-600 normal-case tracking-normal">(добавится к промпту)</span>
+          <span className="ml-2 text-[10px] font-normal text-slate-600 normal-case tracking-normal">(до генерации)</span>
         </label>
-        <textarea
-          value={userNote}
-          onChange={e => setUserNote(e.target.value)}
-          placeholder="Например: изменить название бренда на NS DREAM, добавить розовый бейдж SALE..."
+        <textarea value={userNote} onChange={e => setUserNote(e.target.value)}
+          placeholder={`замени "BRAND NAME" на "NS DREAM"\nубери "ненужная фраза" из текста`}
           rows={2}
-          className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500/60 resize-none"
-        />
+          className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500/60 resize-none" />
         {userNote.trim() && (
           <p className="text-[10px] text-purple-400/80 mt-1.5 flex items-center gap-1">
             <Wand2 className="h-3 w-3" />
             {dominantType === 'text_overlay'
-              ? 'Будет применено к тексту (замени "X" на "Y", убери "X" из текста)'
+              ? 'Будет применено к тексту карточки (Canvas)'
               : 'Будет добавлено к промпту FLUX'}
           </p>
         )}
       </div>
 
-      {/* ── Generate button ── */}
+      {/* Generate button */}
       <Button onClick={handleGenerate} disabled={!sourceImage || !styleImage || isBusy}
         className="w-full bg-gradient-to-r from-purple-500 to-violet-600 hover:opacity-90 text-white font-semibold rounded-xl h-12 mb-4 disabled:opacity-40">
-        {isGenerating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Генерирую... (~40–80 сек)</>
+        {isGenerating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Анализирую и генерирую... (~50–90 сек)</>
           : isCompositing ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Накладываю текст...</>
           : <><Wand2 className="h-4 w-4 mr-2" />Применить стиль</>}
       </Button>
@@ -595,74 +644,12 @@ export function StyleTransferPanel({ onBack }: Props) {
         </p>
       )}
 
-      {/* ── Error ── */}
+      {/* Error */}
       {error && (
         <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-4 py-3 text-sm text-red-400 mb-4">{error}</div>
       )}
 
-      {/* ── Extracted text (OCR result) ── */}
-      {extractedText && (extractedText.headline || extractedText.bodyText) && (
-        <div className="rounded-xl border border-amber-800/30 bg-amber-900/10 p-4 mb-3">
-          <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider mb-2">
-            📖 Текст считан с фото 2 (OCR)
-          </p>
-          <div className="space-y-1.5">
-            {extractedText.brandText && (
-              <div className="flex gap-2 text-xs">
-                <span className="text-slate-600 shrink-0 w-16">Бренд</span>
-                <span className="text-white font-mono">{extractedText.brandText}</span>
-              </div>
-            )}
-            {extractedText.headline && (
-              <div className="flex gap-2 text-xs">
-                <span className="text-slate-600 shrink-0 w-16">Заголовок</span>
-                <span className="text-white font-semibold">{extractedText.headline}</span>
-              </div>
-            )}
-            {extractedText.bodyText && (
-              <div className="flex gap-2 text-xs">
-                <span className="text-slate-600 shrink-0 w-16">Текст</span>
-                <span className="text-slate-300 leading-relaxed">{extractedText.bodyText}</span>
-              </div>
-            )}
-            {extractedText.footerText && (
-              <div className="flex gap-2 text-xs">
-                <span className="text-slate-600 shrink-0 w-16">Подпись</span>
-                <span className="text-slate-400 italic">{extractedText.footerText}</span>
-              </div>
-            )}
-            {extractedText.badgeText && (
-              <div className="flex gap-2 text-xs items-center">
-                <span className="text-slate-600 shrink-0 w-16">Бейдж</span>
-                <span className="px-2 py-0.5 rounded text-white text-[10px] font-bold"
-                  style={{ backgroundColor: extractedText.badgeColor || '#FF1493' }}>
-                  {extractedText.badgeText}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Analysis summary ── */}
-      {(dominantElement || sourceClothing) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-          {dominantElement && (
-            <div className="rounded-xl border border-slate-700/40 bg-slate-800/20 px-3 py-2.5">
-              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Главный элемент</p>
-              <p className="text-xs text-slate-300">{dominantElement}</p>
-            </div>
-          )}
-          {styleEnvironment && (
-            <div className="rounded-xl border border-purple-800/30 bg-purple-900/10 px-3 py-2.5">
-              <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wider mb-1">Что применено</p>
-              <p className="text-xs text-slate-400">{styleEnvironment}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── FLUX prompt collapsible ── */}
+      {/* FLUX prompt collapsible */}
       {prompt && (
         <div className="rounded-xl border border-slate-700/40 bg-slate-800/20 overflow-hidden">
           <button onClick={() => setPromptOpen(p => !p)}
@@ -677,6 +664,9 @@ export function StyleTransferPanel({ onBack }: Props) {
           )}
         </div>
       )}
+
+      {/* Suppress unused import warnings */}
+      <span className="hidden"><Sun className="h-0 w-0" /></span>
     </div>
   );
 }

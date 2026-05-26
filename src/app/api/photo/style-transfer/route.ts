@@ -42,166 +42,51 @@ function tryParse<T>(content: string): T | null {
   return null;
 }
 
-/** Extract a single string field from raw content via regex */
 function field(content: string, key: string): string {
   const m = content.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
   return m ? m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').trim() : '';
 }
 
-/** Extract a number field */
-function fieldNum(content: string, key: string): number | null {
-  const m = content.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`));
-  return m ? parseInt(m[1], 10) : null;
-}
-
-// ── Prompt 1: SOURCE image → WHAT TO PRESERVE ─────────────────────────────
-// Qwen just describes what it sees — no FLUX instructions, just facts.
+// ── Prompt 1: SOURCE → clothing description ──────────────────────────────────
 const SOURCE_PROMPT = `Look at this fashion/product photo and describe the clothing in detail.
-
 Return ONLY valid JSON (no markdown):
 {
-  "preserve": "comma-separated English list of every clothing item with exact color, cut, fabric; accessories; visible body parts and pose"
+  "preserve": "comma-separated English list: every clothing item with exact color, cut, fabric; accessories; visible body parts and pose"
 }
+Example: "loose oversized white linen shirt, wide-leg white trousers, leopard turban, black sunglasses, pearl earrings, tan slides"`;
 
-Example preserve value: "loose oversized white linen long-sleeve shirt open collar, wide-leg high-waist white linen trousers, leopard-print turban headband, black oval sunglasses, pearl earrings, tan leather flat slides, black sports bra visible, right hand on hip"`;
-
-// ── Prompt 2a: STYLE image → deep visual analysis for full style transfer ──────
-const STYLE_VISUAL_PROMPT = `You are analyzing a fashion/product photo as a style reference for AI image editing.
-Describe EVERYTHING needed to recreate this visual style on a different photo.
-Return ONLY valid JSON (no markdown, no nested objects, all values plain strings):
+// ── Prompt 2: STYLE → comprehensive analysis (visual + layout + text) ─────────
+const STYLE_ANALYSIS_PROMPT = `Analyze this product/fashion photo comprehensively for style transfer.
+Return ONLY valid JSON (no markdown, no nested objects, all values are plain strings):
 
 {
   "dominantType": "text_overlay",
-  "backgroundDescription": "EXACT background: colors with names/hex, gradient direction, texture, materials, props, atmosphere",
-  "colorPalette": "3-5 dominant colors as specific names (e.g. warm golden-amber, cream, deep brown)",
-  "lightingDescription": "lighting: direction, quality, color temperature, shadows",
-  "layoutDescription": "composition layout: where is the model, where are text panels, how is space divided",
-  "graphicElements": "ALL decorative/graphic elements: arrows, lines, boxes, badges, icons, frames, dividers — describe each",
-  "textPanelDescription": "describe text panels: position (left/right/center/top/bottom), size relative to image, style (white box / semi-transparent / colored)",
-  "overallMood": "overall visual style in one sentence (e.g. luxury editorial infographic, clean minimalist product card)",
-  "textBoxPosition": "center",
-  "textBoxWidthPct": "55",
-  "badgePosition": "bottom-right"
+  "visualBackground": "exact background: specific colors, gradient direction, texture, atmosphere, setting, props",
+  "visualLighting": "lighting: direction, quality, color temperature, shadows",
+  "visualColorPalette": "3-5 specific color names (e.g. warm amber, ivory, charcoal)",
+  "visualMood": "overall aesthetic in one sentence (e.g. luxury editorial infographic, clean minimalist)",
+  "layoutType": "right-panel",
+  "layoutPanelSide": "right",
+  "layoutPanelWidthPct": "45",
+  "layoutPanelColor": "#FFFFFF",
+  "layoutPanelOpacity": "0.95",
+  "textHeadline": "exact main title or heading text",
+  "textSubheadline": "exact subtitle text",
+  "textFeatures": "feature 1 | feature 2 | feature 3",
+  "textSizes": "S | M | L",
+  "textFooter": "exact footer or signature text",
+  "textBrand": "exact brand or company name"
 }
 
-RULES for dominantType:
-- "text_overlay": ANY image with text elements (infographics, notices, product cards, labels, feature lists, titles) — even stylized
-- "background": ONLY if zero text and background/setting is the main feature
-- "lighting": ONLY if zero text and special lighting is the only feature
-When unsure — choose "text_overlay".`;
-
-// ── Prompt 2b: STYLE image → OCR only ────────────────────────────────────────
-const STYLE_OCR_PROMPT = `You are an expert OCR engine. Extract EVERY word of text from this image.
-
-This may include: stylized titles, italic text, decorative fonts, product feature lists, size charts, arrows with labels, brand names, captions.
-
-Return ONLY valid JSON (no markdown):
-{
-  "headline": "largest/most prominent text, word for word",
-  "body": "ALL other text joined with space — features, descriptions, labels, size info",
-  "footer": "footer or signature text",
-  "badge": "badge or tag text",
-  "brand": "brand or company name"
-}
-
-- Copy EXACTLY — no paraphrasing
-- Russian/Cyrillic text is expected and valid
-- If ANY text is visible: headline OR body MUST be non-empty
-- Use "" only if truly no text for that field`;
-
-// Fallback OCR prompt
-const STYLE_OCR_FALLBACK_PROMPT = `List every word of text you can see in this image, top to bottom.
-Return ONLY valid JSON:
-{
-  "headline": "first or largest text",
-  "body": "all remaining text combined",
-  "footer": "",
-  "badge": "",
-  "brand": ""
-}`;
-
-// ── Build FLUX [CHANGE] instruction server-side ────────────────────────────
-interface StyleFacts {
-  dominantType?: string;
-  dominantElement?: string;
-  styleEnvironment?: string;
-  backgroundDescription?: string;
-  lightingDescription?: string;
-  colorPalette?: string;
-  layoutDescription?: string;
-  graphicElements?: string;
-  textPanelDescription?: string;
-  overallMood?: string;
-  textBoxPosition?: string;
-  textBoxWidthPct?: string;
-  badgePosition?: string;
-  ocr_headline?: string;
-  ocr_body?: string;
-  ocr_footer?: string;
-  ocr_badge?: string;
-  ocr_badge_color?: string;
-  ocr_brand?: string;
-}
-
-function buildChangeInstruction(f: StyleFacts): string {
-  const dt = (f.dominantType || '').toLowerCase();
-
-  if (dt === 'text_overlay') {
-    // Full style transfer: background + layout + graphic elements + empty text areas
-    const parts: string[] = [];
-
-    parts.push(`Transform this photo into the visual style of the reference image.`);
-
-    if (f.backgroundDescription) parts.push(`Background: ${f.backgroundDescription}.`);
-    if (f.colorPalette)          parts.push(`Color palette: ${f.colorPalette}.`);
-    if (f.lightingDescription)   parts.push(`Lighting: ${f.lightingDescription}.`);
-    if (f.layoutDescription)     parts.push(`Layout: ${f.layoutDescription}.`);
-    if (f.graphicElements)       parts.push(`Graphic elements to add: ${f.graphicElements}.`);
-    if (f.textPanelDescription)  parts.push(`Text panels: add empty placeholder areas matching this description — ${f.textPanelDescription} — leave them COMPLETELY BLANK (no text).`);
-    else {
-      const pos = f.textBoxPosition || 'right';
-      const w   = f.textBoxWidthPct || '50';
-      parts.push(`Add empty clean text placeholder area at ${pos}, approximately ${w}% of image width — no text inside.`);
-    }
-    if (f.overallMood) parts.push(`Overall style: ${f.overallMood}.`);
-    parts.push(`Keep the model and all clothing UNCHANGED.`);
-
-    return parts.join(' ');
-  }
-
-  if (dt === 'background') {
-    const bg = [f.backgroundDescription, f.colorPalette, f.lightingDescription, f.overallMood]
-      .filter(Boolean).join(', ');
-    return bg
-      ? `Replace the background with: ${bg}. Keep the model and clothing perfectly unchanged.`
-      : `Apply the visual style and atmosphere from the reference image. Keep the model and clothing perfectly unchanged.`;
-  }
-
-  if (dt === 'lighting') {
-    const light = [f.lightingDescription, f.colorPalette, f.overallMood].filter(Boolean).join(', ');
-    return `Apply this lighting treatment: ${light || 'similar lighting from reference'}. Keep everything else unchanged.`;
-  }
-
-  if (dt === 'graphic_badge') {
-    return `Apply the graphic overlay style from the reference: ${f.graphicElements || f.overallMood || 'reference graphic elements'}. Keep clothing unchanged.`;
-  }
-
-  // Universal fallback
-  const desc = [f.backgroundDescription, f.colorPalette, f.layoutDescription, f.overallMood]
-    .filter(Boolean).join(', ');
-  return `Apply the complete visual style of the reference image: ${desc || 'match reference visual style'}. Keep model and clothing unchanged.`;
-}
-
-function buildSceneInstruction(f: StyleFacts): string {
-  const dt = (f.dominantType || '').toLowerCase();
-  if (dt === 'text_overlay') {
-    return [f.overallMood, f.backgroundDescription].filter(Boolean).join('. ') || '';
-  }
-  if (dt === 'background') return f.backgroundDescription || f.overallMood || '';
-  return f.overallMood || f.styleEnvironment || '';
-}
-
-
+RULES:
+- dominantType: "text_overlay" if ANY text present, "background" if zero text, "lighting" if special lighting only
+- layoutType: "right-panel" (text right side), "left-panel" (text left), "center-overlay" (centered text box), "bottom-panel" (text at bottom)
+- layoutPanelSide: "right", "left", "center", "bottom"
+- layoutPanelWidthPct: for panels 30–55, for center-overlay 60–85
+- Copy ALL text EXACTLY character by character — Russian Cyrillic text is expected
+- textFeatures: separate features with " | "
+- textSizes: separate sizes with " | "
+- Set "" for absent fields`;
 
 async function callQwen(
   apiKey: string,
@@ -228,7 +113,7 @@ async function callQwen(
         },
       ],
       max_tokens: maxTokens,
-      temperature: 0.15,
+      temperature: 0.1,
     }),
   });
   if (!resp.ok) {
@@ -239,22 +124,75 @@ async function callQwen(
   return data?.choices?.[0]?.message?.content ?? '';
 }
 
+interface StyleFacts {
+  dominantType?: string;
+  visualBackground?: string;
+  visualLighting?: string;
+  visualColorPalette?: string;
+  visualMood?: string;
+  layoutType?: string;
+  layoutPanelSide?: string;
+  layoutPanelWidthPct?: string;
+  layoutPanelColor?: string;
+  layoutPanelOpacity?: string;
+  textHeadline?: string;
+  textSubheadline?: string;
+  textFeatures?: string;
+  textSizes?: string;
+  textFooter?: string;
+  textBrand?: string;
+}
+
+export interface LayoutData {
+  panelSide: string;       // 'left' | 'right' | 'center' | 'bottom'
+  panelWidthPct: number;
+  panelColor: string;
+  panelOpacity: number;
+  headline: string;
+  subheadline: string;
+  features: string[];
+  sizes: string[];
+  footer: string;
+  brand: string;
+}
+
+function buildFluxPrompt(preserve: string, f: StyleFacts, userNote: string): string {
+  const visualDesc = [
+    f.visualBackground,
+    f.visualLighting,
+    f.visualColorPalette ? `Color palette: ${f.visualColorPalette}` : '',
+    f.visualMood,
+  ].filter(Boolean).join('. ');
+
+  let prompt =
+    `[PRESERVE] Keep EXACTLY unchanged: ${preserve} ` +
+    `[CHANGE] Apply the complete visual style from the reference image to this photo: ${visualDesc || 'match the reference visual style and atmosphere'}. ` +
+    `CRITICAL RULE: Do NOT generate ANY text, letters, words, numbers, labels, symbols, or typographic elements on the image. ` +
+    `The result must be a completely text-free clean photograph. ` +
+    `[QUALITY] Professional fashion photography, Canon EOS R5, 50mm f/1.8, natural light, no AI artifacts.`;
+
+  if (userNote && f.dominantType !== 'text_overlay') {
+    prompt += ` [USER] ${userNote}`;
+  }
+  return prompt;
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const sourceImageUrl: string = body?.sourceImageUrl ?? '';
-  const styleImageUrl: string = body?.styleImageUrl ?? '';
-  const userNote: string = (body?.userNote ?? '').trim();
+  const styleImageUrl: string  = body?.styleImageUrl  ?? '';
+  const userNote: string       = (body?.userNote ?? '').trim();
 
   if (!sourceImageUrl || !styleImageUrl) {
     return Response.json({ error: 'sourceImageUrl и styleImageUrl обязательны' }, { status: 400 });
   }
 
-  const yandexKey = (process.env.YANDEX_API_KEY ?? '').trim();
-  const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
-  const sfKey = (process.env.SILICONFLOW_API_KEY ?? '').trim();
+  const yandexKey = (process.env.YANDEX_API_KEY    ?? '').trim();
+  const folderId  = (process.env.YANDEX_FOLDER_ID  ?? 'b1g2kv9g5q3fstk360sa').trim();
+  const sfKey     = (process.env.SILICONFLOW_API_KEY ?? '').trim();
 
   if (!yandexKey) return Response.json({ error: 'YANDEX_API_KEY не задан' }, { status: 500 });
-  if (!sfKey) return Response.json({ error: 'SILICONFLOW_API_KEY не задан' }, { status: 500 });
+  if (!sfKey)     return Response.json({ error: 'SILICONFLOW_API_KEY не задан' }, { status: 500 });
 
   try {
     // ── Step 1: Convert images ─────────────────────────────────────────────
@@ -264,151 +202,61 @@ export async function POST(req: NextRequest) {
     ]);
     console.log(`[style-transfer] src=${Math.round(sourceData.length / 1024)}KB sty=${Math.round(styleData.length / 1024)}KB`);
 
-    // ── Step 2: THREE Qwen calls in parallel ─────────────────────────────
-    // source → clothing, style-visual → classification, style-ocr → text extraction
-    const qwenAc = new AbortController();
+    // ── Step 2: Two parallel Qwen calls ───────────────────────────────────
+    const qwenAc    = new AbortController();
     const qwenTimer = setTimeout(() => qwenAc.abort(), 40_000);
 
-    const [sourceContent, styleVisualContent, styleOcrContent] = await Promise.all([
-      callQwen(yandexKey, folderId, SOURCE_PROMPT,       sourceData, qwenAc.signal, 500),
-      callQwen(yandexKey, folderId, STYLE_VISUAL_PROMPT, styleData,  qwenAc.signal, 600),
-      callQwen(yandexKey, folderId, STYLE_OCR_PROMPT,    styleData,  qwenAc.signal, 800),
+    const [sourceContent, styleContent] = await Promise.all([
+      callQwen(yandexKey, folderId, SOURCE_PROMPT,         sourceData, qwenAc.signal, 500),
+      callQwen(yandexKey, folderId, STYLE_ANALYSIS_PROMPT, styleData,  qwenAc.signal, 1200),
     ]);
     clearTimeout(qwenTimer);
 
-    console.log(`[style-transfer] src_len=${sourceContent.length} vis_len=${styleVisualContent.length} ocr_len=${styleOcrContent.length}`);
-    console.log(`[style-transfer] vis_raw(200): ${styleVisualContent.slice(0, 200)}`);
-    console.log(`[style-transfer] ocr_raw(200): ${styleOcrContent.slice(0, 200)}`);
+    console.log(`[style-transfer] src_len=${sourceContent.length} sty_len=${styleContent.length}`);
+    console.log(`[style-transfer] sty_raw(300): ${styleContent.slice(0, 300)}`);
 
-    // ── Parse source: preserve ────────────────────────────────────────────
+    // ── Parse source: clothing to preserve ───────────────────────────────
     const srcParsed = tryParse<{ preserve?: string }>(sourceContent);
-    const preserve =
+    const preserve  =
       srcParsed?.preserve?.trim() ||
       field(sourceContent, 'preserve') ||
       'all clothing items and accessories from the original photo';
 
-    // ── Parse style visual: classification facts ──────────────────────────
-    interface VisualFacts {
-      dominantType?: string; dominantElement?: string; styleEnvironment?: string;
-      backgroundDescription?: string; lightingDescription?: string; colorPalette?: string;
-      layoutDescription?: string; graphicElements?: string;
-      textPanelDescription?: string; overallMood?: string;
-      textBoxPosition?: string; textBoxWidthPct?: string; badgePosition?: string;
-    }
-    const visualParsed: VisualFacts = tryParse<VisualFacts>(styleVisualContent) ?? {};
-    if (!visualParsed.dominantType) {
-      visualParsed.dominantType          = field(styleVisualContent, 'dominantType');
-      visualParsed.dominantElement       = field(styleVisualContent, 'dominantElement');
-      visualParsed.styleEnvironment      = field(styleVisualContent, 'styleEnvironment');
-      visualParsed.backgroundDescription = field(styleVisualContent, 'backgroundDescription');
-      visualParsed.lightingDescription   = field(styleVisualContent, 'lightingDescription');
-      visualParsed.colorPalette          = field(styleVisualContent, 'colorPalette');
-      visualParsed.layoutDescription     = field(styleVisualContent, 'layoutDescription');
-      visualParsed.graphicElements       = field(styleVisualContent, 'graphicElements');
-      visualParsed.textPanelDescription  = field(styleVisualContent, 'textPanelDescription');
-      visualParsed.overallMood           = field(styleVisualContent, 'overallMood');
-      visualParsed.textBoxPosition       = field(styleVisualContent, 'textBoxPosition');
-      visualParsed.textBoxWidthPct       = field(styleVisualContent, 'textBoxWidthPct');
-      visualParsed.badgePosition         = field(styleVisualContent, 'badgePosition');
-    }
+    // ── Parse style: comprehensive analysis ───────────────────────────────
+    const styleFacts: StyleFacts = tryParse<StyleFacts>(styleContent) ?? {};
 
-    // ── Parse style OCR: dedicated text extraction ────────────────────────
-    interface OcrFacts { headline?: string; body?: string; footer?: string; badge?: string; brand?: string; }
-    const ocrParsed: OcrFacts = tryParse<OcrFacts>(styleOcrContent) ?? {};
-    if (!ocrParsed.headline && !ocrParsed.body) {
-      ocrParsed.headline = field(styleOcrContent, 'headline');
-      ocrParsed.body     = field(styleOcrContent, 'body');
-      ocrParsed.footer   = field(styleOcrContent, 'footer');
-      ocrParsed.badge    = field(styleOcrContent, 'badge');
-      ocrParsed.brand    = field(styleOcrContent, 'brand');
-    }
-
-    console.log(`[style-transfer] ocr headline="${ocrParsed.headline?.slice(0,50)}" body="${ocrParsed.body?.slice(0,50)}"`);
-
-    // ── Fallback OCR: retry if primary returned empty ─────────────────────
-    // Qwen sometimes misses text on complex layered images — retry with simpler prompt
-    if (!ocrParsed.headline && !ocrParsed.body && !ocrParsed.badge) {
-      console.log(`[style-transfer] OCR empty — retrying with fallback prompt`);
-      try {
-        const fbAc = new AbortController();
-        const fbTimer = setTimeout(() => fbAc.abort(), 20_000);
-        const fbContent = await callQwen(yandexKey, folderId, STYLE_OCR_FALLBACK_PROMPT, styleData, fbAc.signal, 600);
-        clearTimeout(fbTimer);
-        console.log(`[style-transfer] ocr_fallback_raw(200): ${fbContent.slice(0, 200)}`);
-        const fbParsed: OcrFacts = tryParse<OcrFacts>(fbContent) ?? {};
-        if (!fbParsed.headline && !fbParsed.body) {
-          fbParsed.headline = field(fbContent, 'headline');
-          fbParsed.body     = field(fbContent, 'body');
-        }
-        if (fbParsed.headline) ocrParsed.headline = fbParsed.headline;
-        if (fbParsed.body)     ocrParsed.body     = fbParsed.body;
-        if (fbParsed.footer)   ocrParsed.footer   = fbParsed.footer;
-        if (fbParsed.badge)    ocrParsed.badge    = fbParsed.badge;
-        if (fbParsed.brand)    ocrParsed.brand    = fbParsed.brand;
-        console.log(`[style-transfer] ocr fallback headline="${ocrParsed.headline?.slice(0,50)}"`);
-      } catch (e) {
-        console.log(`[style-transfer] OCR fallback failed (non-fatal): ${e}`);
+    // Regex fallback for each field
+    const styleFields: (keyof StyleFacts)[] = [
+      'dominantType', 'visualBackground', 'visualLighting', 'visualColorPalette', 'visualMood',
+      'layoutType', 'layoutPanelSide', 'layoutPanelWidthPct', 'layoutPanelColor', 'layoutPanelOpacity',
+      'textHeadline', 'textSubheadline', 'textFeatures', 'textSizes', 'textFooter', 'textBrand',
+    ];
+    if (!styleFacts.dominantType) {
+      for (const k of styleFields) {
+        if (!styleFacts[k]) (styleFacts as Record<string, string>)[k] = field(styleContent, k);
       }
     }
 
-    // ── Merge into StyleFacts ─────────────────────────────────────────────
-    const styleFacts: StyleFacts = {
-      dominantType:         visualParsed.dominantType,
-      dominantElement:      visualParsed.dominantElement,
-      styleEnvironment:     visualParsed.styleEnvironment,
-      backgroundDescription:visualParsed.backgroundDescription,
-      lightingDescription:  visualParsed.lightingDescription,
-      colorPalette:         visualParsed.colorPalette,
-      textBoxPosition:      visualParsed.textBoxPosition,
-      textBoxWidthPct:      visualParsed.textBoxWidthPct,
-      badgePosition:        visualParsed.badgePosition,
-      layoutDescription:    visualParsed.layoutDescription,
-      graphicElements:      visualParsed.graphicElements,
-      textPanelDescription: visualParsed.textPanelDescription,
-      overallMood:          visualParsed.overallMood,
-      ocr_headline: ocrParsed.headline,
-      ocr_body:     ocrParsed.body,
-      ocr_footer:   ocrParsed.footer,
-      ocr_badge:    ocrParsed.badge,
-      ocr_brand:    ocrParsed.brand,
-    };
-
-    // OCR text presence overrides dominantType — dedicated OCR call is ground truth
-    if (styleFacts.ocr_headline || styleFacts.ocr_body || styleFacts.ocr_badge) {
+    // Override dominantType based on text presence (OCR is ground truth)
+    const hasText = !!(styleFacts.textHeadline || styleFacts.textFeatures || styleFacts.textBrand);
+    if (hasText) {
       styleFacts.dominantType = 'text_overlay';
     } else if (!styleFacts.dominantType) {
       styleFacts.dominantType = 'background';
     }
 
-    const dominantType    = styleFacts.dominantType || 'background';
-    const dominantElement = styleFacts.dominantElement || styleFacts.styleEnvironment || '';
-    const styleEnvironment = styleFacts.styleEnvironment || '';
+    const dominantType = styleFacts.dominantType || 'background';
+    console.log(`[style-transfer] dominantType=${dominantType} headline="${styleFacts.textHeadline?.slice(0,40)}" features="${styleFacts.textFeatures?.slice(0,60)}"`);
 
-    console.log(`[style-transfer] dominantType=${dominantType} preserve_len=${preserve.length}`);
-
-    // ── Build FLUX instructions from facts ────────────────────────────────
-    // NOTE: for text_overlay, userNote text edits are applied client-side via
-    // applyUserNoteToText() in StyleTransferPanel — no server-side Qwen step needed.
-    const change = buildChangeInstruction(styleFacts);
-    const scene  = buildSceneInstruction(styleFacts);
-
-    let fluxPrompt =
-      `[PRESERVE] Keep unchanged: ${preserve} ` +
-      `[CHANGE] ${change} ` +
-      (scene ? `[SCENE] ${scene} ` : '') +
-      `[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.`;
-
-    // userNote goes to FLUX only for non-text-overlay (background/lighting changes)
-    if (userNote && dominantType !== 'text_overlay') {
-      fluxPrompt += ` [USER] Additional requirement: ${userNote}`;
-    }
-
+    // ── Build FLUX prompt — visual only, NO TEXT ──────────────────────────
+    const fluxPrompt = buildFluxPrompt(preserve, styleFacts, userNote);
     console.log(`[style-transfer] fluxPrompt_len=${fluxPrompt.length}`);
+    console.log(`[style-transfer] fluxPrompt(200): ${fluxPrompt.slice(0, 200)}`);
 
-    // ── Step 3: FLUX ───────────────────────────────────────────────────────
-    const fluxAc = new AbortController();
-    const fluxTimer = setTimeout(() => fluxAc.abort(), 55_000);
-    const fluxResp = await fetch('https://api.siliconflow.com/v1/images/generations', {
+    // ── Step 3: FLUX — generate visual style only ─────────────────────────
+    const fluxAc    = new AbortController();
+    const fluxTimer = setTimeout(() => fluxAc.abort(), 60_000);
+    const fluxResp  = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
       signal: fluxAc.signal,
       headers: { 'Authorization': `Bearer ${sfKey}`, 'Content-Type': 'application/json' },
@@ -421,7 +269,7 @@ export async function POST(req: NextRequest) {
     });
     clearTimeout(fluxTimer);
 
-    const fluxText = await fluxResp.text();
+    const fluxText   = await fluxResp.text();
     let fluxParsed: Record<string, unknown> = {};
     try { fluxParsed = JSON.parse(fluxText); } catch { /* ok */ }
 
@@ -438,28 +286,27 @@ export async function POST(req: NextRequest) {
     const dataUrl = await toBase64DataUrl(resultUrl).catch(() => null);
     console.log(`[style-transfer] done, dataUrl=${!!dataUrl}`);
 
-    // Build extractedText object for client Canvas compositing
-    const extractedText = (dominantType === 'text_overlay' && (styleFacts.ocr_headline || styleFacts.ocr_body))
-      ? {
-          headline: styleFacts.ocr_headline || '',
-          bodyText: styleFacts.ocr_body || '',
-          footerText: styleFacts.ocr_footer || '',
-          badgeText: styleFacts.ocr_badge || '',
-          badgeColor: styleFacts.ocr_badge_color || '#FF1493',
-          brandText: styleFacts.ocr_brand || '',
-          textBoxPosition: styleFacts.textBoxPosition || 'center',
-          textBoxWidthPct: (fieldNum(styleVisualContent, 'textBoxWidthPct') ?? parseInt(styleFacts.textBoxWidthPct || '75', 10)) || 75,
-        }
-      : null;
+    // ── Build layoutData for Canvas compositing ───────────────────────────
+    const layoutData: LayoutData | null = (dominantType === 'text_overlay') ? {
+      panelSide:     styleFacts.layoutPanelSide     || 'right',
+      panelWidthPct: parseInt(styleFacts.layoutPanelWidthPct || '45', 10) || 45,
+      panelColor:    styleFacts.layoutPanelColor     || '#FFFFFF',
+      panelOpacity:  parseFloat(styleFacts.layoutPanelOpacity || '0.95') || 0.95,
+      headline:      styleFacts.textHeadline         || '',
+      subheadline:   styleFacts.textSubheadline      || '',
+      features:      (styleFacts.textFeatures || '').split('|').map(s => s.trim()).filter(Boolean),
+      sizes:         (styleFacts.textSizes    || '').split('|').map(s => s.trim()).filter(Boolean),
+      footer:        styleFacts.textFooter           || '',
+      brand:         styleFacts.textBrand            || '',
+    } : null;
 
     return Response.json({
-      imageUrl: dataUrl ?? resultUrl,
-      prompt: fluxPrompt,
+      imageUrl:    dataUrl ?? resultUrl,
+      prompt:      fluxPrompt,
       sourceClothing: preserve,
-      styleEnvironment,
-      dominantElement,
       dominantType,
-      extractedText,
+      visualMood:  styleFacts.visualMood || '',
+      layoutData,
     });
 
   } catch (e) {
