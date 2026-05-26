@@ -45,26 +45,6 @@ function resizeToBase64(file: File): Promise<string> {
   });
 }
 
-/** Downscale an existing base64 image to maxSize px — used for content-moderation retry */
-function downscaleBase64(src: string, maxSize: number, quality = 0.80): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        if (width > height) { height = Math.round(height * maxSize / width); width = maxSize; }
-        else { width = Math.round(width * maxSize / height); height = maxSize; }
-      }
-      const c = document.createElement('canvas');
-      c.width = width; c.height = height;
-      c.getContext('2d')!.drawImage(img, 0, 0, width, height);
-      resolve(c.toDataURL('image/jpeg', quality));
-    };
-    img.src = src;
-  });
-}
-
-
 function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
@@ -318,23 +298,12 @@ export function StyleTransferPanel({ onBack }: Props) {
     resetResult();
 
     try {
-      let res = await callApi(sourceImage, styleImage);
-
-      // ── Auto-retry with 50% smaller image on content-moderation block ───
-      if (res.status === 451) {
-        setError('Изображение заблокировано фильтром — повторяю с уменьшенным...');
-        const [smallSrc, smallSty] = await Promise.all([
-          downscaleBase64(sourceImage, 512),
-          downscaleBase64(styleImage,  512),
-        ]);
-        res = await callApi(smallSrc, smallSty);
-        setError('');
-      }
+      const res = await callApi(sourceImage, styleImage);
 
       const data = await res.json();
       if (!res.ok) throw new Error(
         res.status === 451
-          ? 'Изображение заблокировано контент-фильтром SiliconFlow. Попробуйте другое исходное фото (без открытых зон тела).'
+          ? 'Фото заблокировано контент-фильтром. Попробуйте другое исходное фото.'
           : data.error || 'Ошибка генерации'
       );
 
