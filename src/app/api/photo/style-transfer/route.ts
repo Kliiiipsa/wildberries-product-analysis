@@ -92,12 +92,18 @@ Return ONLY valid JSON (no markdown):
   "lighting": "lighting: direction, quality, color temperature, shadow style",
   "colorPalette": "3-5 specific color names e.g. warm amber, ivory white, dusty rose",
   "mood": "overall aesthetic in one sentence",
+  "hasPanel": "yes",
+  "panelSide": "right",
+  "panelWidthPct": "40",
   "panelColor": "#F5EDD8",
   "panelOpacity": "0.95"
 }
 
-- panelColor: hex color of the text overlay panel area (if no visible panel, use the dominant background color as hex)
-- panelOpacity: how opaque is the panel, range 0.7–1.0`;
+- hasPanel: "yes" if there is a dedicated text panel/overlay area, "no" if pure photo
+- panelSide: which side the panel is on: "right" / "left" / "bottom" / "center"
+- panelWidthPct: approximate % of image width the panel takes (integer 25–80)
+- panelColor: hex color of the panel background (if no panel, use dominant background color)
+- panelOpacity: opacity 0.7–1.0`;
 
 async function callQwen(
   apiKey: string,
@@ -152,6 +158,9 @@ interface VisualFacts {
   lighting?: string;
   colorPalette?: string;
   mood?: string;
+  hasPanel?: string;
+  panelSide?: string;
+  panelWidthPct?: string;
   panelColor?: string;
   panelOpacity?: string;
 }
@@ -251,7 +260,7 @@ export async function POST(req: NextRequest) {
 
     // ── Parse visual ──────────────────────────────────────────────────────
     const visualFacts: VisualFacts = tryParse<VisualFacts>(visualContent) ?? {};
-    const visKeys: (keyof VisualFacts)[] = ['background','lighting','colorPalette','mood','panelColor','panelOpacity'];
+    const visKeys: (keyof VisualFacts)[] = ['background','lighting','colorPalette','mood','hasPanel','panelSide','panelWidthPct','panelColor','panelOpacity'];
     for (const k of visKeys) {
       if (!visualFacts[k]) (visualFacts as Record<string, string>)[k] = field(visualContent, k);
     }
@@ -300,19 +309,21 @@ export async function POST(req: NextRequest) {
     const dataUrl = await toBase64DataUrl(resultUrl).catch(() => null);
     console.log(`[style-transfer] done, dataUrl=${!!dataUrl}`);
 
-    // ── Build layoutData for Canvas compositing ───────────────────────────
-    const layoutData: LayoutData | null = hasText ? {
-      panelSide:     ocrFacts.panelSide                                         || 'right',
-      panelWidthPct: parseInt(ocrFacts.panelWidthPct   || '40', 10) || 40,
-      panelColor:    visualFacts.panelColor                                      || '#FFFFFF',
-      panelOpacity:  parseFloat(visualFacts.panelOpacity || '0.95') || 0.95,
+    // ── Build layoutData — always non-null so client editor always shows ─────
+    // Text fields may be empty if OCR failed; user fills them manually.
+    // Panel geometry comes from OCR (priority) or Visual analysis (fallback).
+    const layoutData: LayoutData = {
+      panelSide:     ocrFacts.panelSide     || visualFacts.panelSide     || 'right',
+      panelWidthPct: parseInt(ocrFacts.panelWidthPct || visualFacts.panelWidthPct || '40', 10) || 40,
+      panelColor:    visualFacts.panelColor                                      || '#F0EDE6',
+      panelOpacity:  parseFloat(visualFacts.panelOpacity || '0.95')             || 0.95,
       headline:      ocrFacts.textHeadline    || '',
       subheadline:   ocrFacts.textSubheadline || '',
       features:      (ocrFacts.textFeatures || '').split('|').map(s => s.trim()).filter(Boolean),
       sizes:         (ocrFacts.textSizes    || '').split('|').map(s => s.trim()).filter(Boolean),
       footer:        ocrFacts.textFooter      || '',
       brand:         ocrFacts.textBrand       || '',
-    } : null;
+    };
 
     return Response.json({
       imageUrl:    dataUrl ?? resultUrl,
