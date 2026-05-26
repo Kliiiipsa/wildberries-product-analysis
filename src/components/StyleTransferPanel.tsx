@@ -19,6 +19,57 @@ interface ExtractedText {
   textBoxWidthPct?: number;   // 50–100
 }
 
+/** Escape special regex characters */
+function escapeRx(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Apply userNote text instructions to extracted OCR text client-side.
+ * Handles patterns:
+ *   замени "X" на "Y"  /  замени "X" НА "Y"
+ *   убери "X" из текста  /  убери слова "X"  /  убери из текста "X"
+ * Also handles without quotes for single words.
+ */
+function applyUserNoteToText(text: ExtractedText, note: string): ExtractedText {
+  if (!note.trim()) return text;
+  const result = { ...text };
+
+  const rep = (s: string | undefined, from: string, to: string): string | undefined =>
+    s ? s.replace(new RegExp(escapeRx(from), 'gi'), to).replace(/\s{2,}/g, ' ').trim() : s;
+
+  const applyReplace = (from: string, to: string) => {
+    result.headline  = rep(result.headline,  from, to);
+    result.bodyText  = rep(result.bodyText,  from, to);
+    result.footerText= rep(result.footerText,from, to);
+    result.badgeText = rep(result.badgeText, from, to);
+    result.brandText = rep(result.brandText, from, to);
+  };
+  const applyRemove = (what: string) => {
+    result.headline  = rep(result.headline,  what, '');
+    result.bodyText  = rep(result.bodyText,  what, '');
+    result.footerText= rep(result.footerText,what, '');
+  };
+
+  // замени "X" на/НА "Y"  (with quotes)
+  const rxQ = /замени\s+"([^"]+)"\s+(?:на|НА)\s+"([^"]+)"/gi;
+  let m: RegExpExecArray | null;
+  while ((m = rxQ.exec(note)) !== null) applyReplace(m[1], m[2]);
+
+  // замени X на/НА Y  (without quotes, single token)
+  const rxNQ = /замени\s+(\S+)\s+(?:на|НА)\s+(\S+)/gi;
+  while ((m = rxNQ.exec(note)) !== null) {
+    // Skip if it was already handled by quoted version
+    if (!m[1].startsWith('"')) applyReplace(m[1], m[2]);
+  }
+
+  // убери "X" из текста / убери слова "X" / убери из текста "X"
+  const rxRem = /убери\s+(?:из\s+текста\s+)?(?:слова?\s+)?"([^"]+)"(?:\s+из\s+текста)?/gi;
+  while ((m = rxRem.exec(note)) !== null) applyRemove(m[1]);
+
+  return result;
+}
+
 /** Resize file to max 1024px → JPEG base64 */
 function resizeToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -295,10 +346,12 @@ export function StyleTransferPanel({ onBack }: Props) {
         data.extractedText &&
         (data.extractedText.headline || data.extractedText.bodyText)
       ) {
-        setExtractedText(data.extractedText);
+        // Apply userNote substitutions client-side (reliable, instant)
+        const modifiedText = applyUserNoteToText(data.extractedText, userNote);
+        setExtractedText(modifiedText);
         setIsCompositing(true);
         try {
-          const composed = await composeTextOverlay(rawImage, data.extractedText);
+          const composed = await composeTextOverlay(rawImage, modifiedText);
           setResult(composed);
           setTextApplied(true);
         } catch {
@@ -518,7 +571,10 @@ export function StyleTransferPanel({ onBack }: Props) {
         />
         {userNote.trim() && (
           <p className="text-[10px] text-purple-400/80 mt-1.5 flex items-center gap-1">
-            <Wand2 className="h-3 w-3" />Будет добавлено к промпту FLUX
+            <Wand2 className="h-3 w-3" />
+            {dominantType === 'text_overlay'
+              ? 'Будет применено к тексту (замени "X" на "Y", убери "X" из текста)'
+              : 'Будет добавлено к промпту FLUX'}
           </p>
         )}
       </div>

@@ -190,35 +190,7 @@ function buildSceneInstruction(f: StyleFacts): string {
   return f.styleEnvironment || '';
 }
 
-/** Text-only Qwen call — no image, faster, used for text modifications */
-async function callQwenText(
-  apiKey: string,
-  folderId: string,
-  prompt: string,
-  signal: AbortSignal,
-  maxTokens = 600,
-): Promise<string> {
-  const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
-    method: 'POST',
-    signal,
-    headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: `gpt://${folderId}/qwen3.6-35b-a3b/latest`,
-      messages: [
-        { role: 'system', content: '/nothink' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.1,
-    }),
-  });
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Qwen-text ${resp.status}: ${txt.slice(0, 150)}`);
-  }
-  const data = await resp.json();
-  return data?.choices?.[0]?.message?.content ?? '';
-}
+
 
 async function callQwen(
   apiKey: string,
@@ -394,56 +366,9 @@ export async function POST(req: NextRequest) {
 
     console.log(`[style-transfer] dominantType=${dominantType} preserve_len=${preserve.length}`);
 
-    // ── Step 2.5: Apply user note to OCR text (text_overlay only) ─────────
-    // For text overlays, user instructions refer to the Canvas text, not FLUX.
-    // A separate text-only Qwen call applies the modifications to extracted text.
-    if (
-      userNote &&
-      dominantType === 'text_overlay' &&
-      (styleFacts.ocr_headline || styleFacts.ocr_body)
-    ) {
-      const modifyPrompt =
-        `You have text extracted from a product photo. Apply the user's instruction to it.\n\n` +
-        `Extracted text:\n` +
-        `- headline: "${styleFacts.ocr_headline || ''}"\n` +
-        `- body: "${styleFacts.ocr_body || ''}"\n` +
-        `- footer: "${styleFacts.ocr_footer || ''}"\n` +
-        `- badge: "${styleFacts.ocr_badge || ''}"\n` +
-        `- brand: "${styleFacts.ocr_brand || ''}"\n\n` +
-        `User instruction: "${userNote}"\n\n` +
-        `Apply the user's changes exactly. Return ONLY valid JSON (no markdown):\n` +
-        `{\n` +
-        `  "headline": "...",\n` +
-        `  "body": "...",\n` +
-        `  "footer": "...",\n` +
-        `  "badge": "...",\n` +
-        `  "brand": "..."\n` +
-        `}\n` +
-        `Rules: keep unchanged fields as-is. Do NOT invent new text.`;
-
-      try {
-        const modAc = new AbortController();
-        const modTimer = setTimeout(() => modAc.abort(), 15_000);
-        const modContent = await callQwenText(yandexKey, folderId, modifyPrompt, modAc.signal, 600);
-        clearTimeout(modTimer);
-        console.log(`[style-transfer] modify_raw(200): ${modContent.slice(0, 200)}`);
-
-        interface ModifiedOcr { headline?: string; body?: string; footer?: string; badge?: string; brand?: string; }
-        const modified = tryParse<ModifiedOcr>(modContent);
-        if (modified) {
-          if (modified.headline !== undefined) styleFacts.ocr_headline = modified.headline;
-          if (modified.body     !== undefined) styleFacts.ocr_body     = modified.body;
-          if (modified.footer   !== undefined) styleFacts.ocr_footer   = modified.footer;
-          if (modified.badge    !== undefined) styleFacts.ocr_badge    = modified.badge;
-          if (modified.brand    !== undefined) styleFacts.ocr_brand    = modified.brand;
-          console.log(`[style-transfer] text modified by userNote`);
-        }
-      } catch (e) {
-        console.log(`[style-transfer] text modify failed (non-fatal): ${e}`);
-      }
-    }
-
     // ── Build FLUX instructions from facts ────────────────────────────────
+    // NOTE: for text_overlay, userNote text edits are applied client-side via
+    // applyUserNoteToText() in StyleTransferPanel — no server-side Qwen step needed.
     const change = buildChangeInstruction(styleFacts);
     const scene  = buildSceneInstruction(styleFacts);
 
@@ -453,8 +378,7 @@ export async function POST(req: NextRequest) {
       (scene ? `[SCENE] ${scene} ` : '') +
       `[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.`;
 
-    // For non-text-overlay types, userNote goes to FLUX prompt
-    // For text_overlay, text was already modified above — only add non-text instructions to FLUX
+    // userNote goes to FLUX only for non-text-overlay (background/lighting changes)
     if (userNote && dominantType !== 'text_overlay') {
       fluxPrompt += ` [USER] Additional requirement: ${userNote}`;
     }
