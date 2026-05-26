@@ -45,6 +45,25 @@ function resizeToBase64(file: File): Promise<string> {
   });
 }
 
+/** Downscale an existing base64 image to maxSize px — used for content-moderation retry */
+function downscaleBase64(src: string, maxSize: number, quality = 0.80): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) { height = Math.round(height * maxSize / width); width = maxSize; }
+        else { width = Math.round(width * maxSize / height); height = maxSize; }
+      }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.src = src;
+  });
+}
+
 
 function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
@@ -286,23 +305,38 @@ export function StyleTransferPanel({ onBack }: Props) {
     } catch { /* ignore */ }
   }, []);
 
+  const callApi = async (srcUrl: string, styUrl: string) =>
+    fetch('/api/photo/style-transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceImageUrl: srcUrl, styleImageUrl: styUrl, userNote: userNote.trim() }),
+    });
+
   const handleGenerate = async () => {
     if (!sourceImage || !styleImage) return;
     setIsGenerating(true);
     resetResult();
 
     try {
-      const res = await fetch('/api/photo/style-transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceImageUrl: sourceImage,
-          styleImageUrl:  styleImage,
-          userNote:       userNote.trim(),
-        }),
-      });
+      let res = await callApi(sourceImage, styleImage);
+
+      // ── Auto-retry with 50% smaller image on content-moderation block ───
+      if (res.status === 451) {
+        setError('Изображение заблокировано фильтром — повторяю с уменьшенным...');
+        const [smallSrc, smallSty] = await Promise.all([
+          downscaleBase64(sourceImage, 512),
+          downscaleBase64(styleImage,  512),
+        ]);
+        res = await callApi(smallSrc, smallSty);
+        setError('');
+      }
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
+      if (!res.ok) throw new Error(
+        res.status === 451
+          ? 'Изображение заблокировано контент-фильтром SiliconFlow. Попробуйте другое исходное фото (без открытых зон тела).'
+          : data.error || 'Ошибка генерации'
+      );
 
       const rawImage: string = data.imageUrl;
       setFluxResult(rawImage);

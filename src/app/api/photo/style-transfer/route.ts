@@ -306,20 +306,28 @@ export async function POST(req: NextRequest) {
     console.log(`[style-transfer] fluxPrompt(200): ${fluxPrompt.slice(0, 200)}`);
 
     // ── Step 3: FLUX ──────────────────────────────────────────────────────
+    const callFlux = async (imageData: string, signal: AbortSignal) =>
+      fetch('https://api.siliconflow.com/v1/images/generations', {
+        method: 'POST', signal,
+        headers: { 'Authorization': `Bearer ${sfKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'black-forest-labs/FLUX.1-Kontext-max',
+          prompt: fluxPrompt,
+          input_image: imageData,
+          output_format: 'jpeg',
+        }),
+      });
+
     const fluxAc    = new AbortController();
     const fluxTimer = setTimeout(() => fluxAc.abort(), 65_000);
-    const fluxResp  = await fetch('https://api.siliconflow.com/v1/images/generations', {
-      method: 'POST',
-      signal: fluxAc.signal,
-      headers: { 'Authorization': `Bearer ${sfKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'black-forest-labs/FLUX.1-Kontext-max',
-        prompt: fluxPrompt,
-        input_image: sourceData,
-        output_format: 'jpeg',
-      }),
-    });
+    const fluxResp  = await callFlux(sourceData, fluxAc.signal);
     clearTimeout(fluxTimer);
+
+    // ── If 451 (content moderation) → tell client to retry with smaller image
+    if (fluxResp.status === 451) {
+      console.log('[style-transfer] FLUX 451 — content moderation, asking client to retry smaller');
+      return Response.json({ error: 'CONTENT_MODERATED' }, { status: 451 });
+    }
 
     const fluxText   = await fluxResp.text();
     let fluxParsed: Record<string, unknown> = {};
