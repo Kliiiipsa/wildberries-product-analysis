@@ -128,6 +128,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
 /**
  * Composite layout panel with text on top of FLUX result.
  * Supports: right-panel, left-panel, center-overlay, bottom-panel
+ * All font sizes are relative to panelW for correct proportions.
  */
 async function composeLayout(imageDataUrl: string, ld: LayoutData): Promise<string> {
   return new Promise((resolve) => {
@@ -141,123 +142,158 @@ async function composeLayout(imageDataUrl: string, ld: LayoutData): Promise<stri
 
       // ── Panel geometry ────────────────────────────────────────────────────
       const side = ld.panelSide || 'right';
-      const wPct = Math.max(25, Math.min(90, ld.panelWidthPct || 45));
-      const panelW = Math.round(W * wPct / 100);
-      const margin = Math.round(W * 0.03);
+      const wPct = Math.max(25, Math.min(85, ld.panelWidthPct || 40));
+      const radius = Math.round(Math.min(W, H) * 0.018);
 
-      let panelX: number, panelY: number, panelH: number;
-      if (side === 'right')  { panelX = W - panelW - margin; panelY = margin; panelH = H - margin * 2; }
-      else if (side === 'left')   { panelX = margin;             panelY = margin; panelH = H - margin * 2; }
-      else if (side === 'bottom') { panelX = margin; panelY = Math.round(H * 0.55); panelW; panelH = H - panelY - margin; }
-      else { /* center */ panelX = Math.round((W - panelW) / 2); panelY = Math.round(H * 0.08); panelH = Math.round(H * 0.84); }
+      let panelX: number, panelY: number, panelW: number, panelH: number;
 
-      const pad = Math.round(panelW * 0.09);
+      if (side === 'right') {
+        panelW = Math.round(W * wPct / 100);
+        panelX = W - panelW;
+        panelY = 0; panelH = H;
+      } else if (side === 'left') {
+        panelW = Math.round(W * wPct / 100);
+        panelX = 0;
+        panelY = 0; panelH = H;
+      } else if (side === 'bottom') {
+        panelW = W; panelX = 0;
+        panelH = Math.round(H * wPct / 100);
+        panelY = H - panelH;
+      } else {
+        // center-overlay — rounded, with margin
+        panelW = Math.round(W * wPct / 100);
+        panelX = Math.round((W - panelW) / 2);
+        panelY = Math.round(H * 0.06);
+        panelH = Math.round(H * 0.88);
+      }
+
+      const pad    = Math.round(panelW * 0.09);
       const innerW = panelW - pad * 2;
-      const radius = Math.round(W * 0.015);
 
       // ── Draw panel background ────────────────────────────────────────────
       const rgb = hexToRgb(ld.panelColor || '#FFFFFF');
-      const op  = Math.max(0.5, Math.min(1, ld.panelOpacity || 0.95));
-      rrect(ctx, panelX, panelY, panelW, panelH, radius);
-      ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${op})`;
-      ctx.fill();
+      const op  = Math.max(0.72, Math.min(1, ld.panelOpacity || 0.95));
 
-      // ── Typography ───────────────────────────────────────────────────────
-      // Determine text color based on panel brightness
+      if (side === 'center') {
+        rrect(ctx, panelX, panelY, panelW, panelH, radius);
+        ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${op})`;
+        ctx.fill();
+      } else {
+        // Edge-to-edge for side/bottom panels (cleaner look)
+        ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${op})`;
+        ctx.fillRect(panelX, panelY, panelW, panelH);
+      }
+
+      // ── Typography — all sizes relative to panelW ────────────────────────
       const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
-      const isDark = brightness < 128;
+      const isDark      = brightness < 128;
       const textPrimary   = isDark ? '#FFFFFF' : '#111111';
-      const textSecondary = isDark ? 'rgba(255,255,255,0.75)' : '#444444';
+      const textSecondary = isDark ? 'rgba(255,255,255,0.82)' : '#333333';
       const textMuted     = isDark ? 'rgba(255,255,255,0.55)' : '#777777';
+      const dividerColor  = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
 
       let cy = panelY + pad;
       const tx = panelX + pad;
+      ctx.textAlign = 'left';
 
-      // Brand (small, top)
+      // ── Brand ────────────────────────────────────────────────────────────
       if (ld.brand) {
-        const fs = Math.round(W * 0.02);
+        const fs = Math.round(panelW * 0.048);
+        ctx.font      = `600 ${fs}px 'Arial', sans-serif`;
         ctx.fillStyle = textMuted;
-        ctx.font = `500 ${fs}px sans-serif`;
-        ctx.textAlign = 'left';
         ctx.fillText(ld.brand.toUpperCase(), tx, cy + fs);
-        cy += Math.round(fs * 2.2);
+        cy += Math.round(fs * 2.4);
+
+        // thin divider after brand
+        ctx.strokeStyle = dividerColor;
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath(); ctx.moveTo(tx, cy); ctx.lineTo(tx + innerW * 0.55, cy); ctx.stroke();
+        cy += Math.round(panelW * 0.045);
       }
 
-      // Divider line
-      if (ld.brand && ld.headline) {
-        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)';
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(tx, cy); ctx.lineTo(tx + innerW, cy); ctx.stroke();
-        cy += Math.round(W * 0.015);
-      }
-
-      // Headline (large, bold)
+      // ── Headline (large bold serif) ───────────────────────────────────────
       if (ld.headline) {
-        const fs = Math.round(W * 0.062);
-        const lh = Math.round(fs * 1.1);
+        const fs = Math.round(panelW * 0.145);
+        const lh = Math.round(fs * 1.12);
+        ctx.font      = `bold ${fs}px 'Georgia', serif`;
         ctx.fillStyle = textPrimary;
-        ctx.font = `bold ${fs}px serif`;
-        const lines = wrapText(ctx, ld.headline, tx, cy + fs, innerW, lh, 3);
-        cy += lines * lh + Math.round(W * 0.018);
+        const lines   = wrapText(ctx, ld.headline, tx, cy + fs, innerW, lh, 3);
+        cy += lines * lh + Math.round(panelW * 0.04);
       }
 
-      // Subheadline
+      // ── Subheadline ───────────────────────────────────────────────────────
       if (ld.subheadline) {
-        const fs = Math.round(W * 0.03);
-        const lh = Math.round(fs * 1.4);
+        const fs = Math.round(panelW * 0.072);
+        const lh = Math.round(fs * 1.45);
+        ctx.font      = `300 ${fs}px 'Arial', sans-serif`;
         ctx.fillStyle = textSecondary;
-        ctx.font = `${fs}px sans-serif`;
-        const lines = wrapText(ctx, ld.subheadline, tx, cy + fs, innerW, lh, 2);
-        cy += lines * lh + Math.round(W * 0.02);
+        const lines   = wrapText(ctx, ld.subheadline, tx, cy + fs, innerW, lh, 2);
+        cy += lines * lh + Math.round(panelW * 0.05);
       }
 
-      // Feature list
+      // ── Divider before features ───────────────────────────────────────────
+      if (ld.features.length > 0 && (ld.headline || ld.subheadline)) {
+        ctx.strokeStyle = dividerColor;
+        ctx.lineWidth   = 1;
+        ctx.beginPath(); ctx.moveTo(tx, cy); ctx.lineTo(tx + innerW, cy); ctx.stroke();
+        cy += Math.round(panelW * 0.045);
+      }
+
+      // ── Feature list ──────────────────────────────────────────────────────
       if (ld.features.length > 0) {
-        const fs = Math.round(W * 0.026);
-        const lh = Math.round(fs * 1.7);
-        ctx.fillStyle = textSecondary;
-        ctx.font = `${fs}px sans-serif`;
+        const fs   = Math.round(panelW * 0.062);
+        const lh   = Math.round(fs * 2.1);
+        const arrW = Math.round(fs * 1.5);
         for (const feat of ld.features) {
           if (!feat.trim() || cy + lh > panelY + panelH - pad) break;
-          // Arrow bullet
-          ctx.fillStyle = textMuted;
+          // ‹ arrow bullet
+          ctx.font      = `bold ${Math.round(fs * 1.15)}px sans-serif`;
+          ctx.fillStyle = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.22)';
           ctx.fillText('›', tx, cy + fs);
+          ctx.font      = `${fs}px 'Arial', sans-serif`;
           ctx.fillStyle = textSecondary;
-          ctx.fillText(feat.trim(), tx + Math.round(fs * 1.3), cy + fs);
+          wrapText(ctx, feat.trim(), tx + arrW, cy + fs, innerW - arrW, lh, 2);
           cy += lh;
         }
-        cy += Math.round(W * 0.01);
+        cy += Math.round(panelW * 0.02);
       }
 
-      // Size selector
-      if (ld.sizes.length > 0 && cy + Math.round(W * 0.08) < panelY + panelH - pad) {
-        cy += Math.round(W * 0.01);
-        const boxSz  = Math.round(W * 0.05);
-        const boxGap = Math.round(W * 0.012);
-        const fs     = Math.round(W * 0.022);
+      // ── "Размеры" label ───────────────────────────────────────────────────
+      if (ld.sizes.length > 0 && cy + Math.round(panelW * 0.2) < panelY + panelH - pad) {
+        const labelFs = Math.round(panelW * 0.05);
+        ctx.font      = `500 ${labelFs}px 'Arial', sans-serif`;
+        ctx.fillStyle = textMuted;
+        ctx.fillText('Размеры', tx, cy + labelFs);
+        cy += Math.round(labelFs * 1.9);
+
+        // Size boxes
+        const boxSz  = Math.round(panelW * 0.115);
+        const boxGap = Math.round(panelW * 0.028);
+        const fs     = Math.round(boxSz * 0.42);
         let sx = tx;
         for (const sz of ld.sizes) {
-          rrect(ctx, sx, cy, boxSz, boxSz, Math.round(boxSz * 0.15));
-          ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)';
-          ctx.lineWidth = Math.max(1, Math.round(W * 0.0015));
+          if (sx + boxSz > panelX + panelW - pad) break;
+          rrect(ctx, sx, cy, boxSz, boxSz, Math.round(boxSz * 0.14));
+          ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.28)';
+          ctx.lineWidth   = Math.max(1, Math.round(panelW * 0.003));
           ctx.stroke();
+          ctx.font      = `500 ${fs}px 'Arial', sans-serif`;
           ctx.fillStyle = textPrimary;
-          ctx.font = `500 ${fs}px sans-serif`;
           ctx.textAlign = 'center';
-          ctx.fillText(sz.trim(), sx + boxSz / 2, cy + boxSz * 0.67);
+          ctx.fillText(sz.trim(), sx + boxSz / 2, cy + boxSz * 0.68);
           ctx.textAlign = 'left';
           sx += boxSz + boxGap;
         }
-        cy += boxSz + Math.round(W * 0.018);
+        cy += boxSz + Math.round(panelW * 0.05);
       }
 
-      // Footer / signature
+      // ── Footer / signature ────────────────────────────────────────────────
       if (ld.footer) {
-        const fs = Math.round(W * 0.021);
+        const fs = Math.round(panelW * 0.047);
+        ctx.font      = `italic ${fs}px 'Georgia', serif`;
         ctx.fillStyle = textMuted;
-        ctx.font = `italic ${fs}px serif`;
-        const footerY = Math.min(cy + fs, panelY + panelH - pad);
-        ctx.fillText(ld.footer, tx, footerY);
+        const footerY = Math.min(cy + fs, panelY + panelH - Math.round(pad * 0.6));
+        wrapText(ctx, ld.footer, tx, footerY, innerW, Math.round(fs * 1.5), 2);
       }
 
       resolve(canvas.toDataURL('image/jpeg', 0.93));
@@ -520,6 +556,21 @@ export function StyleTransferPanel({ onBack }: Props) {
             </div>
           )}
           {visualMood && <p className="text-[10px] text-slate-600 leading-relaxed">{visualMood}</p>}
+
+          {/* Detected text summary */}
+          {layoutData && !isBusy && (
+            <div className="rounded-lg border border-slate-700/40 bg-slate-800/30 px-3 py-2 space-y-1">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Обнаруженный текст</p>
+              {layoutData.headline    && <p className="text-[11px] text-white font-semibold truncate">📝 {layoutData.headline}</p>}
+              {layoutData.subheadline && <p className="text-[10px] text-slate-400 truncate">— {layoutData.subheadline}</p>}
+              {layoutData.features.length > 0 && (
+                <p className="text-[10px] text-slate-500 truncate">• {layoutData.features.join(' | ')}</p>
+              )}
+              {layoutData.sizes.length > 0 && (
+                <p className="text-[10px] text-slate-500">Размеры: {layoutData.sizes.join(', ')}</p>
+              )}
+            </div>
+          )}
 
           <div className="relative rounded-2xl border border-slate-700/50 bg-slate-900 w-full aspect-[3/4] flex items-center justify-center overflow-hidden">
             {isBusy ? (
