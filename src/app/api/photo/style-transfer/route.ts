@@ -2,10 +2,6 @@ import { NextRequest } from 'next/server';
 
 export const maxDuration = 120;
 
-/**
- * Converts a URL or data: URL to a base64 JPEG data URL.
- * Downloads server-side to avoid CORS issues.
- */
 async function toBase64DataUrl(url: string): Promise<string> {
   if (url.startsWith('data:')) return url;
   const res = await fetch(url);
@@ -19,42 +15,56 @@ async function toBase64DataUrl(url: string): Promise<string> {
   return `data:${mime};base64,${btoa(chunks.join(''))}`;
 }
 
-const STYLE_ANALYSIS_PROMPT = `You receive TWO product/fashion photos for a style transfer task.
+const STYLE_ANALYSIS_PROMPT = `You receive TWO fashion/product photos for a creative style transfer task.
 
-IMAGE 1 = SOURCE PHOTO — the product/clothing photo that will be transformed.
-IMAGE 2 = STYLE REFERENCE — the photo whose visual environment, lighting, background and atmosphere must be adopted.
+IMAGE 1 = SOURCE PHOTO — the clothing and model to PRESERVE exactly as-is.
+IMAGE 2 = STYLE REFERENCE — your job is to identify the MOST VISUALLY DOMINANT element from this photo and apply it to IMAGE 1.
 
-Your job: write a FLUX Kontext image-to-image prompt that:
-1. PRESERVES every detail of the clothing/product from IMAGE 1 exactly (colors, cut, fabric, accessories, model pose)
-2. REPLACES the visual environment with the style from IMAGE 2 (background, lighting, color palette, atmosphere, depth of field)
+━━━ STEP 1: SCAN IMAGE 2 for visual elements, ranked by eye-catching impact ━━━
+Look for these in order of visual priority:
+1. TEXT OVERLAYS / INFOGRAPHICS — any text blocks, warning notices, promotional text, brand names printed ON the photo
+2. GRAPHIC OVERLAYS — colored banners, sale badges, price tags, watermarks, frames, borders
+3. BACKGROUND ENVIRONMENT — studio backdrop, lifestyle location, outdoor scene, interior
+4. LIGHTING & COLOR GRADING — color temperature, shadows, mood, film effect
 
-Return ONLY valid JSON — no markdown, no explanation:
+━━━ STEP 2: IDENTIFY the TOP dominant element ━━━
+What single visual treatment makes IMAGE 2 instantly recognizable?
+- If it's a TEXT OVERLAY: describe exact text content (translate to English if needed), font weight (bold/light), text color, background color of the block, exact position on the image (top/center/bottom, left/right)
+- If it's a GRAPHIC BADGE: describe shape, color, text, position
+- If it's ENVIRONMENT: describe location, lighting, background
+
+━━━ STEP 3: BUILD the FLUX prompt ━━━
+Generate a prompt that:
+1. PRESERVES ALL clothing/accessories from IMAGE 1 (colors, cut, fabric, every detail)
+2. APPLIES the dominant visual treatment from IMAGE 2 to IMAGE 1
+
+Return ONLY valid JSON — no markdown:
 {
-  "sourceClothing": "brief description of IMAGE 1 clothing/subject",
-  "styleEnvironment": "brief description of IMAGE 2 visual style/environment",
-  "fluxPrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY]..."
+  "dominantElement": "One sentence describing the single most visually striking element from IMAGE 2",
+  "dominantType": "text_overlay" | "graphic_badge" | "background" | "lighting",
+  "sourceClothing": "Brief description of IMAGE 1 subject and clothing",
+  "styleEnvironment": "What visual treatment will be applied",
+  "fluxPrompt": "..."
 }
 
-The fluxPrompt MUST follow this EXACT 4-part structure:
-
-[PRESERVE] Keep unchanged: [list ALL clothing from IMAGE 1 with precise detail — exact color names, cut type, fabric texture, drawstrings, buttons, lace, pockets, all visible accessories; also list body parts visible — hands, legs, tattoos, pose direction]
-[CHANGE] Apply new visual environment inspired by IMAGE 2: [describe the specific background type, overall lighting direction and quality from IMAGE 2, dominant color palette, atmosphere — do NOT change the model or clothing]
-[SCENE] [Precise environment matching IMAGE 2: background material and color with hex-like description, light source angle and color temperature, shadow direction, depth of field, atmosphere details — must be specific enough for FLUX to recreate the mood]
+fluxPrompt EXACT structure:
+[PRESERVE] Keep unchanged: [exhaustive list — every clothing item from IMAGE 1 with exact color, cut, fabric, visible accessories, body parts, pose]
+[CHANGE] [If dominantType is text_overlay or graphic_badge: "Add [describe the overlay element precisely — text content in English, font style, block color, position on image, any badges or graphic elements exactly as seen in IMAGE 2"]. [If dominantType is background: "Replace background with [detailed environment from IMAGE 2]"]. [If dominantType is lighting: "Apply [specific lighting treatment from IMAGE 2]"]. Never change clothing.
+[SCENE] [Detailed visual description of the combined result — model in original outfit + applied treatment from IMAGE 2]
 [QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.
 
 STRICT RULES:
-- fluxPrompt in English ONLY — no Cyrillic
-- [PRESERVE] must be exhaustive — list every clothing detail you can see in IMAGE 1
-- [CHANGE] must describe ONLY the environmental/style change — never touch clothing
-- [SCENE] must capture the essence of IMAGE 2's visual environment
-- Do NOT swap the model/person
-- Do NOT add or remove any clothing
-- Do NOT use forbidden words: photorealistic, ultra-sharp, 8K, hyperdetailed, professional studio lighting`;
+- fluxPrompt in English ONLY (translate any Cyrillic text you find into English for the prompt)
+- [PRESERVE] must list EVERY clothing detail from IMAGE 1 — be exhaustive
+- Focus the [CHANGE] section on the SINGLE MOST DOMINANT element from IMAGE 2
+- Do NOT change the model, face, or clothing from IMAGE 1
+- Forbidden words: photorealistic, ultra-sharp, 8K, hyperdetailed, professional studio lighting`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const sourceImageUrl: string = body?.sourceImageUrl ?? '';
   const styleImageUrl: string = body?.styleImageUrl ?? '';
+  const userNote: string = (body?.userNote ?? '').trim();
 
   if (!sourceImageUrl || !styleImageUrl) {
     return Response.json(
@@ -74,14 +84,14 @@ export async function POST(req: NextRequest) {
 
   try {
     // ── Step 1: Convert both images to base64 in parallel ──────────────────
-    console.log('[style-transfer] converting images to base64...');
+    console.log('[style-transfer] converting images...');
     const [sourceData, styleData] = await Promise.all([
       toBase64DataUrl(sourceImageUrl),
       toBase64DataUrl(styleImageUrl),
     ]);
     console.log(`[style-transfer] source=${Math.round(sourceData.length / 1024)}KB style=${Math.round(styleData.length / 1024)}KB`);
 
-    // ── Step 2: Qwen analyzes both images → generates FLUX prompt ──────────
+    // ── Step 2: Qwen analyzes both images → FLUX prompt ────────────────────
     const qwenTimer = setTimeout(() => ac.abort(), 30_000);
     const qwenResp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
       method: 'POST',
@@ -118,22 +128,23 @@ export async function POST(req: NextRequest) {
     const content: string = qwenData?.choices?.[0]?.message?.content ?? '';
     console.log(`[style-transfer] Qwen response len=${content.length}`);
 
-    // Parse fluxPrompt from Qwen JSON response
     let fluxPrompt = '';
     let sourceClothing = '';
     let styleEnvironment = '';
+    let dominantElement = '';
+    let dominantType = '';
+
     try {
       const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(clean);
       fluxPrompt = parsed.fluxPrompt ?? '';
       sourceClothing = parsed.sourceClothing ?? '';
       styleEnvironment = parsed.styleEnvironment ?? '';
+      dominantElement = parsed.dominantElement ?? '';
+      dominantType = parsed.dominantType ?? '';
     } catch {
-      // Fallback: extract fluxPrompt via regex if JSON is malformed
       const match = content.match(/"fluxPrompt"\s*:\s*"([\s\S]*?)"\s*[,}]/);
-      if (match) {
-        fluxPrompt = match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ');
-      }
+      if (match) fluxPrompt = match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ');
     }
 
     if (!fluxPrompt) {
@@ -143,9 +154,15 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
-    console.log(`[style-transfer] fluxPrompt_len=${fluxPrompt.length}`);
 
-    // ── Step 3: FLUX applies style ─────────────────────────────────────────
+    // ── Append user note to prompt if provided ────────────────────────────
+    if (userNote) {
+      fluxPrompt = fluxPrompt + ` [USER] Additional requirement: ${userNote}`;
+    }
+
+    console.log(`[style-transfer] dominantType=${dominantType} fluxPrompt_len=${fluxPrompt.length}`);
+
+    // ── Step 3: FLUX generates ─────────────────────────────────────────────
     const ac2 = new AbortController();
     const fluxTimer = setTimeout(() => ac2.abort(), 55_000);
     const fluxResp = await fetch('https://api.siliconflow.com/v1/images/generations', {
@@ -183,7 +200,6 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'FLUX не вернул URL' }, { status: 500 });
     }
 
-    // ── Step 4: Download result server-side → data URL (avoids CORS 403) ──
     const dataUrl = await toBase64DataUrl(resultUrl).catch(() => null);
     console.log(`[style-transfer] done, dataUrl present=${!!dataUrl}`);
 
@@ -192,6 +208,8 @@ export async function POST(req: NextRequest) {
       prompt: fluxPrompt,
       sourceClothing,
       styleEnvironment,
+      dominantElement,
+      dominantType,
     });
 
   } catch (e) {

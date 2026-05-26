@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, RefObject } from 'react';
-import { ArrowLeft, Upload, Loader2, Wand2, ArrowRight, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Upload, Loader2, Wand2, ArrowRight, ChevronDown, Type, Layers, Image as ImageIcon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Props {
@@ -36,16 +36,26 @@ function resizeToBase64(file: File): Promise<string> {
   });
 }
 
+const DOMINANT_TYPE_LABEL: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  text_overlay:  { label: 'Текстовый оверлей',  icon: <Type className="h-3 w-3" />,      color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
+  graphic_badge: { label: 'Графический элемент', icon: <Layers className="h-3 w-3" />,    color: 'text-rose-400 border-rose-500/30 bg-rose-500/10' },
+  background:    { label: 'Фон и окружение',     icon: <ImageIcon className="h-3 w-3" />, color: 'text-blue-400 border-blue-500/30 bg-blue-500/10' },
+  lighting:      { label: 'Свет и цвет',         icon: <Sun className="h-3 w-3" />,       color: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' },
+};
+
 export function StyleTransferPanel({ onBack }: Props) {
   const [sourceImage, setSourceImage] = useState('');
   const [styleImage, setStyleImage] = useState('');
   const [result, setResult] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [userNote, setUserNote] = useState('');
   const [prompt, setPrompt] = useState('');
   const [promptOpen, setPromptOpen] = useState(false);
   const [sourceClothing, setSourceClothing] = useState('');
   const [styleEnvironment, setStyleEnvironment] = useState('');
+  const [dominantElement, setDominantElement] = useState('');
+  const [dominantType, setDominantType] = useState('');
 
   const sourceRef = useRef<HTMLInputElement>(null);
   const styleRef = useRef<HTMLInputElement>(null);
@@ -58,6 +68,8 @@ export function StyleTransferPanel({ onBack }: Props) {
       else setStyleImage(b64);
       setResult('');
       setError('');
+      setDominantElement('');
+      setDominantType('');
     } catch { /* ignore */ }
   }, []);
 
@@ -68,11 +80,17 @@ export function StyleTransferPanel({ onBack }: Props) {
     setResult('');
     setPrompt('');
     setPromptOpen(false);
+    setDominantElement('');
+    setDominantType('');
     try {
       const res = await fetch('/api/photo/style-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceImageUrl: sourceImage, styleImageUrl: styleImage }),
+        body: JSON.stringify({
+          sourceImageUrl: sourceImage,
+          styleImageUrl: styleImage,
+          userNote: userNote.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
@@ -80,6 +98,8 @@ export function StyleTransferPanel({ onBack }: Props) {
       if (data.prompt) setPrompt(data.prompt);
       if (data.sourceClothing) setSourceClothing(data.sourceClothing);
       if (data.styleEnvironment) setStyleEnvironment(data.styleEnvironment);
+      if (data.dominantElement) setDominantElement(data.dominantElement);
+      if (data.dominantType) setDominantType(data.dominantType);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -157,12 +177,13 @@ export function StyleTransferPanel({ onBack }: Props) {
   );
 
   const canGenerate = !!sourceImage && !!styleImage && !isGenerating;
+  const dtInfo = dominantType ? DOMINANT_TYPE_LABEL[dominantType] : null;
 
   return (
     <div className="w-full max-w-6xl mx-auto">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-3 mb-8">
+      <div className="flex items-center gap-3 mb-6">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm"
@@ -173,7 +194,7 @@ export function StyleTransferPanel({ onBack }: Props) {
         <Wand2 className="h-4 w-4 text-purple-400" />
         <h2 className="text-base font-semibold text-white">Перенос стиля</h2>
         <span className="text-xs text-slate-600 hidden md:block">
-          — AI перенесёт визуальный стиль со стиль-фото на ваш товар
+          — AI определит главный элемент фото 2 и перенесёт его на фото 1
         </span>
       </div>
 
@@ -181,16 +202,15 @@ export function StyleTransferPanel({ onBack }: Props) {
       <div className="rounded-xl border border-purple-800/30 bg-purple-900/10 px-4 py-3 mb-6 flex items-start gap-3">
         <Wand2 className="h-4 w-4 text-purple-400 mt-0.5 shrink-0" />
         <p className="text-xs text-slate-400 leading-relaxed">
-          <span className="text-purple-300 font-medium">Как работает:</span> загрузите исходное фото товара и фото с понравившимся стилем.
-          AI проанализирует оба снимка, сохранит одежду и внешний вид модели из фото&nbsp;№1,
-          и применит атмосферу, освещение и фон из фото&nbsp;№2.
+          <span className="text-purple-300 font-medium">Как работает:</span> AI находит самый выразительный элемент на фото&nbsp;2
+          (текстовый оверлей, инфографику, фон, спецэффект) и применяет его к фото&nbsp;1,
+          сохраняя одежду и модель без изменений. Чем ярче элемент на фото&nbsp;2 — тем лучше результат.
         </p>
       </div>
 
-      {/* ── 3-column layout: source | arrow | style | arrow | result ── */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-4 items-start mb-6">
+      {/* ── 3-column layout ── */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-4 items-start mb-5">
 
-        {/* Source photo */}
         <UploadZone
           label="Исходное фото"
           sublabel="Одежда и модель сохранятся"
@@ -200,29 +220,26 @@ export function StyleTransferPanel({ onBack }: Props) {
           target="source"
         />
 
-        {/* Arrow 1 */}
-        <div className="hidden md:flex flex-col items-center justify-center pt-28 px-1">
+        <div className="hidden md:flex flex-col items-center justify-center pt-28 px-1 gap-1">
           <ArrowRight className="h-6 w-6 text-slate-600" />
-          <span className="text-[10px] text-slate-700 mt-1 text-center">стиль</span>
+          <span className="text-[10px] text-slate-700 text-center leading-tight">главный<br/>элемент</span>
         </div>
 
-        {/* Style reference */}
         <UploadZone
           label="Стиль (референс)"
-          sublabel="Отсюда возьмётся фон и атмосфера"
+          sublabel="Отсюда возьмётся самый заметный элемент"
           badge="Фото 2"
           image={styleImage}
           inputRef={styleRef}
           target="style"
         />
 
-        {/* Arrow 2 */}
-        <div className="hidden md:flex flex-col items-center justify-center pt-28 px-1">
+        <div className="hidden md:flex flex-col items-center justify-center pt-28 px-1 gap-1">
           <ArrowRight className="h-6 w-6 text-slate-600" />
-          <span className="text-[10px] text-slate-700 mt-1 text-center">результат</span>
+          <span className="text-[10px] text-slate-700 text-center leading-tight">результат</span>
         </div>
 
-        {/* Result */}
+        {/* Result panel */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
@@ -230,14 +247,21 @@ export function StyleTransferPanel({ onBack }: Props) {
             </span>
             <p className="text-sm font-semibold text-white">Готовое фото</p>
           </div>
-          <p className="text-xs text-slate-500 leading-relaxed">Одежда из фото 1 + стиль из фото 2</p>
+          {dtInfo ? (
+            <div className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full border ${dtInfo.color}`}>
+              {dtInfo.icon}
+              <span>Применено: {dtInfo.label}</span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 leading-relaxed">Одежда из фото 1 + стиль из фото 2</p>
+          )}
 
           <div className="relative rounded-2xl border border-slate-700/50 bg-slate-900 w-full aspect-[3/4] flex items-center justify-center overflow-hidden">
             {isGenerating ? (
               <div className="text-center p-6">
                 <Loader2 className="h-10 w-10 animate-spin text-purple-400 mx-auto mb-3" />
-                <p className="text-sm text-slate-400 font-medium">AI переносит стиль...</p>
-                <p className="text-xs text-slate-600 mt-1.5">Qwen анализирует → FLUX генерирует</p>
+                <p className="text-sm text-slate-400 font-medium">Анализирую и генерирую...</p>
+                <p className="text-xs text-slate-600 mt-1.5">Qwen определяет элемент → FLUX переносит</p>
                 <p className="text-xs text-slate-700 mt-0.5">~40–80 секунд</p>
               </div>
             ) : result ? (
@@ -267,6 +291,29 @@ export function StyleTransferPanel({ onBack }: Props) {
         </div>
       </div>
 
+      {/* ── User note input ── */}
+      <div className="rounded-xl border border-slate-700/50 bg-slate-800/20 p-4 mb-4">
+        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+          Дополнительные пожелания
+          <span className="ml-2 text-[10px] font-normal text-slate-600 normal-case tracking-normal">
+            (добавится к промпту генерации)
+          </span>
+        </label>
+        <textarea
+          value={userNote}
+          onChange={e => setUserNote(e.target.value)}
+          placeholder={`Например: добавить яркий розовый бейдж "SALE" в нижний левый угол, сохранить тёплые тона...`}
+          rows={2}
+          className="w-full rounded-xl border border-slate-700/50 bg-slate-800/50 px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-purple-500/60 resize-none"
+        />
+        {userNote.trim() && (
+          <p className="text-[10px] text-purple-400/80 mt-1.5 flex items-center gap-1">
+            <Wand2 className="h-3 w-3" />
+            Будет добавлено к промпту FLUX
+          </p>
+        )}
+      </div>
+
       {/* ── Generate button ── */}
       <Button
         onClick={handleGenerate}
@@ -280,15 +327,14 @@ export function StyleTransferPanel({ onBack }: Props) {
         )}
       </Button>
 
-      {!sourceImage || !styleImage ? (
-        <p className="text-xs text-center text-slate-600">
+      {(!sourceImage || !styleImage) && (
+        <p className="text-xs text-center text-slate-600 mb-4">
           {!sourceImage && !styleImage
             ? 'Загрузите оба фото чтобы начать'
-            : !sourceImage
-            ? 'Загрузите исходное фото (Фото 1)'
+            : !sourceImage ? 'Загрузите исходное фото (Фото 1)'
             : 'Загрузите фото со стилем (Фото 2)'}
         </p>
-      ) : null}
+      )}
 
       {/* ── Error ── */}
       {error && (
@@ -297,9 +343,21 @@ export function StyleTransferPanel({ onBack }: Props) {
         </div>
       )}
 
-      {/* ── AI analysis summary (shown after generation) ── */}
+      {/* ── AI analysis: dominant element detected ── */}
+      {dominantElement && (
+        <div className={`rounded-xl border px-4 py-3 mb-3 ${
+          dtInfo ? `border-${dtInfo.color.split('border-')[1]?.split(' ')[0] ?? 'slate-700/40'} bg-slate-800/20` : 'border-slate-700/40 bg-slate-800/20'
+        }`}>
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Главный элемент из фото 2
+          </p>
+          <p className="text-sm text-white">{dominantElement}</p>
+        </div>
+      )}
+
+      {/* ── AI analysis summary ── */}
       {(sourceClothing || styleEnvironment) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
           {sourceClothing && (
             <div className="rounded-xl border border-blue-800/30 bg-blue-900/10 px-3 py-2.5">
               <p className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider mb-1">Одежда (сохранено)</p>
@@ -308,7 +366,7 @@ export function StyleTransferPanel({ onBack }: Props) {
           )}
           {styleEnvironment && (
             <div className="rounded-xl border border-purple-800/30 bg-purple-900/10 px-3 py-2.5">
-              <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wider mb-1">Стиль (применено)</p>
+              <p className="text-[10px] text-purple-400 font-semibold uppercase tracking-wider mb-1">Что применено</p>
               <p className="text-xs text-slate-400">{styleEnvironment}</p>
             </div>
           )}
