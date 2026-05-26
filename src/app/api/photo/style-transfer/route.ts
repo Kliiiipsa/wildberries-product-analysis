@@ -48,12 +48,21 @@ function field(content: string, key: string): string {
 }
 
 // ── Prompt 1: SOURCE → clothing description ──────────────────────────────────
-const SOURCE_PROMPT = `Look at this fashion/product photo and describe the clothing in detail.
+const SOURCE_PROMPT = `Look at this fashion/product photo and describe the clothing and accessories.
 Return ONLY valid JSON (no markdown):
 {
-  "preserve": "comma-separated English list: every clothing item with exact color, cut, fabric; accessories; visible body parts and pose"
+  "preserve": "comma-separated English list: every clothing item with exact color, cut, fabric; all accessories; model pose"
 }
-Example: "loose oversized white linen shirt, wide-leg white trousers, leopard turban, black sunglasses, pearl earrings, tan slides"`;
+Example: "oversized white linen shirt, wide-leg white trousers, leopard turban, black sunglasses, pearl earrings, tan slides, standing pose with hand on hip"`;
+
+/** Remove body-part words that trigger FLUX content moderation (code 20021) */
+function sanitizeForFlux(s: string): string {
+  return s
+    .replace(/\b(bare|naked|nude|exposed|flesh|skin|cleavage|midriff|neckline|décolleté|decollete|topless|shirtless|bra|underwear|lingerie)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/,\s*,/g, ',')
+    .trim();
+}
 
 // ── Prompt 2: OCR — extract ALL text from the style reference ─────────────────
 // Focused solely on reading text — simpler prompt = better accuracy
@@ -273,7 +282,7 @@ export async function POST(req: NextRequest) {
     console.log(`[style-transfer] dominantType=${dominantType} panelSide=${ocrFacts.panelSide} headline="${ocrFacts.textHeadline?.slice(0,40)}" features="${ocrFacts.textFeatures?.slice(0,60)}"`);
 
     // ── Build FLUX prompt — visual only, zero text ────────────────────────
-    const fluxPrompt = buildFluxPrompt(preserve, visualFacts, userNote, hasText);
+    const fluxPrompt = buildFluxPrompt(sanitizeForFlux(preserve), visualFacts, userNote, hasText);
     console.log(`[style-transfer] fluxPrompt(200): ${fluxPrompt.slice(0, 200)}`);
 
     // ── Step 3: FLUX ──────────────────────────────────────────────────────
