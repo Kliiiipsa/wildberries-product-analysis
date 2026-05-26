@@ -270,13 +270,12 @@ export async function POST(req: NextRequest) {
       styleFacts.ocr_brand         = field(styleContent, 'ocr_brand');
     }
 
-    // If dominantType still missing, infer from OCR presence
-    if (!styleFacts.dominantType) {
-      if (styleFacts.ocr_headline || styleFacts.ocr_body) {
-        styleFacts.dominantType = 'text_overlay';
-      } else {
-        styleFacts.dominantType = 'background';
-      }
+    // OCR text presence overrides dominantType — if we found text, it IS a text_overlay
+    // (Qwen sometimes misclassifies text_overlay as "background" — OCR is ground truth)
+    if (styleFacts.ocr_headline || styleFacts.ocr_body || styleFacts.ocr_badge) {
+      styleFacts.dominantType = 'text_overlay';
+    } else if (!styleFacts.dominantType) {
+      styleFacts.dominantType = 'background';
     }
 
     const dominantType    = styleFacts.dominantType || 'background';
