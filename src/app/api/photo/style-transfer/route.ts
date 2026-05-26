@@ -198,27 +198,33 @@ export interface LayoutData {
 }
 
 function buildFluxPrompt(preserve: string, v: VisualFacts, userNote: string, hasText: boolean): string {
-  // Sanitize ALL parts before composing the prompt
-  const safePreserve = sanitizeForFlux(preserve);
+  // FLUX.1-Kontext already sees the source image — it knows what to preserve.
+  // We only need to describe the TARGET visual style, not the source content.
+  // Keeping the prompt short and style-only avoids content moderation false positives.
+
   const safeBackground = sanitizeForFlux(v.background || '');
   const safeLighting   = sanitizeForFlux(v.lighting   || '');
-  const safePalette    = v.colorPalette ? `Color palette: ${sanitizeForFlux(v.colorPalette)}` : '';
+  const safePalette    = sanitizeForFlux(v.colorPalette || '');
   const safeMood       = sanitizeForFlux(v.mood || '');
 
-  const visualDesc = [safeBackground, safeLighting, safePalette, safeMood]
-    .filter(Boolean).join('. ');
+  // Build a concise style description
+  const parts: string[] = [];
+  if (safeBackground) parts.push(safeBackground);
+  if (safeLighting)   parts.push(safeLighting);
+  if (safePalette)    parts.push(`Color palette: ${safePalette}`);
+  if (safeMood)       parts.push(safeMood);
+  const styleDesc = parts.length > 0
+    ? parts.join('. ')
+    : 'clean studio background, soft professional lighting, neutral tones';
 
-  // Neutral, natural-language prompt — avoid aggressive rule language that can confuse filters
-  let prompt =
-    `Product fashion photo. ` +
-    `Keep the clothing and outfit exactly as shown: ${safePreserve}. ` +
-    `Apply the visual atmosphere and background style: ${visualDesc || 'clean studio background with soft professional lighting'}. ` +
-    `No text, no watermarks, no graphics overlaid. ` +
-    `Professional product photography quality.`;
+  let prompt = `Change the background and lighting to match this style: ${styleDesc}. Keep the person and outfit unchanged. No text or watermarks.`;
 
   if (userNote && !hasText) {
     prompt += ` ${sanitizeForFlux(userNote)}`;
   }
+
+  // preserve is still logged server-side for debugging but not sent to FLUX
+  void preserve;
   return prompt;
 }
 
