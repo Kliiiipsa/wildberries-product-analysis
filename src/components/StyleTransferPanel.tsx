@@ -327,16 +327,21 @@ export function StyleTransferPanel({ onBack }: Props) {
     resetResult();
 
     try {
-      // Обесцвечиваем исходное фото перед отправкой — убирает тона кожи,
-      // которые триггерят pixel-level фильтр SiliconFlow (код 451).
-      // FLUX видит форму и текстуру одежды даже в почти-сером изображении.
-      const srcToSend = await desaturateBase64(sourceImage);
-      const res = await callApi(srcToSend, styleImage);
+      // Сначала пробуем оригинальное фото — лучшее качество цвета
+      let res = await callApi(sourceImage, styleImage);
+
+      // 451 = контент-фильтр SiliconFlow — ретрай с десатурированным (убирает тона кожи)
+      if (res.status === 451) {
+        setError('Изображение заблокировано — повторяю с обработкой...');
+        const srcDesaturated = await desaturateBase64(sourceImage, 0.30);
+        res = await callApi(srcDesaturated, styleImage);
+        setError('');
+      }
 
       const data = await res.json();
       if (!res.ok) throw new Error(
         res.status === 451
-          ? 'Фото заблокировано контент-фильтром. Попробуйте другое исходное фото.'
+          ? 'Фото заблокировано контент-фильтром SiliconFlow. Попробуйте другое исходное фото.'
           : data.error || 'Ошибка генерации'
       );
 

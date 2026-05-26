@@ -204,24 +204,26 @@ function buildFluxPrompt(v: VisualFacts, userNote: string): string {
   const palette  = sanitizeForFlux(v.colorPalette || '');
   const mood     = sanitizeForFlux(v.mood         || '');
 
-  const parts: string[] = [];
-
-  // Background is the most important instruction — tells FLUX what to change
+  // Part 1 — what to change: background / environment
+  let envDesc = '';
   if (bg) {
-    parts.push(`Replace the background with: ${bg}`);
+    envDesc = bg;
+  } else if (mood || palette) {
+    envDesc = [mood, palette].filter(Boolean).join(', ');
+  } else {
+    envDesc = 'clean neutral studio background';
   }
 
-  // Lighting / color / mood supplement
-  if (lighting) parts.push(`Lighting: ${lighting}`);
-  if (palette)  parts.push(`Colors: ${palette}`);
-  if (mood)     parts.push(mood);
+  // Part 2 — lighting
+  const lightDesc = lighting || 'soft professional studio lighting';
 
-  if (parts.length === 0) {
-    parts.push('Apply soft professional studio lighting with a neutral background');
-  }
-
-  let prompt = parts.join('. ');
-  prompt += '. Keep the person, their clothing, and pose EXACTLY as in the original photo. Do not add any text or graphics.';
+  // Build final prompt
+  // "Transform" is a stronger instruction than "replace" or "apply style" for FLUX-Kontext
+  let prompt =
+    `Transform the background and environment to: ${envDesc}. ` +
+    `${lightDesc}. ` +
+    `The person's body, face, clothing, and pose must remain pixel-perfect identical to the input. ` +
+    `Only the background and lighting change. No text, no logos.`;
 
   if (userNote) prompt += ` ${sanitizeForFlux(userNote)}`;
 
