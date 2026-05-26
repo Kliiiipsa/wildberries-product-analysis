@@ -15,50 +15,65 @@ async function toBase64DataUrl(url: string): Promise<string> {
   return `data:${mime};base64,${btoa(chunks.join(''))}`;
 }
 
-const STYLE_ANALYSIS_PROMPT = `You receive TWO fashion/product photos for a creative style transfer task.
-
-IMAGE 1 = SOURCE PHOTO — the clothing and model to PRESERVE exactly as-is.
-IMAGE 2 = STYLE REFERENCE — your job is to identify the MOST VISUALLY DOMINANT element from this photo and apply it to IMAGE 1.
-
-━━━ STEP 1: SCAN IMAGE 2 for visual elements, ranked by eye-catching impact ━━━
-Look for these in order of visual priority:
-1. TEXT OVERLAYS / INFOGRAPHICS — any text blocks, warning notices, promotional text, brand names printed ON the photo
-2. GRAPHIC OVERLAYS — colored banners, sale badges, price tags, watermarks, frames, borders
-3. BACKGROUND ENVIRONMENT — studio backdrop, lifestyle location, outdoor scene, interior
-4. LIGHTING & COLOR GRADING — color temperature, shadows, mood, film effect
-
-━━━ STEP 2: IDENTIFY the TOP dominant element ━━━
-What single visual treatment makes IMAGE 2 instantly recognizable?
-- If it's a TEXT OVERLAY: describe exact text content (translate to English if needed), font weight (bold/light), text color, background color of the block, exact position on the image (top/center/bottom, left/right)
-- If it's a GRAPHIC BADGE: describe shape, color, text, position
-- If it's ENVIRONMENT: describe location, lighting, background
-
-━━━ STEP 3: BUILD the FLUX prompt ━━━
-Generate a prompt that:
-1. PRESERVES ALL clothing/accessories from IMAGE 1 (colors, cut, fabric, every detail)
-2. APPLIES the dominant visual treatment from IMAGE 2 to IMAGE 1
-
-Return ONLY valid JSON — no markdown:
-{
-  "dominantElement": "One sentence describing the single most visually striking element from IMAGE 2",
-  "dominantType": "text_overlay" | "graphic_badge" | "background" | "lighting",
-  "sourceClothing": "Brief description of IMAGE 1 subject and clothing",
-  "styleEnvironment": "What visual treatment will be applied",
-  "fluxPrompt": "..."
+// Repair truncated JSON (same pattern as analyze route)
+function repairJson(s: string): string {
+  let inString = false, escaped = false, openBraces = 0, openBrackets = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === '\\' && inString) { escaped = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') openBraces++;
+    else if (c === '}') openBraces--;
+    else if (c === '[') openBrackets++;
+    else if (c === ']') openBrackets--;
+  }
+  let result = s.replace(/,\s*$/, '').replace(/:\s*$/, ': null');
+  if (inString) result += '"';
+  for (let i = 0; i < openBrackets; i++) result += ']';
+  for (let i = 0; i < openBraces; i++) result += '}';
+  return result;
 }
 
-fluxPrompt EXACT structure:
-[PRESERVE] Keep unchanged: [exhaustive list — every clothing item from IMAGE 1 with exact color, cut, fabric, visible accessories, body parts, pose]
-[CHANGE] [If dominantType is text_overlay or graphic_badge: "Add [describe the overlay element precisely — text content in English, font style, block color, position on image, any badges or graphic elements exactly as seen in IMAGE 2"]. [If dominantType is background: "Replace background with [detailed environment from IMAGE 2]"]. [If dominantType is lighting: "Apply [specific lighting treatment from IMAGE 2]"]. Never change clothing.
-[SCENE] [Detailed visual description of the combined result — model in original outfit + applied treatment from IMAGE 2]
-[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.
+// ── Qwen prompt: returns FLAT fields (no big string inside JSON → no parse errors) ──
+const STYLE_ANALYSIS_PROMPT = `You receive TWO fashion/product photos for a style transfer task.
 
-STRICT RULES:
-- fluxPrompt in English ONLY (translate any Cyrillic text you find into English for the prompt)
-- [PRESERVE] must list EVERY clothing detail from IMAGE 1 — be exhaustive
-- Focus the [CHANGE] section on the SINGLE MOST DOMINANT element from IMAGE 2
-- Do NOT change the model, face, or clothing from IMAGE 1
-- Forbidden words: photorealistic, ultra-sharp, 8K, hyperdetailed, professional studio lighting`;
+IMAGE 1 = SOURCE PHOTO — clothing and model to PRESERVE exactly.
+IMAGE 2 = STYLE REFERENCE — find its MOST VISUALLY DOMINANT element to transfer.
+
+━━━ STEP 1: Scan IMAGE 2 for elements (priority order) ━━━
+1. TEXT OVERLAYS / INFOGRAPHICS — text blocks, warnings, promotional notices printed ON the photo
+2. GRAPHIC ELEMENTS — colored banners, sale badges, price tags, watermarks, borders, frames
+3. BACKGROUND — studio, lifestyle location, outdoor scene, interior
+4. LIGHTING — color temperature, shadows, mood, film effect
+
+━━━ STEP 2: Pick the SINGLE most visually dominant element ━━━
+What makes IMAGE 2 instantly recognizable? That's the element to transfer.
+
+━━━ STEP 3: Return JSON with SEPARATE fields (do NOT put the full prompt in one field) ━━━
+
+Return ONLY valid JSON, no markdown, no explanation:
+{
+  "dominantElement": "One clear sentence describing the single most striking visual element from IMAGE 2",
+  "dominantType": "text_overlay",
+  "sourceClothing": "Precise description of IMAGE 1 clothing: exact colors, cut, fabric, accessories, visible body parts and pose",
+  "styleEnvironment": "What will be visually applied from IMAGE 2 to IMAGE 1",
+  "preserve": "Exhaustive comma-separated list of everything to keep from IMAGE 1 unchanged: all clothing items with exact colors, cut, fabric details, accessories; model pose; visible body parts",
+  "change": "Precise English description of what to ADD or CHANGE based on IMAGE 2 dominant element. If text overlay: describe text content in English, font weight, text color, block background color, exact position. If graphic badge: shape, color, text, corner. If background: scene details. If lighting: light quality and color.",
+  "scene": "Detailed scene description: model wearing IMAGE 1 outfit combined with the visual treatment from IMAGE 2"
+}
+
+For dominantType use EXACTLY ONE of these values (no quotes variations):
+- text_overlay  (if IMAGE 2 has text printed over the photo)
+- graphic_badge  (if IMAGE 2 has sale badge, logo, watermark, price tag, colored banner)
+- background  (if main element is the scene/location/backdrop)
+- lighting  (if main element is color grading, mood, film effect)
+
+RULES:
+- All values must be valid JSON strings (escape any quotes inside strings with backslash)
+- preserve and change must be in English only
+- Do NOT translate or summarize — be specific and detailed in every field`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -67,10 +82,7 @@ export async function POST(req: NextRequest) {
   const userNote: string = (body?.userNote ?? '').trim();
 
   if (!sourceImageUrl || !styleImageUrl) {
-    return Response.json(
-      { error: 'sourceImageUrl и styleImageUrl обязательны' },
-      { status: 400 },
-    );
+    return Response.json({ error: 'sourceImageUrl и styleImageUrl обязательны' }, { status: 400 });
   }
 
   const yandexKey = (process.env.YANDEX_API_KEY ?? '').trim();
@@ -83,7 +95,7 @@ export async function POST(req: NextRequest) {
   const ac = new AbortController();
 
   try {
-    // ── Step 1: Convert both images to base64 in parallel ──────────────────
+    // ── Step 1: Convert both images to base64 ─────────────────────────────
     console.log('[style-transfer] converting images...');
     const [sourceData, styleData] = await Promise.all([
       toBase64DataUrl(sourceImageUrl),
@@ -91,7 +103,7 @@ export async function POST(req: NextRequest) {
     ]);
     console.log(`[style-transfer] source=${Math.round(sourceData.length / 1024)}KB style=${Math.round(styleData.length / 1024)}KB`);
 
-    // ── Step 2: Qwen analyzes both images → FLUX prompt ────────────────────
+    // ── Step 2: Qwen analyzes both images ─────────────────────────────────
     const qwenTimer = setTimeout(() => ac.abort(), 30_000);
     const qwenResp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
       method: 'POST',
@@ -113,8 +125,8 @@ export async function POST(req: NextRequest) {
             ],
           },
         ],
-        max_tokens: 2000,
-        temperature: 0.3,
+        max_tokens: 1500,
+        temperature: 0.2,
       }),
     });
     clearTimeout(qwenTimer);
@@ -126,41 +138,80 @@ export async function POST(req: NextRequest) {
 
     const qwenData = await qwenResp.json();
     const content: string = qwenData?.choices?.[0]?.message?.content ?? '';
-    console.log(`[style-transfer] Qwen response len=${content.length}`);
+    console.log(`[style-transfer] Qwen content_len=${content.length}`);
 
-    let fluxPrompt = '';
-    let sourceClothing = '';
-    let styleEnvironment = '';
-    let dominantElement = '';
-    let dominantType = '';
-
-    try {
-      const clean = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(clean);
-      fluxPrompt = parsed.fluxPrompt ?? '';
-      sourceClothing = parsed.sourceClothing ?? '';
-      styleEnvironment = parsed.styleEnvironment ?? '';
-      dominantElement = parsed.dominantElement ?? '';
-      dominantType = parsed.dominantType ?? '';
-    } catch {
-      const match = content.match(/"fluxPrompt"\s*:\s*"([\s\S]*?)"\s*[,}]/);
-      if (match) fluxPrompt = match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ');
+    // ── Parse Qwen JSON response ───────────────────────────────────────────
+    interface QwenResult {
+      dominantElement?: string;
+      dominantType?: string;
+      sourceClothing?: string;
+      styleEnvironment?: string;
+      preserve?: string;
+      change?: string;
+      scene?: string;
     }
 
-    if (!fluxPrompt) {
-      console.log(`[style-transfer] Qwen raw: ${content.slice(0, 400)}`);
+    let parsed: QwenResult = {};
+    try {
+      const clean = content
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+      parsed = JSON.parse(clean);
+    } catch {
+      // Try to repair truncated JSON
+      try {
+        const clean = content
+          .replace(/```json\s*/g, '')
+          .replace(/```\s*/g, '')
+          .trim();
+        parsed = JSON.parse(repairJson(clean));
+      } catch {
+        // Last resort: extract individual fields via regex
+        const extract = (key: string) => {
+          const m = content.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+          return m ? m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : '';
+        };
+        parsed = {
+          dominantElement: extract('dominantElement'),
+          dominantType: extract('dominantType'),
+          sourceClothing: extract('sourceClothing'),
+          styleEnvironment: extract('styleEnvironment'),
+          preserve: extract('preserve'),
+          change: extract('change'),
+          scene: extract('scene'),
+        };
+        console.log(`[style-transfer] used regex fallback, preserve_len=${parsed.preserve?.length}`);
+      }
+    }
+
+    // ── Build FLUX prompt from separate fields (avoids JSON escape issues) ─
+    const preserve = parsed.preserve?.trim() || '';
+    const change = parsed.change?.trim() || '';
+    const scene = parsed.scene?.trim() || '';
+
+    if (!preserve || !change) {
+      console.log(`[style-transfer] Qwen raw (first 600): ${content.slice(0, 600)}`);
       return Response.json(
-        { error: 'Не удалось сгенерировать промпт. Попробуйте другие фотографии.' },
+        {
+          error: `Qwen не смог разобрать фото. Попробуйте более чёткое фото 2 (без размытия). Debug: preserve="${preserve.slice(0, 80)}" change="${change.slice(0, 80)}"`,
+        },
         { status: 500 },
       );
     }
 
-    // ── Append user note to prompt if provided ────────────────────────────
+    let fluxPrompt =
+      `[PRESERVE] Keep unchanged: ${preserve} ` +
+      `[CHANGE] ${change} ` +
+      (scene ? `[SCENE] ${scene} ` : '') +
+      `[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.`;
+
+    // Append user note
     if (userNote) {
-      fluxPrompt = fluxPrompt + ` [USER] Additional requirement: ${userNote}`;
+      fluxPrompt += ` [USER] Additional requirement: ${userNote}`;
     }
 
-    console.log(`[style-transfer] dominantType=${dominantType} fluxPrompt_len=${fluxPrompt.length}`);
+    console.log(`[style-transfer] dominantType=${parsed.dominantType} prompt_len=${fluxPrompt.length}`);
 
     // ── Step 3: FLUX generates ─────────────────────────────────────────────
     const ac2 = new AbortController();
@@ -201,15 +252,15 @@ export async function POST(req: NextRequest) {
     }
 
     const dataUrl = await toBase64DataUrl(resultUrl).catch(() => null);
-    console.log(`[style-transfer] done, dataUrl present=${!!dataUrl}`);
+    console.log(`[style-transfer] done, dataUrl=${!!dataUrl}`);
 
     return Response.json({
       imageUrl: dataUrl ?? resultUrl,
       prompt: fluxPrompt,
-      sourceClothing,
-      styleEnvironment,
-      dominantElement,
-      dominantType,
+      sourceClothing: parsed.sourceClothing ?? '',
+      styleEnvironment: parsed.styleEnvironment ?? '',
+      dominantElement: parsed.dominantElement ?? '',
+      dominantType: parsed.dominantType ?? '',
     });
 
   } catch (e) {
