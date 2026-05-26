@@ -55,12 +55,22 @@ Return ONLY valid JSON (no markdown):
 }
 Example: "oversized white linen shirt, wide-leg white trousers, leopard turban, black sunglasses, pearl earrings, tan slides, standing pose with hand on hip"`;
 
-/** Remove body-part words that trigger FLUX content moderation (code 20021) */
+/**
+ * Strip words/phrases that trigger SiliconFlow FLUX content moderation (code 20021).
+ * Applied to ALL text going into the FLUX prompt.
+ */
 function sanitizeForFlux(s: string): string {
   return s
-    .replace(/\b(bare|naked|nude|exposed|flesh|skin|cleavage|midriff|neckline|décolleté|decollete|topless|shirtless|bra|underwear|lingerie)\b/gi, '')
+    // body / nudity
+    .replace(/\b(bare|naked|nude|nudity|exposed|flesh|skin|cleavage|midriff|neckline|décolleté|decollete|topless|shirtless|bra|underwear|lingerie|nipple|breast|buttock|groin)\b/gi, '')
+    // suggestive descriptors
+    .replace(/\b(revealing|seductive|sexy|sensual|suggestive|erotic|explicit|adult|provocative|intimate|risqué|risque)\b/gi, '')
+    // tight/figure descriptors that can combine badly with model photos
+    .replace(/\b(figure-hugging|body-con|bodycon|see-through|sheer|transparent|skin-tight|skintight)\b/gi, '')
+    // clean up artefacts
     .replace(/\s{2,}/g, ' ')
     .replace(/,\s*,/g, ',')
+    .replace(/\.\s*\./g, '.')
     .trim();
 }
 
@@ -188,22 +198,26 @@ export interface LayoutData {
 }
 
 function buildFluxPrompt(preserve: string, v: VisualFacts, userNote: string, hasText: boolean): string {
-  const visualDesc = [
-    v.background,
-    v.lighting,
-    v.colorPalette ? `Color palette: ${v.colorPalette}` : '',
-    v.mood,
-  ].filter(Boolean).join('. ');
+  // Sanitize ALL parts before composing the prompt
+  const safePreserve = sanitizeForFlux(preserve);
+  const safeBackground = sanitizeForFlux(v.background || '');
+  const safeLighting   = sanitizeForFlux(v.lighting   || '');
+  const safePalette    = v.colorPalette ? `Color palette: ${sanitizeForFlux(v.colorPalette)}` : '';
+  const safeMood       = sanitizeForFlux(v.mood || '');
 
+  const visualDesc = [safeBackground, safeLighting, safePalette, safeMood]
+    .filter(Boolean).join('. ');
+
+  // Neutral, natural-language prompt — avoid aggressive rule language that can confuse filters
   let prompt =
-    `[PRESERVE] Keep EXACTLY unchanged: ${preserve}. ` +
-    `[CHANGE] Apply this visual style to the photo: ${visualDesc || 'match the reference visual style and atmosphere'}. ` +
-    `ABSOLUTE RULE: Do NOT generate ANY text, letters, words, numbers, labels, symbols, watermarks, or typographic elements anywhere on the image. ` +
-    `The result must be a completely text-free, clean photograph with no writing of any kind. ` +
-    `[QUALITY] Professional fashion photography, Canon EOS R5, 50mm f/1.8, high-end editorial look, no AI artifacts.`;
+    `Product fashion photo. ` +
+    `Keep the clothing and outfit exactly as shown: ${safePreserve}. ` +
+    `Apply the visual atmosphere and background style: ${visualDesc || 'clean studio background with soft professional lighting'}. ` +
+    `No text, no watermarks, no graphics overlaid. ` +
+    `Professional product photography quality.`;
 
   if (userNote && !hasText) {
-    prompt += ` [USER NOTE] ${userNote}`;
+    prompt += ` ${sanitizeForFlux(userNote)}`;
   }
   return prompt;
 }
