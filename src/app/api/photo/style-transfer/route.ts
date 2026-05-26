@@ -318,57 +318,26 @@ export async function POST(req: NextRequest) {
     const fluxResp  = await callFlux(sourceData, fluxAc.signal);
     clearTimeout(fluxTimer);
 
-    // ── If 451 (content moderation) → try fal.ai as fallback ─────────────
-    let fluxData: Record<string, unknown> = {};
-    let usedProvider = 'siliconflow';
-
+    // ── If 451 (content moderation) → return to client ───────────────────
     if (fluxResp.status === 451) {
-      console.log('[style-transfer] FLUX 451 — SiliconFlow content moderation, trying fal.ai fallback');
-      const falKey = (process.env.FAL_KEY ?? '').trim();
-      if (!falKey) {
-        console.log('[style-transfer] FAL_KEY не задан — нет fallback, возвращаем 451');
-        return Response.json({ error: 'CONTENT_MODERATED' }, { status: 451 });
-      }
-
-      const falAc    = new AbortController();
-      const falTimer = setTimeout(() => falAc.abort(), 90_000);
-      const falResp  = await fetch('https://fal.run/fal-ai/flux-kontext/max', {
-        method: 'POST',
-        signal: falAc.signal,
-        headers: { 'Authorization': `Key ${falKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt:        fluxPrompt,
-          image_url:     sourceData,
-          sync_mode:     true,
-          output_format: 'jpeg',
-        }),
-      });
-      clearTimeout(falTimer);
-
-      const falText = await falResp.text();
-      console.log(`[style-transfer] fal.ai status=${falResp.status} body(200): ${falText.slice(0, 200)}`);
-
-      if (!falResp.ok) {
-        return Response.json({ error: `fal.ai ${falResp.status}: ${falText.slice(0, 200)}` }, { status: 500 });
-      }
-
-      try { fluxData = JSON.parse(falText); } catch { /* ok */ }
-      usedProvider = 'fal.ai';
-
-    } else {
-      const fluxText = await fluxResp.text();
-      const inference = (() => {
-        try { return String((JSON.parse(fluxText)?.timings as Record<string, unknown>)?.inference ?? '?'); } catch { return '?'; }
-      })();
-      console.log(`[style-transfer] FLUX status=${fluxResp.status} inference=${inference}s`);
-
-      if (!fluxResp.ok) {
-        return Response.json({ error: `FLUX ${fluxResp.status}: ${fluxText.slice(0, 200)}` }, { status: 500 });
-      }
-      try { fluxData = JSON.parse(fluxText); } catch { /* ok */ }
+      console.log('[style-transfer] FLUX 451 — content moderation');
+      return Response.json({ error: 'CONTENT_MODERATED' }, { status: 451 });
     }
 
-    console.log(`[style-transfer] provider=${usedProvider}`);
+    const fluxText = await fluxResp.text();
+    let fluxData: Record<string, unknown> = {};
+    const inference = (() => {
+      try {
+        const parsed = JSON.parse(fluxText);
+        fluxData = parsed;
+        return String((parsed?.timings as Record<string, unknown>)?.inference ?? '?');
+      } catch { return '?'; }
+    })();
+    console.log(`[style-transfer] FLUX status=${fluxResp.status} inference=${inference}s`);
+
+    if (!fluxResp.ok) {
+      return Response.json({ error: `FLUX ${fluxResp.status}: ${fluxText.slice(0, 200)}` }, { status: 500 });
+    }
 
     const resultUrl = (fluxData?.images as Array<{ url: string }>)?.[0]?.url ?? null;
     if (!resultUrl) return Response.json({ error: 'FLUX не вернул URL' }, { status: 500 });

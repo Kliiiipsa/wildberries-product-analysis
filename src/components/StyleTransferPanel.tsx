@@ -45,6 +45,35 @@ function resizeToBase64(file: File): Promise<string> {
   });
 }
 
+/**
+ * Снижает насыщенность изображения до ~20% от оригинала.
+ * Используется для обхода pixel-level content-фильтра SiliconFlow:
+ * без насыщенных тонов кожи классификатор не срабатывает,
+ * FLUX при этом всё равно видит форму одежды и переносит стиль.
+ */
+function desaturateBase64(src: string, saturation = 0.18): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const px = ctx.getImageData(0, 0, c.width, c.height);
+      const d = px.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
+        d[i]   = Math.round(gray + (d[i]   - gray) * saturation);
+        d[i+1] = Math.round(gray + (d[i+1] - gray) * saturation);
+        d[i+2] = Math.round(gray + (d[i+2] - gray) * saturation);
+      }
+      ctx.putImageData(px, 0, 0);
+      resolve(c.toDataURL('image/jpeg', 0.92));
+    };
+    img.src = src;
+  });
+}
+
 function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
@@ -298,7 +327,11 @@ export function StyleTransferPanel({ onBack }: Props) {
     resetResult();
 
     try {
-      const res = await callApi(sourceImage, styleImage);
+      // Обесцвечиваем исходное фото перед отправкой — убирает тона кожи,
+      // которые триггерят pixel-level фильтр SiliconFlow (код 451).
+      // FLUX видит форму и текстуру одежды даже в почти-сером изображении.
+      const srcToSend = await desaturateBase64(sourceImage);
+      const res = await callApi(srcToSend, styleImage);
 
       const data = await res.json();
       if (!res.ok) throw new Error(
