@@ -102,15 +102,15 @@ Rules:
 - Set "" for fields with no content`;
 
 // ── Prompt 3: Visual style analysis ──────────────────────────────────────────
-const STYLE_VISUAL_PROMPT = `Analyze the VISUAL STYLE of this product/fashion image.
-Focus ONLY on visual elements: background, colors, lighting, atmosphere. Completely ignore any text.
+const STYLE_VISUAL_PROMPT = `Analyze the visual style of this image: lighting, colors, and atmosphere ONLY.
+DO NOT describe people, models, faces, clothing, body parts or poses — ignore all humans in the image.
+Focus exclusively on: background surface/color/texture, light quality and direction, color palette, mood.
 
 Return ONLY valid JSON (no markdown):
 {
-  "background": "exact background: colors, gradient direction, texture, props, location",
-  "lighting": "lighting: direction, quality, color temperature, shadow style",
-  "colorPalette": "3-5 specific color names e.g. warm amber, ivory white, dusty rose",
-  "mood": "overall aesthetic in one sentence",
+  "lighting": "e.g. soft diffused studio light, warm color temperature, gentle shadows",
+  "colorPalette": "3-5 color names e.g. warm amber, ivory, dusty gold, cream",
+  "mood": "overall non-human aesthetic e.g. warm editorial, clean minimalist, moody dramatic",
   "hasPanel": "yes",
   "panelSide": "right",
   "panelWidthPct": "40",
@@ -118,11 +118,11 @@ Return ONLY valid JSON (no markdown):
   "panelOpacity": "0.95"
 }
 
-- hasPanel: "yes" if there is a dedicated text panel/overlay area, "no" if pure photo
-- panelSide: which side the panel is on: "right" / "left" / "bottom" / "center"
-- panelWidthPct: approximate % of image width the panel takes (integer 25–80)
-- panelColor: hex color of the panel background (if no panel, use dominant background color)
-- panelOpacity: opacity 0.7–1.0`;
+- hasPanel: "yes" if there is a text panel/overlay area separate from photo, "no" if no panel
+- panelSide: "right" / "left" / "bottom" / "center"
+- panelWidthPct: integer 25–80
+- panelColor: hex color of the panel (if no panel, use dominant background color hex)
+- panelOpacity: 0.7–1.0`;
 
 async function callQwen(
   apiKey: string,
@@ -173,7 +173,6 @@ interface OcrFacts {
 }
 
 interface VisualFacts {
-  background?: string;
   lighting?: string;
   colorPalette?: string;
   mood?: string;
@@ -198,33 +197,29 @@ export interface LayoutData {
 }
 
 function buildFluxPrompt(preserve: string, v: VisualFacts, userNote: string, hasText: boolean): string {
-  // FLUX.1-Kontext already sees the source image — it knows what to preserve.
-  // We only need to describe the TARGET visual style, not the source content.
-  // Keeping the prompt short and style-only avoids content moderation false positives.
+  // FLUX.1-Kontext sees the source image directly — no need to describe the subject.
+  // Prompt describes ONLY the target lighting/color/mood (no people, no clothing).
+  // This avoids content-moderation false positives from reference-model descriptions.
+  void preserve;
 
-  const safeBackground = sanitizeForFlux(v.background || '');
-  const safeLighting   = sanitizeForFlux(v.lighting   || '');
-  const safePalette    = sanitizeForFlux(v.colorPalette || '');
-  const safeMood       = sanitizeForFlux(v.mood || '');
+  const lighting = sanitizeForFlux(v.lighting    || '');
+  const palette  = sanitizeForFlux(v.colorPalette || '');
+  const mood     = sanitizeForFlux(v.mood         || '');
 
-  // Build a concise style description
   const parts: string[] = [];
-  if (safeBackground) parts.push(safeBackground);
-  if (safeLighting)   parts.push(safeLighting);
-  if (safePalette)    parts.push(`Color palette: ${safePalette}`);
-  if (safeMood)       parts.push(safeMood);
+  if (lighting) parts.push(`Lighting: ${lighting}`);
+  if (palette)  parts.push(`Colors: ${palette}`);
+  if (mood)     parts.push(mood);
+
   const styleDesc = parts.length > 0
     ? parts.join('. ')
-    : 'clean studio background, soft professional lighting, neutral tones';
+    : 'soft professional studio lighting, neutral warm tones';
 
-  let prompt = `Change the background and lighting to match this style: ${styleDesc}. Keep the person and outfit unchanged. No text or watermarks.`;
+  let prompt = `Apply this visual style to the photo: ${styleDesc}. Keep everything else unchanged. No text.`;
 
   if (userNote && !hasText) {
     prompt += ` ${sanitizeForFlux(userNote)}`;
   }
-
-  // preserve is still logged server-side for debugging but not sent to FLUX
-  void preserve;
   return prompt;
 }
 
@@ -289,7 +284,7 @@ export async function POST(req: NextRequest) {
 
     // ── Parse visual ──────────────────────────────────────────────────────
     const visualFacts: VisualFacts = tryParse<VisualFacts>(visualContent) ?? {};
-    const visKeys: (keyof VisualFacts)[] = ['background','lighting','colorPalette','mood','hasPanel','panelSide','panelWidthPct','panelColor','panelOpacity'];
+    const visKeys: (keyof VisualFacts)[] = ['lighting','colorPalette','mood','hasPanel','panelSide','panelWidthPct','panelColor','panelOpacity'];
     for (const k of visKeys) {
       if (!visualFacts[k]) (visualFacts as Record<string, string>)[k] = field(visualContent, k);
     }
