@@ -35,84 +35,136 @@ function repairJson(s: string): string {
   return result;
 }
 
-function parseJson<T>(content: string): T | null {
+function tryParse<T>(content: string): T | null {
   const clean = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
   try { return JSON.parse(clean) as T; } catch { /* */ }
   try { return JSON.parse(repairJson(clean)) as T; } catch { /* */ }
   return null;
 }
 
-function extractField(content: string, key: string): string {
+/** Extract a single string field from raw content via regex */
+function field(content: string, key: string): string {
   const m = content.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
-  return m ? m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : '';
+  return m ? m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').trim() : '';
 }
 
-// ── Prompt 1: analyze SOURCE image → what to PRESERVE ──────────────────────
-const SOURCE_PROMPT = `Analyze this fashion/product photo carefully.
-List EVERY visible clothing item and accessory with maximum detail in English.
-
-Return ONLY valid JSON (no markdown, no explanation):
-{
-  "preserve": "Exhaustive comma-separated English list: all clothing items with exact color, cut, fabric details, buttons, drawstrings, pockets; visible accessories; body parts (hands/legs/tattoos/pose direction)"
+/** Extract a number field */
+function fieldNum(content: string, key: string): number | null {
+  const m = content.match(new RegExp(`"${key}"\\s*:\\s*(\\d+)`));
+  return m ? parseInt(m[1], 10) : null;
 }
 
-Be specific. Example: "loose oversized white linen long-sleeve shirt open collar, wide-leg high-waist white linen trousers, leopard-print turban headband, black oval sunglasses, pearl stud earrings, tan leather flat slides, black sports bra visible under open shirt, right hand on hip"`;
-
-// ── Prompt 2: analyze STYLE image → what DOMINANT element to apply ──────────
-const STYLE_PROMPT = `Analyze this product/fashion photo. Find its MOST VISUALLY DOMINANT element.
-
-Priority order (check in this order, stop at first match):
-1. TEXT OVERLAYS / INFOGRAPHICS — any text block, warning notice, headline printed ON the photo
-2. GRAPHIC BADGES — sale labels, watermarks, price tags, colored banners, frames
-3. BACKGROUND — studio backdrop, lifestyle location, outdoor scene
-4. LIGHTING / COLOR GRADE — color temperature, mood, film effect
-
-If TEXT OVERLAY found: perform full OCR of every text element visible.
+// ── Prompt 1: SOURCE image → WHAT TO PRESERVE ─────────────────────────────
+// Qwen just describes what it sees — no FLUX instructions, just facts.
+const SOURCE_PROMPT = `Look at this fashion/product photo and describe the clothing in detail.
 
 Return ONLY valid JSON (no markdown):
 {
+  "preserve": "comma-separated English list of every clothing item with exact color, cut, fabric; accessories; visible body parts and pose"
+}
+
+Example preserve value: "loose oversized white linen long-sleeve shirt open collar, wide-leg high-waist white linen trousers, leopard-print turban headband, black oval sunglasses, pearl earrings, tan leather flat slides, black sports bra visible, right hand on hip"`;
+
+// ── Prompt 2: STYLE image → WHAT TO APPLY (facts only, no instructions) ────
+// Qwen describes what it observes. Server builds FLUX instructions from these facts.
+const STYLE_PROMPT = `Look at this product/fashion photo and describe what you observe.
+Return ONLY valid JSON with ALL flat string fields (no nested objects, no markdown):
+
+{
   "dominantType": "text_overlay",
-  "dominantElement": "One sentence: the most visually striking element in this photo",
-  "styleEnvironment": "What visual treatment will be transferred to another photo",
-  "change": "English description for FLUX: For text_overlay → Add empty white rectangular frame with thin light-grey border and rounded corners at [center/top/bottom] of image — COMPLETELY BLANK inside, zero text, zero characters. Also note badge: add empty [color] rectangle at [corner] with no text. For background → Replace background with [scene]. For lighting → Apply [light treatment].",
-  "scene": "Describe the final combined result: model in original outfit + this visual treatment applied",
-  "extractedText": {
-    "headline": "largest boldest text from photo in original language",
-    "bodyText": "full paragraph/body text in original language",
-    "footerText": "small footer or signature text in original language",
-    "badgeText": "badge or label text in original language",
-    "badgeColor": "#FF1493",
-    "brandText": "brand name if visible",
-    "textBoxPosition": "center",
-    "textBoxWidthPct": 75
-  }
+  "dominantElement": "one sentence: the single most visually striking element in this photo",
+  "styleEnvironment": "one sentence: what visual style exists here that could be applied to another photo",
+  "backgroundDescription": "describe the background: color, material, type",
+  "lightingDescription": "describe the lighting: direction, quality, color temperature",
+  "textBoxPosition": "center",
+  "textBoxWidthPct": "75",
+  "textBoxStyle": "white box with thin grey border and rounded corners",
+  "badgePosition": "bottom-left",
+  "ocr_headline": "copy the largest boldest text EXACTLY as written",
+  "ocr_body": "copy the body paragraph text EXACTLY as written",
+  "ocr_footer": "copy any footer or signature text EXACTLY as written",
+  "ocr_badge": "copy any badge or label text EXACTLY as written",
+  "ocr_badge_color": "#FF1493",
+  "ocr_brand": "copy any brand name EXACTLY as written"
 }
 
-dominantType must be exactly one of: text_overlay, graphic_badge, background, lighting
-If no text overlay exists: set extractedText to null`;
+Rules:
+- dominantType must be EXACTLY one of: text_overlay, graphic_badge, background, lighting
+- textBoxPosition must be: top, center, or bottom
+- If no text overlay found: set ocr_ fields to empty string, textBoxPosition to empty string
+- ALL values must be strings (including textBoxWidthPct)
+- Do NOT include any nested objects`;
 
-interface ExtractedText {
-  headline?: string;
-  bodyText?: string;
-  footerText?: string;
-  badgeText?: string;
-  badgeColor?: string;
-  brandText?: string;
-  textBoxPosition?: string;
-  textBoxWidthPct?: number;
-}
-
-interface SourceResult {
-  preserve?: string;
-}
-
-interface StyleResult {
+// ── Build FLUX [CHANGE] instruction server-side ────────────────────────────
+// Qwen provides facts; we construct the FLUX instruction from those facts.
+interface StyleFacts {
   dominantType?: string;
   dominantElement?: string;
   styleEnvironment?: string;
-  change?: string;
-  scene?: string;
-  extractedText?: ExtractedText | null;
+  backgroundDescription?: string;
+  lightingDescription?: string;
+  textBoxPosition?: string;
+  textBoxWidthPct?: string;
+  textBoxStyle?: string;
+  badgePosition?: string;
+  ocr_headline?: string;
+  ocr_body?: string;
+  ocr_footer?: string;
+  ocr_badge?: string;
+  ocr_badge_color?: string;
+  ocr_brand?: string;
+}
+
+function buildChangeInstruction(f: StyleFacts): string {
+  const dt = (f.dominantType || '').toLowerCase();
+
+  if (dt === 'text_overlay') {
+    const pos = f.textBoxPosition || 'center';
+    const w = f.textBoxWidthPct || '75';
+    const style = f.textBoxStyle || 'thin light-grey border and rounded corners';
+    const badgePos = f.badgePosition || 'bottom-left';
+    const badgeColor = f.ocr_badge_color || 'pink';
+
+    let instruction = `Add a completely blank white rectangular frame with ${style}, `
+      + `positioned at the ${pos} of the image, occupying approximately ${w}% of image width. `
+      + `The frame interior must be PERFECTLY EMPTY — zero text, zero characters, no symbols, just clean white space. `;
+
+    if (f.ocr_badge) {
+      instruction += `Also add an empty ${badgeColor} rectangular label shape at the ${badgePos} corner of the image — no text inside it. `;
+    }
+    if (f.ocr_brand) {
+      instruction += `Add brand text area at top-right corner of the image — blank. `;
+    }
+    return instruction.trim();
+  }
+
+  if (dt === 'graphic_badge') {
+    return `Apply graphic overlay elements from the reference image: ${f.dominantElement || ''}. Keep clothing unchanged.`;
+  }
+
+  if (dt === 'background') {
+    const bg = f.backgroundDescription || f.dominantElement || 'similar background';
+    return `Replace the background with: ${bg}. Keep the model and clothing perfectly unchanged.`;
+  }
+
+  if (dt === 'lighting') {
+    const light = f.lightingDescription || f.dominantElement || 'similar lighting';
+    return `Apply this lighting treatment: ${light}. Keep everything else unchanged.`;
+  }
+
+  // Fallback
+  return `Apply this visual style from the reference: ${f.dominantElement || f.styleEnvironment || 'reference style'}. Keep model and clothing unchanged.`;
+}
+
+function buildSceneInstruction(f: StyleFacts): string {
+  const dt = (f.dominantType || '').toLowerCase();
+  if (dt === 'text_overlay') {
+    return `Studio photo: model in original outfit, with a clean white rectangular frame overlaid at ${f.textBoxPosition || 'center'} of image, matching the layout style of the reference photo.`;
+  }
+  if (dt === 'background') {
+    return f.backgroundDescription || '';
+  }
+  return f.styleEnvironment || '';
 }
 
 async function callQwen(
@@ -121,15 +173,12 @@ async function callQwen(
   prompt: string,
   imageData: string,
   signal: AbortSignal,
-  maxTokens = 1200,
+  maxTokens = 800,
 ): Promise<string> {
   const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
     method: 'POST',
     signal,
-    headers: {
-      'Authorization': `Api-Key ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': `Api-Key ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: `gpt://${folderId}/qwen3.6-35b-a3b/latest`,
       messages: [
@@ -143,7 +192,7 @@ async function callQwen(
         },
       ],
       max_tokens: maxTokens,
-      temperature: 0.2,
+      temperature: 0.15,
     }),
   });
   if (!resp.ok) {
@@ -172,8 +221,7 @@ export async function POST(req: NextRequest) {
   if (!sfKey) return Response.json({ error: 'SILICONFLOW_API_KEY не задан' }, { status: 500 });
 
   try {
-    // ── Step 1: Convert both images in parallel ────────────────────────────
-    console.log('[style-transfer] converting images...');
+    // ── Step 1: Convert images ─────────────────────────────────────────────
     const [sourceData, styleData] = await Promise.all([
       toBase64DataUrl(sourceImageUrl),
       toBase64DataUrl(styleImageUrl),
@@ -181,50 +229,66 @@ export async function POST(req: NextRequest) {
     console.log(`[style-transfer] src=${Math.round(sourceData.length / 1024)}KB sty=${Math.round(styleData.length / 1024)}KB`);
 
     // ── Step 2: Two Qwen calls in parallel (one image each) ───────────────
-    // Yandex API reliably handles one image per request.
-    // Running in parallel: ~15-25s total instead of ~40s sequential.
-    console.log('[style-transfer] calling Qwen x2 in parallel...');
     const qwenAc = new AbortController();
     const qwenTimer = setTimeout(() => qwenAc.abort(), 35_000);
 
     const [sourceContent, styleContent] = await Promise.all([
-      callQwen(yandexKey, folderId, SOURCE_PROMPT, sourceData, qwenAc.signal, 600),
-      callQwen(yandexKey, folderId, STYLE_PROMPT, styleData, qwenAc.signal, 1400),
+      callQwen(yandexKey, folderId, SOURCE_PROMPT, sourceData, qwenAc.signal, 500),
+      callQwen(yandexKey, folderId, STYLE_PROMPT, styleData, qwenAc.signal, 1000),
     ]);
     clearTimeout(qwenTimer);
 
-    console.log(`[style-transfer] source_len=${sourceContent.length} style_len=${styleContent.length}`);
+    console.log(`[style-transfer] src_len=${sourceContent.length} sty_len=${styleContent.length}`);
+    console.log(`[style-transfer] style_raw(300): ${styleContent.slice(0, 300)}`);
 
-    // ── Parse source result ────────────────────────────────────────────────
-    const sourceParsed = parseJson<SourceResult>(sourceContent);
+    // ── Parse source: preserve ────────────────────────────────────────────
+    const srcParsed = tryParse<{ preserve?: string }>(sourceContent);
     const preserve =
-      sourceParsed?.preserve?.trim() ||
-      extractField(sourceContent, 'preserve') ||
+      srcParsed?.preserve?.trim() ||
+      field(sourceContent, 'preserve') ||
       'all clothing items and accessories from the original photo';
 
-    // ── Parse style result ─────────────────────────────────────────────────
-    const styleParsed = parseJson<StyleResult>(styleContent);
-    const change =
-      styleParsed?.change?.trim() ||
-      extractField(styleContent, 'change') ||
-      '';
-    const scene = styleParsed?.scene?.trim() || extractField(styleContent, 'scene') || '';
-    const dominantType = styleParsed?.dominantType || extractField(styleContent, 'dominantType') || '';
-    const dominantElement = styleParsed?.dominantElement || extractField(styleContent, 'dominantElement') || '';
-    const styleEnvironment = styleParsed?.styleEnvironment || extractField(styleContent, 'styleEnvironment') || '';
-    const extractedText: ExtractedText | null = styleParsed?.extractedText ?? null;
+    // ── Parse style: flat facts ───────────────────────────────────────────
+    const styleFacts: StyleFacts = tryParse<StyleFacts>(styleContent) ?? {};
 
-    console.log(`[style-transfer] preserve_len=${preserve.length} change_len=${change.length} dominantType=${dominantType}`);
-
-    if (!change) {
-      console.log(`[style-transfer] style raw: ${styleContent.slice(0, 500)}`);
-      return Response.json(
-        { error: `Не удалось разобрать стиль референса. Попробуйте другое фото 2. (change="${extractField(styleContent, 'change').slice(0, 60)}")` },
-        { status: 500 },
-      );
+    // Fallback: extract each field independently via regex
+    if (!styleFacts.dominantType) {
+      styleFacts.dominantType      = field(styleContent, 'dominantType');
+      styleFacts.dominantElement   = field(styleContent, 'dominantElement');
+      styleFacts.styleEnvironment  = field(styleContent, 'styleEnvironment');
+      styleFacts.backgroundDescription = field(styleContent, 'backgroundDescription');
+      styleFacts.lightingDescription   = field(styleContent, 'lightingDescription');
+      styleFacts.textBoxPosition   = field(styleContent, 'textBoxPosition');
+      styleFacts.textBoxWidthPct   = field(styleContent, 'textBoxWidthPct');
+      styleFacts.textBoxStyle      = field(styleContent, 'textBoxStyle');
+      styleFacts.badgePosition     = field(styleContent, 'badgePosition');
+      styleFacts.ocr_headline      = field(styleContent, 'ocr_headline');
+      styleFacts.ocr_body          = field(styleContent, 'ocr_body');
+      styleFacts.ocr_footer        = field(styleContent, 'ocr_footer');
+      styleFacts.ocr_badge         = field(styleContent, 'ocr_badge');
+      styleFacts.ocr_badge_color   = field(styleContent, 'ocr_badge_color');
+      styleFacts.ocr_brand         = field(styleContent, 'ocr_brand');
     }
 
-    // ── Build FLUX prompt ──────────────────────────────────────────────────
+    // If dominantType still missing, infer from OCR presence
+    if (!styleFacts.dominantType) {
+      if (styleFacts.ocr_headline || styleFacts.ocr_body) {
+        styleFacts.dominantType = 'text_overlay';
+      } else {
+        styleFacts.dominantType = 'background';
+      }
+    }
+
+    const dominantType    = styleFacts.dominantType || 'background';
+    const dominantElement = styleFacts.dominantElement || styleFacts.styleEnvironment || '';
+    const styleEnvironment = styleFacts.styleEnvironment || '';
+
+    console.log(`[style-transfer] dominantType=${dominantType} preserve_len=${preserve.length}`);
+
+    // ── Build FLUX instructions from facts ────────────────────────────────
+    const change = buildChangeInstruction(styleFacts);
+    const scene  = buildSceneInstruction(styleFacts);
+
     let fluxPrompt =
       `[PRESERVE] Keep unchanged: ${preserve} ` +
       `[CHANGE] ${change} ` +
@@ -238,11 +302,11 @@ export async function POST(req: NextRequest) {
     console.log(`[style-transfer] fluxPrompt_len=${fluxPrompt.length}`);
 
     // ── Step 3: FLUX ───────────────────────────────────────────────────────
-    const ac2 = new AbortController();
-    const fluxTimer = setTimeout(() => ac2.abort(), 55_000);
+    const fluxAc = new AbortController();
+    const fluxTimer = setTimeout(() => fluxAc.abort(), 55_000);
     const fluxResp = await fetch('https://api.siliconflow.com/v1/images/generations', {
       method: 'POST',
-      signal: ac2.signal,
+      signal: fluxAc.signal,
       headers: { 'Authorization': `Bearer ${sfKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'black-forest-labs/FLUX.1-Kontext-max',
@@ -269,6 +333,20 @@ export async function POST(req: NextRequest) {
 
     const dataUrl = await toBase64DataUrl(resultUrl).catch(() => null);
     console.log(`[style-transfer] done, dataUrl=${!!dataUrl}`);
+
+    // Build extractedText object for client Canvas compositing
+    const extractedText = (dominantType === 'text_overlay' && (styleFacts.ocr_headline || styleFacts.ocr_body))
+      ? {
+          headline: styleFacts.ocr_headline || '',
+          bodyText: styleFacts.ocr_body || '',
+          footerText: styleFacts.ocr_footer || '',
+          badgeText: styleFacts.ocr_badge || '',
+          badgeColor: styleFacts.ocr_badge_color || '#FF1493',
+          brandText: styleFacts.ocr_brand || '',
+          textBoxPosition: styleFacts.textBoxPosition || 'center',
+          textBoxWidthPct: (fieldNum(styleContent, 'textBoxWidthPct') ?? parseInt(styleFacts.textBoxWidthPct || '75', 10)) || 75,
+        }
+      : null;
 
     return Response.json({
       imageUrl: dataUrl ?? resultUrl,
