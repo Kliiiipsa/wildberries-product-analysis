@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { Search, Loader2, AlertCircle, LayoutDashboard, Users, Zap, Camera } from 'lucide-react';
+import { Search, Loader2, AlertCircle, LayoutDashboard, Users, Zap, Camera, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingState } from '@/components/LoadingState';
@@ -10,11 +10,12 @@ import { DashboardPanel } from '@/components/DashboardPanel';
 import { ComparisonView } from '@/components/ComparisonView';
 import { WhatIfSimulator } from '@/components/WhatIfSimulator';
 import { PhotoFunnelPanel } from '@/components/PhotoFunnelPanel';
+import { StyleTransferPanel } from '@/components/StyleTransferPanel';
 import type { AnalysisData, StreamEvent, DashboardData } from '@/types';
 
 type AnalysisPhase = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 type DashboardPhase = 'idle' | 'loading' | 'loaded' | 'error';
-type Mode = 'analysis' | 'dashboard' | 'comparison' | 'simulator' | 'photo';
+type Mode = 'analysis' | 'dashboard' | 'comparison' | 'simulator' | 'photo' | 'style-transfer';
 
 export function AnalyzeForm() {
   // ── Analysis state ──
@@ -284,6 +285,13 @@ export function AnalyzeForm() {
   }
 
   // ══════════════════════════════════════════════════════
+  // RENDER: Style transfer mode
+  // ══════════════════════════════════════════════════════
+  if (mode === 'style-transfer') {
+    return <StyleTransferPanel onBack={() => setMode('analysis')} />;
+  }
+
+  // ══════════════════════════════════════════════════════
   // RENDER: Analysis mode
   // ══════════════════════════════════════════════════════
   return (
@@ -323,7 +331,7 @@ export function AnalyzeForm() {
           )}
 
           {/* Action cards */}
-          <div className="grid grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-5 gap-3 mt-6">
             <button
               type="button"
               onClick={() => loadDashboard()}
@@ -377,6 +385,20 @@ export function AnalyzeForm() {
               <div>
                 <div className="font-semibold text-white text-xs leading-tight">Фото</div>
                 <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Улучшение карточки</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode('style-transfer')}
+              className="group flex flex-col items-center gap-2.5 rounded-2xl border border-slate-700/50 bg-slate-800/30 backdrop-blur-sm py-5 px-3 text-center hover:border-purple-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="h-11 w-11 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                <Wand2 className="h-5 w-5 text-purple-400" />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-xs leading-tight">Стиль</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Перенос стиля</div>
               </div>
             </button>
           </div>
