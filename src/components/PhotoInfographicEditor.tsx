@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { Loader2, Sparkles, ChevronDown } from 'lucide-react';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
@@ -559,12 +559,12 @@ export default function PhotoInfographicEditor({
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState('');
 
-  // ── FLUX base generation ────────────────────────────────────────────────────
+  // ── FLUX base generation (manual only — called from handleRender or ↻ button) ──
   const [baseImage, setBaseImage] = useState<string | null>(null);
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumError, setPremiumError] = useState('');
-  const autoStartedRef = useRef(false);
 
+  /** Called only from the ↻ re-generate button in the status bar */
   const generateBase = useCallback(async () => {
     if (!imageUrl || !fluxPrompt) {
       setPremiumError('Нет fluxPrompt — сначала проанализируйте фото');
@@ -589,14 +589,6 @@ export default function PhotoInfographicEditor({
       setPremiumLoading(false);
     }
   }, [imageUrl, fluxPrompt]);
-
-  // Auto-start when fluxPrompt becomes available
-  useEffect(() => {
-    if (fluxPrompt && !autoStartedRef.current) {
-      autoStartedRef.current = true;
-      generateBase();
-    }
-  }, [fluxPrompt, generateBase]);
 
   // ── AI text generation (fallback) ───────────────────────────────────────────
 
@@ -625,16 +617,14 @@ export default function PhotoInfographicEditor({
 
   // ── Canvas render ───────────────────────────────────────────────────────────
 
-  const activeImageUrl = baseImage ?? imageUrl;
-
-  const renderCard = useCallback(async (overrideData?: InfographicData): Promise<string> => {
+  const renderCard = useCallback(async (overrideData?: InfographicData, activeUrl?: string): Promise<string> => {
     const canvas = canvasRef.current;
     if (!canvas) throw new Error('no canvas');
     canvas.width = CARD_W;
     canvas.height = CARD_H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
-    const imgSrc = await toDataUrl(activeImageUrl);
+    const imgSrc = await toDataUrl(activeUrl ?? baseImage ?? imageUrl);
     const d = overrideData ?? data;
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
@@ -645,21 +635,48 @@ export default function PhotoInfographicEditor({
       img.onerror = () => reject(new Error('image load failed'));
       img.src = imgSrc;
     });
-  }, [activeImageUrl, data, compositionData, overlayStyleData]);
+  }, [baseImage, imageUrl, data, compositionData, overlayStyleData]);
 
   const handleRender = useCallback(async (overrideData?: InfographicData) => {
     if (!imageUrl) return;
     setRendering(true);
     setRenderError('');
+
+    // Если есть fluxPrompt, но база ещё не готова — генерируем её прямо сейчас
+    let resolvedBase = baseImage;
+    if (fluxPrompt && !resolvedBase) {
+      setPremiumLoading(true);
+      setPremiumError('');
+      try {
+        const imgSrc = await toDataUrl(imageUrl);
+        const res = await fetch('/api/photo/generate-infographic-base', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
+        resolvedBase = json.imageUrl as string;
+        setBaseImage(resolvedBase);
+      } catch (e) {
+        setPremiumError(String(e));
+        setRendering(false);
+        setPremiumLoading(false);
+        return;
+      } finally {
+        setPremiumLoading(false);
+      }
+    }
+
     try {
-      const url = await renderCard(overrideData);
+      const url = await renderCard(overrideData, resolvedBase ?? undefined);
       onExport?.(url);
     } catch (e) {
       setRenderError(String(e));
     } finally {
       setRendering(false);
     }
-  }, [imageUrl, renderCard, onExport]);
+  }, [imageUrl, baseImage, fluxPrompt, renderCard, onExport]);
 
   const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
   const [showManual, setShowManual] = useState(false);
@@ -702,7 +719,7 @@ export default function PhotoInfographicEditor({
               <Sparkles className="h-3 w-3" />
               FLUX база готова
               <button
-                onClick={() => { autoStartedRef.current = true; generateBase(); }}
+                onClick={() => generateBase()}
                 className="text-zinc-500 hover:text-emerald-300 transition-colors ml-1"
                 title="Перегенерировать"
               >
