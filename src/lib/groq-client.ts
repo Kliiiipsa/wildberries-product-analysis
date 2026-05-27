@@ -637,7 +637,18 @@ export async function* whatIfGroqStream(userPrompt: string): AsyncGenerator<stri
 - Копировать текст из таблицы без анализа
 - Использовать LaTeX-символы`;
 
-  // ── Groq ──────────────────────────────────────────────────────────────────
+  // ── Qwen 3.6-35B (Yandex) — приоритет ────────────────────────────────────
+  if (process.env.YANDEX_API_KEY?.trim()) {
+    const content = await yandexSync(system, userPrompt, 6000);
+    if (content) {
+      yield '\n> *Анализирует: Qwen 3.6 35B*\n\n';
+      yield content;
+      return;
+    }
+    yield '\n> ⚠️ Qwen 3.6 35B не ответил — переключаюсь на Groq\n\n';
+  }
+
+  // ── Groq (фолбэк) ─────────────────────────────────────────────────────────
   const groq = getGroqClient();
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -655,7 +666,7 @@ export async function* whatIfGroqStream(userPrompt: string): AsyncGenerator<stri
             { role: 'user',   content: userPrompt },
           ],
           temperature: 0.3,
-          max_tokens: Math.min(model.maxTokens, 3072),
+          max_tokens: Math.min(model.maxTokens, 6000),
           stream: true,
         });
         for await (const chunk of stream) {
