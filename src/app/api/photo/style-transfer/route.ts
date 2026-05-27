@@ -313,7 +313,7 @@ export async function POST(req: NextRequest) {
         method: 'POST', signal,
         headers: { 'Authorization': `Bearer ${sfKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'black-forest-labs/FLUX.1-Kontext-max',
+          model: 'black-forest-labs/FLUX.1-Kontext-pro',
           prompt: fluxPrompt,
           input_image: imageData,
           output_format: 'jpeg',
