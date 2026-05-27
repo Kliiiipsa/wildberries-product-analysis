@@ -239,13 +239,14 @@ function drawCard(
   const sg = Math.min(255, Math.round(bgG * (isLight ? 1.04 : 0.76)));
   const sb = Math.min(255, Math.round(bgB * (isLight ? 1.03 : 0.74)));
 
-  // Premium mode (FLUX-repositioned model in right 60%): stronger, wider panel.
-  // Quick mode (centred model): lighter, narrower to avoid darkening the model.
-  const saMax    = mode === 'premium' ? (isLight ? 0.92 : 0.88) : (isLight ? 0.80 : 0.76);
-  const solidEnd = mode === 'premium' ? 0.40 : 0.32;   // solid panel ends here
-  const fade1    = mode === 'premium' ? 0.57 : 0.46;   // 25% opacity here
-  const fade2    = mode === 'premium' ? 0.72 : 0.56;   // ~2% opacity here
-  const fadeEnd  = mode === 'premium' ? 0.85 : 0.64;   // fully transparent
+  // Premium mode: FLUX already created natural space — light scrim only for text readability.
+  // Quick mode: lighter, narrower to avoid darkening the model.
+  // Values intentionally low: the photo's own background provides contrast.
+  const saMax    = mode === 'premium' ? (isLight ? 0.52 : 0.62) : (isLight ? 0.62 : 0.68);
+  const solidEnd = mode === 'premium' ? 0.28 : 0.26;   // solid panel ends here
+  const fade1    = mode === 'premium' ? 0.46 : 0.42;   // 25% opacity here
+  const fade2    = mode === 'premium' ? 0.62 : 0.56;   // ~2% opacity here
+  const fadeEnd  = mode === 'premium' ? 0.76 : 0.68;   // fully transparent
 
   const scrim = ctx.createLinearGradient(0, 0, W, 0);
   scrim.addColorStop(0,        `rgba(${sr},${sg},${sb},${saMax})`);
@@ -266,8 +267,8 @@ function drawCard(
   // ── 4. Adaptive text/pill colours ─────────────────────────────────────────
   const textColor  = isLight ? '#15110A'              : '#F3F0E9';
   const subColor   = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
-  const pillBg     = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(14,12,22,0.84)';
-  const pillSh     = isLight ? 'rgba(0,0,0,0.09)'     : 'rgba(0,0,0,0.38)';
+  const pillBg     = isLight ? 'rgba(255,255,255,0.62)' : 'rgba(14,12,22,0.62)';
+  const pillSh     = isLight ? 'rgba(0,0,0,0.06)'     : 'rgba(0,0,0,0.22)';
   const pillIconBg = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
 
   // Accent from template (unchanged by auto-detection)
@@ -330,11 +331,11 @@ function drawCard(
     const ch = data.characteristics[i];
     const px = PAD, py = y;
 
-    // Pill fill with shadow (creates depth/volume)
+    // Pill fill with subtle shadow
     ctx.save();
     ctx.shadowColor = pillSh;
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
     ctx.fillStyle = pillBg;
     ctx.fill();

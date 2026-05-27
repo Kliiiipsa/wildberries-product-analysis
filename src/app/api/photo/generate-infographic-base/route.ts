@@ -26,6 +26,8 @@ async function toBase64DataUrl(url: string): Promise<string> {
 const INFOGRAPHIC_SUFFIX =
   ' Preserve the original photo atmosphere, lighting character, colour grade, and mood completely.' +
   ' The model\'s pose must remain pixel-perfect identical to the input — do not change it.' +
+  ' The extended background zone MUST maintain the original photo\'s exposure and brightness — do NOT darken it, do NOT add gradients, vignettes, or shadow overlays.' +
+  ' The text zone must be naturally bright and airy, matching the original illumination.' +
   ' No new objects introduced. No artificial empty zones. No text, no logos, no watermarks.';
 
 export async function POST(req: NextRequest) {

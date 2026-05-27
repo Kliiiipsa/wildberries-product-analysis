@@ -111,8 +111,9 @@ PROMPT FORMAT: [PRESERVE] [EXTEND] [QUALITY]
 - Name the specific background element to extend (e.g. "blurred green foliage", "grey studio backdrop", "concrete wall", "open sky above")
 - Direction: left / right / upper-left / upper-right / etc.
 - Emphasise: same depth-of-field, identical colour temperature, identical texture — just MORE of what already exists
+- CRITICAL — BRIGHTNESS: the extended zone MUST maintain the original exposure and brightness of the photo. Do NOT darken it. Do NOT add gradients, vignettes, or shadows. The extended area must be naturally light and airy, matching the original illumination exactly.
 - If space already exists: "Composition already provides natural breathing room on the [side] — no changes needed, preserve as-is"
-- NEVER create: artificial empty zones, solid-colour panels, new background types
+- NEVER create: artificial empty zones, solid-colour panels, darkened areas, gradient overlays
 - NEVER change: pose, lighting character, colour grade, atmosphere, environment type
 
 [QUALITY] Genuine photograph. Pose unchanged. No new objects. No lighting changes. No style changes. Real film grain. No AI artifacts.
@@ -121,16 +122,16 @@ PROMPT FORMAT: [PRESERVE] [EXTEND] [QUALITY]
 EXAMPLES:
 ━━━
 Park / nature photo:
-"[PRESERVE] Identical light blue oversized linen shirt and wide-leg trousers, model's exact pose with hands raised — pose pixel-perfect unchanged. Pearl necklace, white sandals. Warm natural daylight through park trees, soft dappled light, lush green blurred bokeh background, warm colour grade, real film grain, shallow depth of field. [EXTEND] The natural blurred green foliage on the left side gently expands further — same depth-of-field, identical warm colour temperature, identical bokeh softness. No new objects, no colour changes, just more of the existing blurred background. [QUALITY] Genuine photograph. Pose unchanged. No AI artifacts."
+"[PRESERVE] Identical light blue oversized linen shirt and wide-leg trousers, model's exact pose with hands raised — pose pixel-perfect unchanged. Pearl necklace, white sandals. Warm natural daylight through park trees, soft dappled light, lush green blurred bokeh background, warm colour grade, real film grain, shallow depth of field. [EXTEND] The natural blurred green foliage on the left side gently expands further — same depth-of-field, identical warm colour temperature, identical bokeh softness, same bright natural daylight exposure. The extended zone must stay light and airy, matching the original sunny brightness exactly — no darkening, no gradients, no shadows added. [QUALITY] Genuine photograph. Pose unchanged. No AI artifacts."
 
 Studio photo:
-"[PRESERVE] [clothing details], exact pose unchanged. Soft grey seamless studio backdrop, diffused front lighting, same shadow gradients, same colour grade. [EXTEND] The grey studio backdrop naturally extends further on the left — same seamless paper texture, same subtle lighting gradient, same neutral tone. [QUALITY] Genuine photograph. No style changes. No AI artifacts."
+"[PRESERVE] [clothing details], exact pose unchanged. Soft grey seamless studio backdrop, diffused front lighting, same shadow gradients, same colour grade. [EXTEND] The grey studio backdrop naturally extends further on the left — same seamless paper texture, same neutral tone, same even studio exposure. No darkening, no added gradients. [QUALITY] Genuine photograph. No style changes. No AI artifacts."
 
 Street / urban photo:
-"[PRESERVE] [clothing details], exact pose unchanged. Evening city street, warm light pools from streetlamps, blurred building facades, blue-hour atmosphere, same colour temperature and grain. [EXTEND] The blurred building wall on the right expands — same evening warm bokeh, same blue-hour tone, no new objects or people. [QUALITY] Genuine photograph. Pose unchanged. No AI artifacts."
+"[PRESERVE] [clothing details], exact pose unchanged. Evening city street, warm light pools from streetlamps, blurred building facades, blue-hour atmosphere, same colour temperature and grain. [EXTEND] The blurred building wall on the right expands — same evening warm bokeh, same blue-hour tone, same exposure level. No new objects, no additional darkening. [QUALITY] Genuine photograph. Pose unchanged. No AI artifacts."
 
 Photo with already good composition:
-"[PRESERVE] [all details]. [EXTEND] Composition already provides natural breathing room on the right side — no significant changes needed, preserve as-is. [QUALITY] Genuine photograph. No AI artifacts."
+"[PRESERVE] [all details]. [EXTEND] Composition already provides natural breathing room on the left side — no significant changes needed. Preserve existing exposure and brightness exactly as-is. [QUALITY] Genuine photograph. No AI artifacts."
 
 ━━━
 Also determine:
