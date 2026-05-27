@@ -36,15 +36,18 @@ export interface CompositionData {
 }
 
 export interface OverlayStyleData {
-  pillStyle?: 'frosted' | 'solid' | 'outline' | 'gradient' | 'minimal' | 'none';
-  pillOpacity?: number;
+  /** Editorial layout template (new). Falls back to composition.primaryTextZone if absent. */
+  layoutTemplate?: 'side-left' | 'side-right' | 'bottom-band';
   colorScheme?: 'light' | 'dark';
-  pillBgRgba?: string;
   textColorHex?: string;
   scrimOpacity?: number;
   scrimDirection?: string;
-  blurRadius?: number;
   shadowIntensity?: number;
+  /** Legacy fields kept for backwards compat — ignored in new editorial renderer */
+  pillStyle?: string;
+  pillOpacity?: number;
+  pillBgRgba?: string;
+  blurRadius?: number;
 }
 
 interface Props {
@@ -164,68 +167,279 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number, max
   return lines;
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
+// ── Editorial Canvas Drawing ───────────────────────────────────────────────────
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
-function iconLeaf(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - r);
-  ctx.bezierCurveTo(cx + r * 0.88, cy - r * 0.45, cx + r * 0.88, cy + r * 0.38, cx, cy + r * 0.22);
-  ctx.bezierCurveTo(cx - r * 0.88, cy + r * 0.38, cx - r * 0.88, cy - r * 0.45, cx, cy - r);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.42)';
-  ctx.lineWidth = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - r * 0.72); ctx.lineTo(cx, cy + r * 0.18);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function iconSparkle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const angle = (i * Math.PI) / 4 - Math.PI / 2;
-    const rad = i % 2 === 0 ? r : r * 0.36;
-    const px = cx + Math.cos(angle) * rad;
-    const py = cy + Math.sin(angle) * rad;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+/**
+ * Derive accent color from sampled background.
+ * Light + warm BG → warm dark charcoal | Light + cool → cool dark navy
+ * Dark + warm BG  → warm gold          | Dark + cool  → silver-blue
+ */
+function deriveAccent(r: number, _g: number, b: number, luminance: number): string {
+  const isLight = luminance > 140;
+  const warmth  = r - b;
+  if (isLight) {
+    return warmth >= 0 ? 'rgba(50,36,18,0.72)' : 'rgba(34,40,56,0.74)';
+  } else {
+    return warmth >= 0 ? 'rgba(212,180,108,0.84)' : 'rgba(174,200,228,0.82)';
   }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
 }
 
-function iconButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.4;
+/** Side layout — text column on left or right, full-height photo. */
+function drawSideLayout(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  data: InfographicData,
+  isRight: boolean,
+  textColor: string,
+  accent: string,
+  shadowAlpha: number,
+) {
+  const PAD    = 54;
+  const TEXT_W = 296;
+  const SPC    = 2.8;       // letter-spacing for small-caps
+  const textX  = isRight ? W - PAD : PAD;
+
+  ctx.textBaseline  = 'top';
+  ctx.shadowBlur    = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  let y = 72;
+
+  // ── Tagline ─────────────────────────────────────────────────────────────
+  ctx.font      = "400 10.5px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = textColor;
+  ctx.globalAlpha = 0.42;
+  const tagText = (data.tagline || '').toUpperCase();
+  const tagW    = spacedTextWidth(ctx, tagText, SPC);
+  drawSpaced(ctx, tagText, isRight ? textX - tagW : textX, y, SPC);
+  ctx.globalAlpha = 1;
+  y += 26;
+
+  // ── Short accent rule ───────────────────────────────────────────────────
+  const rLen = 36;
+  const rX   = isRight ? textX - rLen : textX;
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.moveTo(rX, y); ctx.lineTo(rX + rLen, y);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth   = 1.2;
+  ctx.globalAlpha = 0.70;
   ctx.stroke();
-  ctx.fillStyle = color;
-  [0, 1, 2, 3].forEach(i => {
-    const a = i * Math.PI / 2 + Math.PI / 4;
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * r * 0.45, cy + Math.sin(a) * r * 0.45, r * 0.16, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.restore();
+  ctx.globalAlpha = 1;
+  y += 20;
+
+  // ── Product name — Playfair Display italic bold ─────────────────────────
+  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
+  const nLen    = rawName.replace(/\s/g, '').length;
+  const NS      = nLen <= 7 ? 90 : nLen <= 11 ? 74 : nLen <= 16 ? 60 : 50;
+  ctx.font        = `italic bold ${NS}px 'Playfair Display', Georgia, 'Times New Roman', serif`;
+  ctx.fillStyle   = textColor;
+  ctx.textAlign   = isRight ? 'right' : 'left';
+  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+  ctx.shadowBlur  = 16;
+  ctx.shadowOffsetY = 2;
+  for (const line of wrapText(ctx, rawName, TEXT_W, 3)) {
+    ctx.fillText(line, textX, y);
+    y += Math.ceil(NS * 1.07);
+  }
+  ctx.shadowBlur    = 0;
+  ctx.shadowOffsetY = 0;
+  y += 12;
+
+  // ── Subtitle ────────────────────────────────────────────────────────────
+  if (data.productSubtitle) {
+    ctx.font        = "italic 400 15.5px Arial, Helvetica, sans-serif";
+    ctx.fillStyle   = textColor;
+    ctx.globalAlpha = 0.50;
+    ctx.textAlign   = isRight ? 'right' : 'left';
+    ctx.fillText(data.productSubtitle, textX, y);
+    ctx.globalAlpha = 1;
+    y += 40;
+  }
+
+  // ── Main separator ──────────────────────────────────────────────────────
+  const sepX = isRight ? textX - TEXT_W : textX;
+  ctx.beginPath();
+  ctx.moveTo(sepX, y); ctx.lineTo(sepX + TEXT_W, y);
+  ctx.strokeStyle = textColor;
+  ctx.lineWidth   = 1;
+  ctx.globalAlpha = 0.14;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  y += 22;
+
+  // ── Characteristics ─────────────────────────────────────────────────────
+  const chars = data.characteristics.slice(0, 3);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+
+    // Title: spaced uppercase, accent
+    ctx.font        = "700 10px Arial, Helvetica, sans-serif";
+    ctx.fillStyle   = accent;
+    ctx.globalAlpha = 1;
+    const tText = (ch.title || '').toUpperCase();
+    const tW    = spacedTextWidth(ctx, tText, 2.2);
+    drawSpaced(ctx, tText, isRight ? textX - tW : textX, y, 2.2);
+    y += 17;
+
+    // Value
+    ctx.font        = "400 13.5px Arial, Helvetica, sans-serif";
+    ctx.fillStyle   = textColor;
+    ctx.globalAlpha = 0.86;
+    ctx.textAlign   = isRight ? 'right' : 'left';
+    ctx.fillText(wrapText(ctx, ch.value || '', TEXT_W, 1)[0] ?? ch.value, textX, y);
+    ctx.globalAlpha = 1;
+    y += 20;
+
+    // Thin separator between items (not after last)
+    if (i < chars.length - 1) {
+      const csX = isRight ? textX - TEXT_W : textX;
+      ctx.beginPath();
+      ctx.moveTo(csX, y + 3); ctx.lineTo(csX + TEXT_W, y + 3);
+      ctx.strokeStyle = textColor;
+      ctx.lineWidth   = 1;
+      ctx.globalAlpha = 0.09;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      y += 20;
+    }
+  }
+
+  // ── Bottom text (bottom-anchored) ────────────────────────────────────────
+  if (data.bottomText) {
+    ctx.font        = "italic 400 12.5px 'Playfair Display', Georgia, serif";
+    ctx.fillStyle   = textColor;
+    ctx.globalAlpha = 0.40;
+    ctx.textAlign   = isRight ? 'right' : 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(data.bottomText, textX, H - 66);
+    ctx.globalAlpha  = 1;
+    ctx.textBaseline = 'top';
+  }
 }
 
-const ICON_FNS = [iconLeaf, iconSparkle, iconButton] as const;
+/** Bottom-band layout — photo full-height, editorial text block at the bottom. */
+function drawBottomLayout(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  data: InfographicData,
+  textColor: string,
+  accent: string,
+  shadowAlpha: number,
+) {
+  const CX       = W / 2;
+  const SPC      = 2.8;
+  const BAND_TOP = H - 312;
+
+  ctx.textBaseline  = 'top';
+  ctx.shadowBlur    = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  let y = BAND_TOP + 26;
+
+  // ── Tagline ─────────────────────────────────────────────────────────────
+  ctx.font        = "400 10.5px Arial, Helvetica, sans-serif";
+  ctx.fillStyle   = textColor;
+  ctx.globalAlpha = 0.40;
+  const tagText = (data.tagline || '').toUpperCase();
+  const tagW    = spacedTextWidth(ctx, tagText, SPC);
+  drawSpaced(ctx, tagText, CX - tagW / 2, y, SPC);
+  ctx.globalAlpha = 1;
+  y += 24;
+
+  // ── Short accent rule ───────────────────────────────────────────────────
+  const rLen = 36;
+  ctx.beginPath();
+  ctx.moveTo(CX - rLen / 2, y); ctx.lineTo(CX + rLen / 2, y);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth   = 1.2;
+  ctx.globalAlpha = 0.65;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  y += 18;
+
+  // ── Product name ────────────────────────────────────────────────────────
+  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
+  const nLen    = rawName.replace(/\s/g, '').length;
+  const NS      = nLen <= 7 ? 66 : nLen <= 11 ? 54 : nLen <= 16 ? 44 : 36;
+  ctx.font        = `italic bold ${NS}px 'Playfair Display', Georgia, 'Times New Roman', serif`;
+  ctx.fillStyle   = textColor;
+  ctx.textAlign   = 'center';
+  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+  ctx.shadowBlur  = 14;
+  ctx.shadowOffsetY = 2;
+  for (const line of wrapText(ctx, rawName, 640, 2)) {
+    ctx.fillText(line, CX, y);
+    y += Math.ceil(NS * 1.07);
+  }
+  ctx.shadowBlur    = 0;
+  ctx.shadowOffsetY = 0;
+  y += 8;
+
+  // ── Subtitle ────────────────────────────────────────────────────────────
+  if (data.productSubtitle) {
+    ctx.font        = "italic 400 14px Arial, Helvetica, sans-serif";
+    ctx.fillStyle   = textColor;
+    ctx.globalAlpha = 0.48;
+    ctx.textAlign   = 'center';
+    ctx.fillText(data.productSubtitle, CX, y);
+    ctx.globalAlpha = 1;
+    y += 32;
+  }
+
+  // ── Separator ───────────────────────────────────────────────────────────
+  ctx.beginPath();
+  ctx.moveTo(CX - 100, y); ctx.lineTo(CX + 100, y);
+  ctx.strokeStyle = textColor;
+  ctx.lineWidth   = 1;
+  ctx.globalAlpha = 0.14;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  y += 18;
+
+  // ── Characteristics — 3 columns ─────────────────────────────────────────
+  const chars  = data.characteristics.slice(0, 3);
+  const colW   = 240;
+  const totalW = colW * chars.length;
+  const startX = CX - totalW / 2;
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch    = chars[i];
+    const colCX = startX + colW * i + colW / 2;
+
+    // Title
+    ctx.font        = "700 10px Arial, Helvetica, sans-serif";
+    ctx.fillStyle   = accent;
+    ctx.globalAlpha = 1;
+    const tText = (ch.title || '').toUpperCase();
+    const tW    = spacedTextWidth(ctx, tText, 2.2);
+    drawSpaced(ctx, tText, colCX - tW / 2, y, 2.2);
+
+    // Value
+    ctx.font        = "400 12.5px Arial, Helvetica, sans-serif";
+    ctx.fillStyle   = textColor;
+    ctx.globalAlpha = 0.82;
+    ctx.textAlign   = 'center';
+    ctx.fillText(
+      wrapText(ctx, ch.value || ch.title || '', colW - 24, 1)[0] ?? '',
+      colCX,
+      y + 16,
+    );
+    ctx.globalAlpha = 1;
+  }
+  y += 44;
+
+  // ── Bottom text ─────────────────────────────────────────────────────────
+  if (data.bottomText) {
+    ctx.font        = "italic 400 12px 'Playfair Display', Georgia, serif";
+    ctx.fillStyle   = textColor;
+    ctx.globalAlpha = 0.38;
+    ctx.textAlign   = 'center';
+    ctx.fillText(data.bottomText, CX, y);
+    ctx.globalAlpha = 1;
+  }
+}
 
 // ── Main draw function ────────────────────────────────────────────────────────
 
@@ -237,293 +451,66 @@ function drawCard(
   overlayStyle?: OverlayStyleData | null,
 ) {
   const W = CARD_W, H = CARD_H;
-  const PAD = 58, TEXT_W = 310;
 
-  // ── 1. Photo: full-bleed object-cover ─────────────────────────────────────
+  // 1. Photo: full-bleed object-cover
   const sx = W / img.naturalWidth, sy = H / img.naturalHeight;
   const sc = Math.max(sx, sy);
   const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
   ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
 
-  // ── 2. Determine text zone from composition data ───────────────────────────
-  const textZone = composition?.primaryTextZone ?? 'left';
-  const isRight = ['right', 'top-right', 'bottom-right'].includes(textZone);
+  // 2. Resolve layout — prefer overlayStyle.layoutTemplate, fall back to composition.primaryTextZone
+  const rawZone = overlayStyle?.layoutTemplate ?? composition?.primaryTextZone ?? 'left';
+  const layout: 'side-left' | 'side-right' | 'bottom-band' =
+    rawZone === 'bottom-band' || rawZone === 'bottom' ? 'bottom-band' :
+    rawZone === 'side-right' || rawZone === 'right' ||
+    rawZone === 'top-right'  || rawZone === 'bottom-right' ? 'side-right' :
+    'side-left';
+  const isBottom = layout === 'bottom-band';
+  const isRight  = layout === 'side-right';
 
-  // ── 3. Sample background at the text zone side ────────────────────────────
+  // 3. Sample background for color detection
   const sampleSide: 'left' | 'right' | 'top' | 'bottom' =
-    isRight ? 'right' :
-    textZone === 'top' ? 'top' :
-    textZone === 'bottom' ? 'bottom' : 'left';
-
+    isRight ? 'right' : isBottom ? 'bottom' : 'left';
   const { r: bgR, g: bgG, b: bgB, luminance: lum } = sampleBackground(ctx, W, H, sampleSide);
 
-  // ── 4. Color scheme — from overlayStyle or auto-detected ──────────────────
-  const colorScheme = overlayStyle?.colorScheme ?? (lum > 130 ? 'light' : 'dark');
-  const isLight = colorScheme === 'light';
+  // 4. Colors
+  const colorScheme = overlayStyle?.colorScheme ?? (lum > 140 ? 'light' : 'dark');
+  const isLight     = colorScheme === 'light';
+  const textColor   = overlayStyle?.textColorHex ?? (isLight ? '#18140D' : '#EDE9E1');
+  const shadowAlpha = overlayStyle?.shadowIntensity ?? 0.28;
+  const accent      = deriveAccent(bgR, bgG, bgB, lum);
 
-  // Slightly nudge sampled colour: brighten for light BG, deepen for dark
-  const sr = Math.min(255, Math.round(bgR * (isLight ? 1.06 : 0.80)));
-  const sg = Math.min(255, Math.round(bgG * (isLight ? 1.04 : 0.76)));
-  const sb = Math.min(255, Math.round(bgB * (isLight ? 1.03 : 0.74)));
+  // Nudge background color for scrim
+  const sr  = Math.min(255, Math.round(bgR * (isLight ? 1.05 : 0.78)));
+  const sg  = Math.min(255, Math.round(bgG * (isLight ? 1.03 : 0.74)));
+  const sb_ = Math.min(255, Math.round(bgB * (isLight ? 1.02 : 0.70)));
 
-  // ── 5. pillStyle определяется ДО scrim — чтобы скрим зависел от стиля ──────
-  const pillStyle  = overlayStyle?.pillStyle ?? 'solid';
-  const blurR      = overlayStyle?.blurRadius ?? 10;
+  // 5. Very subtle scrim — max 0.13, nearly invisible, purely for readability
+  const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.09, 0.13);
 
-  // Для frosted/outline/minimal скрим минимальный — пилюли сами дают читаемость.
-  // Для solid/gradient — стандартный скрим из JSON или дефолт.
-  const scrimBase  = overlayStyle?.scrimOpacity ?? (isLight ? 0.42 : 0.55);
-  const SCRIM_BY_STYLE: Partial<Record<string, number>> = {
-    frosted: 0.16, outline: 0.10, minimal: 0.13, none: 0.08,
-  };
-  const saMax    = Math.max(SCRIM_BY_STYLE[pillStyle] ?? scrimBase, 0.10);
-  const solidEnd = pillStyle === 'frosted' || pillStyle === 'outline' ? 0.14 : 0.28;
-  const fade1    = solidEnd + 0.18;
-  const fade2    = solidEnd + 0.36;
-  const fadeEnd  = solidEnd + 0.52;
-
-  // Gradient direction
-  const scrimDir = overlayStyle?.scrimDirection ?? (isRight ? 'right' : textZone);
-  let gx0 = 0, gy0 = 0, gx1 = W, gy1 = 0; // default: left→right
-  switch (scrimDir) {
-    case 'right':     gx0 = W; gy0 = 0;  gx1 = 0; gy1 = 0;  break;
-    case 'top':       gx0 = 0; gy0 = 0;  gx1 = 0; gy1 = H;  break;
-    case 'bottom':    gx0 = 0; gy0 = H;  gx1 = 0; gy1 = 0;  break;
-    case 'top-left':  gx0 = 0; gy0 = 0;  gx1 = W; gy1 = H;  break;
-    case 'top-right': gx0 = W; gy0 = 0;  gx1 = 0; gy1 = H;  break;
+  if (isBottom) {
+    const bScrim = ctx.createLinearGradient(0, H - 340, 0, H);
+    bScrim.addColorStop(0,    `rgba(${sr},${sg},${sb_},0)`);
+    bScrim.addColorStop(0.45, `rgba(${sr},${sg},${sb_},${+(scrimMax * 0.50).toFixed(3)})`);
+    bScrim.addColorStop(1,    `rgba(${sr},${sg},${sb_},${scrimMax})`);
+    ctx.fillStyle = bScrim;
+    ctx.fillRect(0, H - 340, W, 340);
+  } else {
+    const gx0 = isRight ? W : 0;
+    const gx1 = isRight ? W * 0.55 : W * 0.45;
+    const sideScrim = ctx.createLinearGradient(gx0, 0, gx1, 0);
+    sideScrim.addColorStop(0,    `rgba(${sr},${sg},${sb_},${scrimMax})`);
+    sideScrim.addColorStop(0.60, `rgba(${sr},${sg},${sb_},${+(scrimMax * 0.20).toFixed(3)})`);
+    sideScrim.addColorStop(1,    `rgba(${sr},${sg},${sb_},0)`);
+    ctx.fillStyle = sideScrim;
+    ctx.fillRect(0, 0, W, H);
   }
 
-  const scrim = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
-  scrim.addColorStop(0,        `rgba(${sr},${sg},${sb},${saMax})`);
-  scrim.addColorStop(solidEnd, `rgba(${sr},${sg},${sb},${saMax})`);
-  scrim.addColorStop(fade1,    `rgba(${sr},${sg},${sb},${+(saMax * 0.25).toFixed(3)})`);
-  scrim.addColorStop(fade2,    `rgba(${sr},${sg},${sb},${+(saMax * 0.04).toFixed(3)})`);
-  scrim.addColorStop(fadeEnd,  `rgba(${sr},${sg},${sb},0)`);
-  ctx.fillStyle = scrim;
-  ctx.fillRect(0, 0, W, H);
-
-  // Subtle bottom fade for bottom text (text-zone side only)
-  const bScrim = ctx.createLinearGradient(0, H - 100, 0, H);
-  bScrim.addColorStop(0, `rgba(${sr},${sg},${sb},0)`);
-  bScrim.addColorStop(1, `rgba(${sr},${sg},${sb},${+(saMax * 0.40).toFixed(3)})`);
-  ctx.fillStyle = bScrim;
-  ctx.fillRect(isRight ? W * 0.48 : 0, H - 100, W * 0.52, 100);
-
-  // ── 6. Adaptive text/pill colours ─────────────────────────────────────────
-  const textColor   = overlayStyle?.textColorHex ?? (isLight ? '#15110A' : '#F3F0E9');
-  const subColor    = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
-  const pillOpacity = overlayStyle?.pillOpacity ?? 0.62;
-  const pillBg      = overlayStyle?.pillBgRgba ??
-    (isLight ? `rgba(255,255,255,${pillOpacity})` : `rgba(14,12,22,${pillOpacity})`);
-  const pillIconBg  = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
-  const accent      = isLight ? '#7A5830'               : '#C9A96E';
-
-  // Диагностика — что реально применяется к Canvas
-  console.log(`[Canvas] pillStyle="${pillStyle}" scrim=${saMax.toFixed(2)} colorScheme="${colorScheme}" zone="${textZone}" overlayStyle_null=${overlayStyle == null}`);
-
-  // ── 7. Typography ─────────────────────────────────────────────────────────
-  // Text anchor: left edge for left zones, right edge for right zones
-  const textX = isRight ? W - PAD : PAD;
-  ctx.textBaseline = 'top';
-  let y = 88;
-
-  // Tagline — small, spaced letters
-  ctx.font = '400 11.5px Arial, Helvetica, sans-serif';
-  ctx.fillStyle = subColor;
-  ctx.textAlign = 'left';
-  const tagText = data.tagline.toUpperCase();
-  const tagW = spacedTextWidth(ctx, tagText, 2.6);
-  const tagStartX = isRight ? textX - tagW : textX;
-  drawSpaced(ctx, tagText, tagStartX, y, 2.6);
-  y += 36;
-
-  // Product name — italic serif bold
-  const rawName = data.productName.toUpperCase();
-  const nLen = rawName.replace(/\s/g, '').length;
-  const NS = nLen <= 6 ? 68 : nLen <= 10 ? 56 : nLen <= 15 ? 46 : 38;
-  ctx.font = `italic bold ${NS}px Georgia, 'Times New Roman', serif`;
-  ctx.fillStyle = textColor;
-  ctx.textAlign = isRight ? 'right' : 'left';
-  // Всегда тёмная тень — создаёт контраст на любом фоне независимо от colorScheme
-  const shadowAlpha = overlayStyle?.shadowIntensity ?? 0.35;
-  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 2;
-  const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
-  for (const line of nameLines) {
-    ctx.fillText(line, textX, y);
-    y += Math.ceil(NS * 1.12);
-  }
-  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-  y += 14;
-
-  // Subtitle — italic (400, не 300 — 300 нечитаем)
-  if (data.productSubtitle) {
-    ctx.font = 'italic 400 17px Arial, Helvetica, sans-serif';
-    ctx.fillStyle = subColor;
-    ctx.textAlign = isRight ? 'right' : 'left';
-    ctx.fillText(data.productSubtitle, textX, y);
-    y += 44;
-  }
-
-  // Short accent rule
-  const ruleX = isRight ? textX - 50 : textX;
-  ctx.beginPath();
-  ctx.moveTo(ruleX, y);
-  ctx.lineTo(ruleX + 50, y);
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 1.4;
-  ctx.globalAlpha = 0.52;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  y += 28;
-
-  // ── 8. Feature pills ──────────────────────────────────────────────────────
-  const PILL_H = 66, PILL_W = 318, PILL_R = 33;
-  const ICON_CX = 42, ICON_DOT_R = 14, ICON_R = 15;
-
-  for (let i = 0; i < data.characteristics.slice(0, 3).length; i++) {
-    const ch = data.characteristics[i];
-    const px = isRight ? W - PAD - PILL_W : PAD;
-    const py = y;
-
-    // ── Pill background — branched by pillStyle ──────────────────────────
-    switch (pillStyle) {
-
-      case 'frosted': {
-        // Настоящий frosted glass: blur фото за пилюлей + сильный wash + белая граница
-        ctx.save();
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.clip();
-        ctx.filter = `blur(${blurR}px)`;
-        ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
-        ctx.filter = 'none';
-        // Сильный wash — чтобы frosted был реально заметен даже на bokeh фоне
-        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.52)' : 'rgba(8,6,16,0.52)';
-        ctx.fillRect(px, py, PILL_W, PILL_H);
-        ctx.restore();
-        // Видимая белая граница — характерна для frosted glass
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.80)' : 'rgba(255,255,255,0.22)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        // Тонкий блик сверху (top highlight)
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(px + PILL_R, py + 1);
-        ctx.lineTo(px + PILL_W - PILL_R, py + 1);
-        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.12)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.restore();
-        break;
-      }
-
-      case 'outline': {
-        // Полностью прозрачный фон — только жирная цветная обводка
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        // Внутри — тонкая подложка для читаемости текста
-        roundRect(ctx, px + 1, py + 1, PILL_W - 2, PILL_H - 2, PILL_R - 1);
-        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
-        ctx.fill();
-        break;
-      }
-
-      case 'gradient': {
-        // Сильный градиент: почти непрозрачный → полностью прозрачный
-        const gDir = isRight ? ctx.createLinearGradient(px + PILL_W, py, px, py)
-                             : ctx.createLinearGradient(px, py, px + PILL_W, py);
-        gDir.addColorStop(0,    isLight ? 'rgba(255,255,255,0.88)' : 'rgba(8,6,16,0.88)');
-        gDir.addColorStop(0.55, isLight ? 'rgba(255,255,255,0.52)' : 'rgba(8,6,16,0.52)');
-        gDir.addColorStop(1,    isLight ? 'rgba(255,255,255,0.04)' : 'rgba(8,6,16,0.04)');
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.fillStyle = gDir;
-        ctx.fill();
-        break;
-      }
-
-      case 'minimal': {
-        // Почти невидимая подложка — текст как будто висит в воздухе
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.10)' : 'rgba(8,6,16,0.10)';
-        ctx.fill();
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 0.8;
-        ctx.globalAlpha = 0.22;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        break;
-      }
-
-      case 'none':
-        // Текст прямо на фото — без подложки
-        break;
-
-      default: { // 'solid' — плотная непрозрачная плашка
-        ctx.save();
-        ctx.shadowColor = isLight ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0.38)';
-        ctx.shadowBlur = 14;
-        ctx.shadowOffsetY = 3;
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.fillStyle = pillBg;
-        ctx.fill();
-        ctx.restore();
-        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.22;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        break;
-      }
-    }
-
-    // Icon circle — always on the inner side of the pill
-    const iconCX = px + ICON_CX;
-    const iconCY = py + PILL_H / 2;
-    ctx.beginPath();
-    ctx.arc(iconCX, iconCY, ICON_DOT_R, 0, Math.PI * 2);
-    ctx.fillStyle = pillIconBg;
-    ctx.fill();
-    ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, accent);
-
-    // Pill text (always left-aligned inside pill)
-    const textXP = iconCX + ICON_DOT_R + 14;
-    const maxTW = px + PILL_W - textXP - 16;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    if (ch.value) {
-      ctx.font = '600 14px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = textColor;
-      ctx.fillText(ch.title, textXP, iconCY - 10);
-      ctx.font = '400 12px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = subColor;
-      ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textXP, iconCY + 10);
-    } else {
-      ctx.font = '500 14px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = textColor;
-      ctx.fillText(ch.title, textXP, iconCY);
-    }
-    ctx.textBaseline = 'top';
-    y += PILL_H + 14;
-  }
-
-  // ── 9. Bottom italic text ─────────────────────────────────────────────────
-  if (data.bottomText) {
-    const btY = H - 76, btSz = 15;
-    ctx.font = `italic 300 ${btSz}px Georgia, 'Times New Roman', serif`;
-    ctx.fillStyle = subColor;
-    ctx.textAlign = isRight ? 'right' : 'left';
-    ctx.textBaseline = 'top';
-    let bty = btY;
-    for (const bl of wrapText(ctx, data.bottomText, TEXT_W - 20, 2)) {
-      ctx.fillText(bl, textX, bty);
-      bty += btSz + 4;
-    }
+  // 6. Draw editorial text
+  if (isBottom) {
+    drawBottomLayout(ctx, W, H, data, textColor, accent, shadowAlpha);
+  } else {
+    drawSideLayout(ctx, W, H, data, isRight, textColor, accent, shadowAlpha);
   }
 }
 
@@ -624,6 +611,13 @@ export default function PhotoInfographicEditor({
     canvas.height = CARD_H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
+    // Ensure Playfair Display (Google Fonts) is loaded before drawing
+    if (typeof document !== 'undefined') {
+      await Promise.all([
+        document.fonts.load("italic bold 90px 'Playfair Display'"),
+        document.fonts.load("italic 400 14px 'Playfair Display'"),
+      ]).catch(() => {});
+    }
     const imgSrc = await toDataUrl(activeUrl ?? baseImage ?? imageUrl);
     const d = overrideData ?? data;
     return new Promise<string>((resolve, reject) => {
@@ -746,14 +740,17 @@ export default function PhotoInfographicEditor({
         <div className="rounded-xl border border-violet-800/30 bg-violet-900/10 px-3 py-2 text-xs text-violet-300 space-y-0.5">
           <p className="font-medium text-violet-400">✓ Qwen overlay данные получены:</p>
           <p>
-            <span className="text-violet-500">pillStyle:</span>{' '}
-            <span className="text-white font-mono">{overlayStyleData.pillStyle ?? '—'}</span>
+            <span className="text-violet-500">layout:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.layoutTemplate ?? '—'}</span>
             {' · '}
             <span className="text-violet-500">colorScheme:</span>{' '}
             <span className="text-white font-mono">{overlayStyleData.colorScheme ?? '—'}</span>
             {' · '}
             <span className="text-violet-500">scrimOpacity:</span>{' '}
             <span className="text-white font-mono">{overlayStyleData.scrimOpacity ?? '—'}</span>
+            {' · '}
+            <span className="text-violet-500">shadow:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.shadowIntensity ?? '—'}</span>
           </p>
           {compositionData?.primaryTextZone && (
             <p>
@@ -765,7 +762,7 @@ export default function PhotoInfographicEditor({
         </div>
       ) : (
         <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 px-3 py-1.5 text-xs text-zinc-600">
-          ⚠ overlayStyle от Qwen не получен — используются дефолты (solid + auto-detect)
+          ⚠ overlayStyle от Qwen не получен — используются дефолты (editorial auto-detect)
         </div>
       )}
 

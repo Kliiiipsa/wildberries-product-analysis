@@ -137,32 +137,32 @@ Photo with already good composition:
 Also determine:
 
 PHASE A — COMPOSITION ANALYSIS:
-• textSide: "left" | "right" | "top" | "bottom" — which side has the most natural space for text
-• recommendedLayout: "left" | "right" | "bottom" | "minimal"
-• style: "studio" | "lifestyle" | "minimal" | "premium"
-• textPosition: "left-third" | "right-third" | "bottom" | "overlay"
-• composition.subjectZone: where the main subject/model is — "center" | "left" | "right" | "bottom" | "top"
+• textSide: "left" | "right" | "bottom" — which side has the most natural space for text
+• composition.subjectZone: where the main subject/model is — "center" | "left" | "right"
 • composition.freeZones: all zones with natural negative space — e.g. ["left", "top-left"]
-• composition.primaryTextZone: single best zone for text overlay — "left" | "right" | "top" | "bottom" | "top-left" | "top-right"
+• composition.primaryTextZone: single best zone — "left" | "right" | "top" | "bottom" | "top-left" | "top-right"
 • composition.textZoneReason: 1 sentence explaining why this zone is best for text
-• composition.recommendedTextAlignment: "vertical" | "horizontal" | "two-column" — how text pills should stack
 
-PHASE B — OVERLAY STYLE (analyse primaryTextZone background luminance):
-• overlayStyle.pillStyle — choose based on background complexity:
-    "frosted"  → busy/textured background (lifestyle, park, city) — blurs what's behind the pill
-    "gradient" → clean gradient zones — pill fades from opaque to transparent
-    "outline"  → very clean, airy background — only a coloured border, no fill
-    "minimal"  → nearly empty studio zone — just a ghost fill (0.15 opacity)
-    "solid"    → very cluttered/dark background — needs a clearly opaque pill
-    "none"     → pristine clean background where text is already readable
-• overlayStyle.pillOpacity: 0.25 to 0.72 — MUST match pillStyle (frosted ≈0.30, outline =0, gradient ≈0.55, minimal ≈0.18, solid ≈0.65)
-• overlayStyle.colorScheme: "light" (bright BG → dark text) | "dark" (dark BG → light text)
-• overlayStyle.pillBgRgba: exact rgba() string — e.g. "rgba(255,255,255,0.30)" for frosted-light or "rgba(14,12,22,0.65)" for solid-dark
-• overlayStyle.textColorHex: exact hex — e.g. "#1A1205" (dark on light) or "#F0EDE6" (light on dark)
-• overlayStyle.scrimOpacity: 0.10 to 0.40 — KEEP IT LOW for lifestyle shots (0.15–0.25), higher only for cluttered backgrounds (0.30–0.40)
-• overlayStyle.scrimDirection: "left" | "right" | "top" | "bottom" | "top-left" | "top-right" — matches primaryTextZone
-• overlayStyle.blurRadius: 6 to 16 — used only for "frosted" style (8 = standard, 12 = heavy blur)
-• overlayStyle.shadowIntensity: 0.0 to 0.50 — text shadow alpha (0.0 for clean zones, up to 0.40 for busy backgrounds)
+PHASE B — OVERLAY STYLE:
+• overlayStyle.layoutTemplate — choose based on WHERE THE SUBJECT IS in the frame:
+    "side-left"   → subject/model on the RIGHT or right-center of the frame → text goes on the LEFT side column
+    "side-right"  → subject/model on the LEFT or left-center of the frame → text goes on the RIGHT side column
+    "bottom-band" → subject is CENTERED filling most of the height, OR full-body dynamic pose with no clear side space, OR flat-lay / product-only — text goes in a horizontal block at the BOTTOM
+
+• overlayStyle.colorScheme — analyse the text zone background:
+    "light" → background in text zone is bright/pale → use dark text on it
+    "dark"  → background in text zone is dark/shadowed → use light text on it
+
+• overlayStyle.textColorHex — exact hex for main text:
+    Light scheme → near-black warm e.g. "#18140D" | "#1C1812" | "#221A0E"
+    Dark scheme  → near-white warm e.g. "#EDE9E1" | "#F2EEE6" | "#E8E4DC"
+
+• overlayStyle.scrimOpacity — 0.05 to 0.13 ONLY. This is a nearly invisible gradient behind the text zone, purely for readability. NEVER exceed 0.13. On clean studio shots use 0.05–0.07. On busy lifestyle shots use 0.09–0.13.
+
+• overlayStyle.scrimDirection — matches the text zone: "left" | "right" | "bottom"
+
+• overlayStyle.shadowIntensity — text drop-shadow alpha: 0.15 to 0.35. Clean bright zone → 0.18. Dark or busy zone → 0.30–0.35.
+
 • fluxExtendNote: 1 sentence — what FLUX will extend and why
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -219,19 +219,15 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
     "subjectZone": "center",
     "freeZones": ["left"],
     "primaryTextZone": "left",
-    "textZoneReason": "...",
-    "recommendedTextAlignment": "vertical"
+    "textZoneReason": "..."
   },
   "overlayStyle": {
-    "pillStyle": "frosted",
-    "pillOpacity": 0.30,
+    "layoutTemplate": "side-left",
     "colorScheme": "light",
-    "pillBgRgba": "rgba(255,255,255,0.28)",
-    "textColorHex": "#1A1205",
-    "scrimOpacity": 0.20,
+    "textColorHex": "#18140D",
+    "scrimOpacity": 0.08,
     "scrimDirection": "left",
-    "blurRadius": 8,
-    "shadowIntensity": 0.10
+    "shadowIntensity": 0.26
   },
   "fluxExtendNote": "...",
   "textVariants": [
