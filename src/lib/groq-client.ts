@@ -467,7 +467,7 @@ async function yandexSync(
     const folderId = (process.env.YANDEX_FOLDER_ID ?? 'b1g2kv9g5q3fstk360sa').trim();
     if (!apiKey) return null;
 
-    const model = `gpt://${folderId}/yandexgpt-5-lite/latest`;
+    const model = `gpt://${folderId}/qwen3.6-35b-a3b/latest`;
 
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 50_000);
@@ -522,11 +522,11 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
   if (process.env.YANDEX_API_KEY?.trim()) {
     const content = await yandexSync(systemPrompt, prompt, 8000);
     if (content) {
-      yield '\n> *Анализирует: YandexGPT 5 Lite*\n\n';
+      yield '\n> *Анализирует: Qwen 3.6 35B*\n\n';
       yield content;
       return;
     }
-    yield '\n> ⚠️ YandexGPT не ответил за 20 сек — переключаюсь на Groq\n\n';
+    yield '\n> ⚠️ Qwen 3.6 35B не ответил за 50 сек — переключаюсь на Groq\n\n';
   }
 
   // ── Groq ──────────────────────────────────────────────────────────────────
