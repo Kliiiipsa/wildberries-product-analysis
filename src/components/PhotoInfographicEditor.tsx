@@ -267,7 +267,8 @@ function drawCard(
   const sb = Math.min(255, Math.round(bgB * (isLight ? 1.03 : 0.74)));
 
   // ── 5. Scrim gradient ─────────────────────────────────────────────────────
-  const saMax      = overlayStyle?.scrimOpacity ?? (isLight ? 0.48 : 0.58);
+  // Floor 0.28 — даже если Qwen рекомендует ниже, текст без минимального скрима нечитаем
+  const saMax      = Math.max(overlayStyle?.scrimOpacity ?? (isLight ? 0.48 : 0.58), 0.28);
   const solidEnd   = 0.28;
   const fade1      = 0.46;
   const fade2      = 0.62;
@@ -308,7 +309,6 @@ function drawCard(
     (isLight ? `rgba(255,255,255,${pillOpacity})` : `rgba(14,12,22,${pillOpacity})`);
   const pillIconBg  = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
   const accent      = isLight ? '#7A5830'               : '#C9A96E';
-  const shadowInt   = overlayStyle?.shadowIntensity ?? (isLight ? 0.55 : 0.70);
   const pillStyle   = overlayStyle?.pillStyle ?? 'solid';
   const blurR       = overlayStyle?.blurRadius ?? 8;
 
@@ -328,16 +328,18 @@ function drawCard(
   drawSpaced(ctx, tagText, tagStartX, y, 2.6);
   y += 36;
 
-  // Product name — italic serif
+  // Product name — italic serif bold
   const rawName = data.productName.toUpperCase();
   const nLen = rawName.replace(/\s/g, '').length;
-  const NS = nLen <= 6 ? 64 : nLen <= 10 ? 52 : nLen <= 15 ? 42 : 34;
-  ctx.font = `italic 600 ${NS}px Georgia, 'Times New Roman', serif`;
+  const NS = nLen <= 6 ? 68 : nLen <= 10 ? 56 : nLen <= 15 ? 46 : 38;
+  ctx.font = `italic bold ${NS}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = textColor;
   ctx.textAlign = isRight ? 'right' : 'left';
-  ctx.shadowColor = isLight ? `rgba(255,255,255,${shadowInt})` : `rgba(0,0,0,${shadowInt})`;
-  ctx.shadowBlur = 14;
-  ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 1;
+  // Всегда тёмная тень — создаёт контраст на любом фоне независимо от colorScheme
+  const shadowAlpha = overlayStyle?.shadowIntensity ?? 0.35;
+  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 2;
   const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
   for (const line of nameLines) {
     ctx.fillText(line, textX, y);
@@ -346,9 +348,9 @@ function drawCard(
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   y += 14;
 
-  // Subtitle — thin italic
+  // Subtitle — italic (400, не 300 — 300 нечитаем)
   if (data.productSubtitle) {
-    ctx.font = 'italic 300 16px Arial, Helvetica, sans-serif';
+    ctx.font = 'italic 400 17px Arial, Helvetica, sans-serif';
     ctx.fillStyle = subColor;
     ctx.textAlign = isRight ? 'right' : 'left';
     ctx.fillText(data.productSubtitle, textX, y);
@@ -387,7 +389,7 @@ function drawCard(
         ctx.filter = `blur(${blurR}px)`;
         ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
         ctx.filter = 'none';
-        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.28)' : 'rgba(10,8,18,0.28)';
+        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.42)' : 'rgba(10,8,18,0.42)';
         ctx.fillRect(px, py, PILL_W, PILL_H);
         ctx.restore();
         // Frosted glass border
