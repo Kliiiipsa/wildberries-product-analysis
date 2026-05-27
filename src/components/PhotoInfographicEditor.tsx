@@ -36,7 +36,7 @@ export interface CompositionData {
 }
 
 export interface OverlayStyleData {
-  pillStyle?: 'frosted' | 'solid' | 'minimal' | 'none';
+  pillStyle?: 'frosted' | 'solid' | 'outline' | 'gradient' | 'minimal' | 'none';
   pillOpacity?: number;
   colorScheme?: 'light' | 'dark';
   pillBgRgba?: string;
@@ -301,15 +301,16 @@ function drawCard(
   ctx.fillRect(isRight ? W * 0.48 : 0, H - 100, W * 0.52, 100);
 
   // ── 6. Adaptive text/pill colours ─────────────────────────────────────────
-  const textColor  = overlayStyle?.textColorHex ?? (isLight ? '#15110A' : '#F3F0E9');
-  const subColor   = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
+  const textColor   = overlayStyle?.textColorHex ?? (isLight ? '#15110A' : '#F3F0E9');
+  const subColor    = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
   const pillOpacity = overlayStyle?.pillOpacity ?? 0.62;
-  const pillBg     = overlayStyle?.pillBgRgba ??
+  const pillBg      = overlayStyle?.pillBgRgba ??
     (isLight ? `rgba(255,255,255,${pillOpacity})` : `rgba(14,12,22,${pillOpacity})`);
-  const pillSh     = isLight ? 'rgba(0,0,0,0.06)'     : 'rgba(0,0,0,0.22)';
-  const pillIconBg = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
-  const accent     = isLight ? '#7A5830'               : '#C9A96E';
-  const shadowInt  = overlayStyle?.shadowIntensity ?? (isLight ? 0.55 : 0.70);
+  const pillIconBg  = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
+  const accent      = isLight ? '#7A5830'               : '#C9A96E';
+  const shadowInt   = overlayStyle?.shadowIntensity ?? (isLight ? 0.55 : 0.70);
+  const pillStyle   = overlayStyle?.pillStyle ?? 'solid';
+  const blurR       = overlayStyle?.blurRadius ?? 8;
 
   // ── 7. Typography ─────────────────────────────────────────────────────────
   // Text anchor: left edge for left zones, right edge for right zones
@@ -372,27 +373,90 @@ function drawCard(
 
   for (let i = 0; i < data.characteristics.slice(0, 3).length; i++) {
     const ch = data.characteristics[i];
-    // Pill X: aligned to PAD from the active edge
     const px = isRight ? W - PAD - PILL_W : PAD;
     const py = y;
 
-    // Shadow + fill
-    ctx.save();
-    ctx.shadowColor = pillSh;
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 2;
-    roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.fillStyle = pillBg;
-    ctx.fill();
-    ctx.restore();
+    // ── Pill background — branched by pillStyle ──────────────────────────
+    switch (pillStyle) {
 
-    // Border
-    roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.18;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+      case 'frosted': {
+        // Clip to pill shape, redraw blurred photo behind, add light wash
+        ctx.save();
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.clip();
+        ctx.filter = `blur(${blurR}px)`;
+        ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
+        ctx.filter = 'none';
+        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.28)' : 'rgba(10,8,18,0.28)';
+        ctx.fillRect(px, py, PILL_W, PILL_H);
+        ctx.restore();
+        // Frosted glass border
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.60)' : 'rgba(255,255,255,0.14)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        break;
+      }
+
+      case 'outline': {
+        // Transparent fill + accent stroke only
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        break;
+      }
+
+      case 'gradient': {
+        // Horizontal gradient: solid side → transparent
+        const gDir = isRight ? ctx.createLinearGradient(px + PILL_W, py, px, py)
+                             : ctx.createLinearGradient(px, py, px + PILL_W, py);
+        gDir.addColorStop(0,    isLight ? 'rgba(255,255,255,0.78)' : 'rgba(10,8,18,0.78)');
+        gDir.addColorStop(0.65, isLight ? 'rgba(255,255,255,0.42)' : 'rgba(10,8,18,0.42)');
+        gDir.addColorStop(1,    isLight ? 'rgba(255,255,255,0.06)' : 'rgba(10,8,18,0.06)');
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.fillStyle = gDir;
+        ctx.fill();
+        break;
+      }
+
+      case 'minimal': {
+        // Barely-there fill + hairline accent border
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.15)' : 'rgba(10,8,18,0.15)';
+        ctx.fill();
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 0.8;
+        ctx.globalAlpha = 0.32;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        break;
+      }
+
+      case 'none':
+        // No background — text floats directly on photo
+        break;
+
+      default: { // 'solid'
+        // Flat opaque fill with subtle drop shadow
+        ctx.save();
+        ctx.shadowColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.22)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.fillStyle = pillBg;
+        ctx.fill();
+        ctx.restore();
+        roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.18;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        break;
+      }
+    }
 
     // Icon circle — always on the inner side of the pill
     const iconCX = px + ICON_CX;

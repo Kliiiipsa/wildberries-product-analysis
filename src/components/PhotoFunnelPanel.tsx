@@ -29,7 +29,7 @@ interface CompositionData {
 }
 
 interface OverlayStyleData {
-  pillStyle?: 'frosted' | 'solid' | 'minimal' | 'none';
+  pillStyle?: 'frosted' | 'solid' | 'outline' | 'gradient' | 'minimal' | 'none';
   pillOpacity?: number;
   colorScheme?: 'light' | 'dark';
   pillBgRgba?: string;

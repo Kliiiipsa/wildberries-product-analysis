@@ -148,15 +148,21 @@ PHASE A — COMPOSITION ANALYSIS:
 • composition.recommendedTextAlignment: "vertical" | "horizontal" | "two-column" — how text pills should stack
 
 PHASE B — OVERLAY STYLE (analyse primaryTextZone background luminance):
-• overlayStyle.pillStyle: "frosted" (lifestyle/busy BG) | "solid" (cluttered BG) | "minimal" (clean studio) | "none" (very clean zone)
-• overlayStyle.pillOpacity: 0.30 to 0.70 — lower = more transparent
+• overlayStyle.pillStyle — choose based on background complexity:
+    "frosted"  → busy/textured background (lifestyle, park, city) — blurs what's behind the pill
+    "gradient" → clean gradient zones — pill fades from opaque to transparent
+    "outline"  → very clean, airy background — only a coloured border, no fill
+    "minimal"  → nearly empty studio zone — just a ghost fill (0.15 opacity)
+    "solid"    → very cluttered/dark background — needs a clearly opaque pill
+    "none"     → pristine clean background where text is already readable
+• overlayStyle.pillOpacity: 0.25 to 0.72 — MUST match pillStyle (frosted ≈0.30, outline =0, gradient ≈0.55, minimal ≈0.18, solid ≈0.65)
 • overlayStyle.colorScheme: "light" (bright BG → dark text) | "dark" (dark BG → light text)
-• overlayStyle.pillBgRgba: exact rgba string — e.g. "rgba(255,255,255,0.52)" or "rgba(14,12,22,0.55)"
-• overlayStyle.textColorHex: exact hex — e.g. "#1A1205" (dark text on light BG) or "#F3F0E8" (light text on dark BG)
-• overlayStyle.scrimOpacity: 0.15 to 0.45 — gradient overlay strength
-• overlayStyle.scrimDirection: matches primaryTextZone — "left" | "right" | "top" | "bottom" | "top-left" | "top-right"
-• overlayStyle.blurRadius: 4 to 16 — frosted glass blur intensity (use 8 as default)
-• overlayStyle.shadowIntensity: 0.0 to 0.50 — text shadow strength (higher for busy backgrounds)
+• overlayStyle.pillBgRgba: exact rgba() string — e.g. "rgba(255,255,255,0.30)" for frosted-light or "rgba(14,12,22,0.65)" for solid-dark
+• overlayStyle.textColorHex: exact hex — e.g. "#1A1205" (dark on light) or "#F0EDE6" (light on dark)
+• overlayStyle.scrimOpacity: 0.10 to 0.40 — KEEP IT LOW for lifestyle shots (0.15–0.25), higher only for cluttered backgrounds (0.30–0.40)
+• overlayStyle.scrimDirection: "left" | "right" | "top" | "bottom" | "top-left" | "top-right" — matches primaryTextZone
+• overlayStyle.blurRadius: 6 to 16 — used only for "frosted" style (8 = standard, 12 = heavy blur)
+• overlayStyle.shadowIntensity: 0.0 to 0.50 — text shadow alpha (0.0 for clean zones, up to 0.40 for busy backgrounds)
 • fluxExtendNote: 1 sentence — what FLUX will extend and why
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -218,14 +224,14 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   },
   "overlayStyle": {
     "pillStyle": "frosted",
-    "pillOpacity": 0.52,
+    "pillOpacity": 0.30,
     "colorScheme": "light",
-    "pillBgRgba": "rgba(255,255,255,0.52)",
+    "pillBgRgba": "rgba(255,255,255,0.28)",
     "textColorHex": "#1A1205",
-    "scrimOpacity": 0.28,
+    "scrimOpacity": 0.20,
     "scrimDirection": "left",
     "blurRadius": 8,
-    "shadowIntensity": 0.20
+    "shadowIntensity": 0.10
   },
   "fluxExtendNote": "...",
   "textVariants": [
