@@ -19,21 +19,14 @@ async function toBase64DataUrl(url: string): Promise<string> {
 }
 
 /**
- * Composition instructions appended to every fluxPrompt when it does not
- * already contain explicit left-panel composition language.
- * Critical: left 40% must be clean solid background so the canvas overlay
- * can apply adaptive scrim + text without any visual seams.
+ * Minimal safety suffix — only reinforces pose preservation and no text.
+ * Does NOT force composition percentages or solid-colour panels.
+ * The fluxPrompt from analysis already handles composition naturally.
  */
 const INFOGRAPHIC_SUFFIX =
-  '. COMPOSITION OVERRIDE: ' +
-  'model must occupy only the RIGHT 58-62% of the frame — ' +
-  'the LEFT 38-42% must be completely empty solid-colour background (no body parts, no shadows, no props crossing into this zone), ' +
-  'this clean left panel is required for text overlay. ' +
-  'Background must be ONE seamless solid colour or very subtle single-tone texture — ' +
-  'absolutely no gradients, no vignettes, no studio equipment, no reflections, no secondary objects. ' +
-  'Soft diffused studio light from front-left, beautiful fabric shadow detail on the garment. ' +
-  'Vertical 3:4 portrait ratio. ' +
-  'No text, no logos, no watermarks, no graphics.';
+  ' Preserve the original photo atmosphere, lighting character, colour grade, and mood completely.' +
+  ' The model\'s pose must remain pixel-perfect identical to the input — do not change it.' +
+  ' No new objects introduced. No artificial empty zones. No text, no logos, no watermarks.';
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -61,13 +54,8 @@ export async function POST(req: NextRequest) {
       ? imageUrl
       : await toBase64DataUrl(imageUrl);
 
-    // Append composition override unless the prompt already has explicit left-panel language
-    const hasLeftPanel =
-      fluxPrompt.includes('left 40%') ||
-      fluxPrompt.includes('left 38%') ||
-      fluxPrompt.includes('empty area on the left') ||
-      fluxPrompt.includes('clean left panel');
-    const fullPrompt = hasLeftPanel ? fluxPrompt : fluxPrompt + INFOGRAPHIC_SUFFIX;
+    // Append minimal safety suffix (pose + no-text reinforcement)
+    const fullPrompt = fluxPrompt + INFOGRAPHIC_SUFFIX;
 
     console.log(`[infographic-base] FLUX prompt_len=${fullPrompt.length}`);
 

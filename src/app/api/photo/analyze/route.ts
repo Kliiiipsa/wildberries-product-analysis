@@ -80,50 +80,64 @@ EXAMPLE of a CORRECT prompt:
 FORBIDDEN words in any prompt (these cause AI-art look): photorealistic, ultra-sharp, 8K, hyperdetailed, Sony A7R V, professional studio lighting, commercial fashion photography.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STEP 5 — PREMIUM INFOGRAPHIC BASE (fluxPrompt)
+STEP 5 — INFOGRAPHIC BASE (fluxPrompt)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Generate a FLUX Kontext image-to-image prompt for a perfect Wildberries infographic base.
+Generate a FLUX Kontext image-to-image prompt that produces a natural, unified infographic base.
 
-UNIVERSAL RULES (mandatory for ALL products):
-• Composition: model in RIGHT 60-65% of frame, LEFT 35-40% is COMPLETELY CLEAN AND EMPTY — no body parts, no shadows, no props crossing into this zone
-• Style: professional studio product photography, premium level — reference brands: Zara, Massimo Dutti, COS, Arket
-• Lighting: soft diffused studio light from front-left, beautiful fabric shadows, high fabric texture detail
-• Background: ONE SOLID COLOUR wall or seamless paper — no gradients, no vignettes, no patterns, no studio equipment, no reflections. The background colour MUST contrast the garment using the rule below.
-• Format: vertical 3:4 ratio
-• FORBIDDEN in [CHANGE]: selfie poses, phone in hands, bright distracting accessories, heavy makeup, unnatural poses, cluttered backgrounds
+PHILOSOPHY: The result must look like a single cohesive photograph — never a collage. Preserve the original photo's soul: lighting character, colour grade, atmosphere, mood, time of day, grain, depth of field. FLUX makes only the minimal composition adjustment needed to create natural breathing room for text overlay.
 
-BACKGROUND COLOUR RULE for infographic (apply ALWAYS — critical for text readability on the left panel):
-  light grey / white / cream garment  →  deep warm charcoal wall (#2E2B27 tone) or dark slate
-  black / dark navy garment           →  warm ivory / off-white linen wall (#F5F1EB tone)
-  beige / camel garment               →  deep charcoal OR bright white — whichever gives MORE contrast
-  bright / vivid garment              →  muted warm stone, soft warm grey concrete
-  The LEFT 40% of the final image MUST be the background colour — smooth, clean, ideal for white/dark text overlay
+━━━
+FIRST — READ THE COMPOSITION:
+━━━
+Before writing the prompt, determine:
+• Where is the natural negative space? (blurred background, open sky, empty wall area, open floor, bokeh zone, space beside model)
+• Which side has more open/empty space → textSide: "left" | "right" | "top" | "bottom"
+• What background element can naturally be extended? (blurred foliage, studio backdrop, concrete wall, sky, floor, etc.)
+• Is there already enough clean space for text? → if YES, [EXTEND] should say "composition already has natural space on [side] — no significant changes needed"
 
-POSE GUIDE — detect gender from STEP 1 and product type, apply correct pose:
+━━━
+PROMPT FORMAT: [PRESERVE] [EXTEND] [QUALITY]
+━━━
 
-Women:
-  Suit (blouse+pants/skirt): calm confident stance, one hand slightly at hip, shows silhouette naturally
-  Dress / sundress: light graceful pose, slight fabric movement, shows dress length and drape
-  Blouse / shirt: 3/4 or full height, slight body turn toward camera, collar and cuffs visible
-  Shorts / skirt: slight hip turn, natural stance, shows garment length and fit
-  Outerwear (coat/jacket): straight elegant stance, shows full silhouette and length
-  General women style: soft + elegant + slightly feminine; model looks beautiful and expensive, NOT like an influencer
+[PRESERVE] List EVERY detail that must stay identical:
+- Clothing: exact colour, cut, fabric, every visible detail (drawstrings, buttons, lace, collar, cuffs)
+- Pose: model's exact pose — pixel-perfect identical. DO NOT change pose under any circumstances.
+- Atmosphere: lighting character (soft/hard, direction, colour temperature), colour grade, mood, time of day
+- Environment type: what kind of place it is (park, studio, street, interior — preserve this completely)
+- Visual texture: grain, depth of field, bokeh character
+- If no face visible in original: do NOT add or generate a face
 
-Men:
-  Suit / blazer: straight confident stance, shoulders back and relaxed, professional
-  Shirt: straight or one hand lightly in pocket, shoulders visible, collar neat
-  Pants / jeans: straight stance or slight turn, shows waist and hip fit
-  Outerwear: straight stance, hands lightly in pockets, shows volume and length
-  T-shirt / hoodie: relaxed but confident stance, shoulders and torso visible
-  General men style: confident + clean + masculine; model looks stylish and solid
+[EXTEND] Minimal composition adjustment — describe how to naturally expand existing negative space:
+- Name the specific background element to extend (e.g. "blurred green foliage", "grey studio backdrop", "concrete wall", "open sky above")
+- Direction: left / right / upper-left / upper-right / etc.
+- Emphasise: same depth-of-field, identical colour temperature, identical texture — just MORE of what already exists
+- If space already exists: "Composition already provides natural breathing room on the [side] — no changes needed, preserve as-is"
+- NEVER create: artificial empty zones, solid-colour panels, new background types
+- NEVER change: pose, lighting character, colour grade, atmosphere, environment type
 
-Use [PRESERVE][CHANGE][SCENE][QUALITY] format:
-[PRESERVE] — all product details exactly as seen (color, cut, fabric, visible details, body visibility)
-[CHANGE] — recompose: model shifted to right 60% of frame; left 40% is completely clear background; pose corrected per gender+product guide above; remove phone, selfie arm, distracting accessories; fix background to clean studio wall
-[SCENE] — describe the SPECIFIC chosen background using BACKGROUND COLOUR RULE above: name the exact wall material and tone (e.g. "smooth deep charcoal plaster wall, uniform #2E2B27, soft diffused light from front-left, beautiful fabric shadow on right edge, zero studio equipment or props visible, perfectly clean for left text panel")
-[QUALITY] Genuine photograph, Canon EOS R5, 85mm f/2, natural studio light, real film grain, no AI artifacts.
+[QUALITY] Genuine photograph. Pose unchanged. No new objects. No lighting changes. No style changes. Real film grain. No AI artifacts.
 
-Also determine: recommendedLayout ("left"|"bottom"|"minimal"), style ("studio"|"lifestyle"|"minimal"|"premium"), textPosition ("left-third"|"bottom"|"overlay").
+━━━
+EXAMPLES:
+━━━
+Park / nature photo:
+"[PRESERVE] Identical light blue oversized linen shirt and wide-leg trousers, model's exact pose with hands raised — pose pixel-perfect unchanged. Pearl necklace, white sandals. Warm natural daylight through park trees, soft dappled light, lush green blurred bokeh background, warm colour grade, real film grain, shallow depth of field. [EXTEND] The natural blurred green foliage on the left side gently expands further — same depth-of-field, identical warm colour temperature, identical bokeh softness. No new objects, no colour changes, just more of the existing blurred background. [QUALITY] Genuine photograph. Pose unchanged. No AI artifacts."
+
+Studio photo:
+"[PRESERVE] [clothing details], exact pose unchanged. Soft grey seamless studio backdrop, diffused front lighting, same shadow gradients, same colour grade. [EXTEND] The grey studio backdrop naturally extends further on the left — same seamless paper texture, same subtle lighting gradient, same neutral tone. [QUALITY] Genuine photograph. No style changes. No AI artifacts."
+
+Street / urban photo:
+"[PRESERVE] [clothing details], exact pose unchanged. Evening city street, warm light pools from streetlamps, blurred building facades, blue-hour atmosphere, same colour temperature and grain. [EXTEND] The blurred building wall on the right expands — same evening warm bokeh, same blue-hour tone, no new objects or people. [QUALITY] Genuine photograph. Pose unchanged. No AI artifacts."
+
+Photo with already good composition:
+"[PRESERVE] [all details]. [EXTEND] Composition already provides natural breathing room on the right side — no significant changes needed, preserve as-is. [QUALITY] Genuine photograph. No AI artifacts."
+
+━━━
+Also determine:
+• textSide: "left" | "right" | "top" | "bottom" — which side has the most natural space for text
+• recommendedLayout: "left" | "right" | "bottom" | "minimal"
+• style: "studio" | "lifestyle" | "minimal" | "premium"
+• textPosition: "left-third" | "right-third" | "bottom" | "overlay"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 6 — INFOGRAPHIC TEXT VARIANTS (textVariants)
@@ -170,9 +184,10 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   ],
   "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.",
   "generatePromptRu": "Краткое описание на русском (2-3 предложения): что именно изменится (фон, поза, обрезка и т.д.) и почему это улучшит конверсию карточки. Например: «Заменить загромождённый фон на однотонную тёмно-серую стену — это создаст сильный контраст с жёлтым комплектом и улучшит кликабельность в ленте Wildberries.»",
-  "fluxPrompt": "[PRESERVE] Keep unchanged: [exact product color, cut, fabric, visible body parts, pose]. [CHANGE] Recompose: shift model to right 60% of frame — left 40% must be completely empty clean background; fix pose per gender+product guide; remove any props or accessories. [SCENE] Studio: smooth deep charcoal plaster wall (replace with correct tone from BACKGROUND COLOUR RULE), uniform seamless colour, soft diffused light from front-left, beautiful fabric shadow on right edge, no equipment or props visible, left panel perfectly clean for text overlay. [QUALITY] Genuine photograph, Canon EOS R5, 85mm f/2, natural studio light, real film grain, no AI artifacts.",
+  "fluxPrompt": "[PRESERVE] Keep unchanged: [exact clothing colour, cut, fabric, every visible detail], model's exact pose — pixel-perfect identical, do not change pose. [lighting character, colour grade, atmosphere, environment type]. Real film grain, depth of field. [If no face: do NOT add face.] [EXTEND] [name the specific background element] on the [direction] side gently expands further — same depth-of-field, identical colour temperature, identical texture, just more of what already exists. No new objects, no new colours, no style changes. [QUALITY] Genuine photograph. Pose unchanged. No new objects. No lighting changes. Real film grain. No AI artifacts.",
+  "textSide": "left",
   "recommendedLayout": "left",
-  "style": "studio",
+  "style": "lifestyle",
   "textPosition": "left-third",
   "textVariants": [
     {"approach": "Выгоды",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
