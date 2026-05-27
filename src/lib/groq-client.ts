@@ -470,7 +470,7 @@ async function yandexSync(
     const model = `gpt://${folderId}/qwen3.6-35b-a3b/latest`;
 
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 50_000);
+    const timer = setTimeout(() => ac.abort(), 90_000);
     let resp: Response;
     try {
       resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
@@ -520,7 +520,7 @@ export async function* analyzeWithGroqStream(prompt: string): AsyncGenerator<str
 
   // ── YandexGPT 5 Lite async (приоритет, 0.1 ₽/1К) ─────────────────────────
   if (process.env.YANDEX_API_KEY?.trim()) {
-    const content = await yandexSync(systemPrompt, prompt, 8000);
+    const content = await yandexSync(systemPrompt, prompt, 16000);
     if (content) {
       yield '\n> *Анализирует: Qwen 3.6 35B*\n\n';
       yield content;
