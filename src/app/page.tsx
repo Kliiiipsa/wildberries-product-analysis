@@ -4,6 +4,7 @@ import { TrendingUp, Zap, Database, Bot } from 'lucide-react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { findAccountBySession } from '@/lib/accounts';
+import Link from 'next/link';
 
 const TAGS = [
   { icon: Database,   label: 'Unit-экономика' },
@@ -41,7 +42,9 @@ export default async function HomePage() {
         {/* Hero */}
         <div className="text-center mb-10 animate-fade-up">
           <h1 className="text-5xl sm:text-6xl font-black tracking-tight mb-4 leading-tight">
-            <span className="text-gradient-hero">WB Analyzer</span>
+            <Link href="/" className="text-gradient-hero hover:opacity-80 transition-opacity cursor-pointer">
+              WB Analyzer
+            </Link>
           </h1>
           <p className="text-base text-slate-400 max-w-sm mx-auto leading-relaxed">
             Введите артикул — AI-менеджер даст полный анализ и рекомендации.
