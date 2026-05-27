@@ -684,8 +684,7 @@ export function PhotoFunnelPanel({ onBack }: Props) {
       </div>
 
       {/* Row 1: photos side by side — big */}
-      {/* В инфографике результат показывается внутри редактора, верхняя колонка «Результат» не нужна */}
-      <div className={`grid gap-5 mb-5 ${activeTab === 'text' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+      <div className="grid gap-5 mb-5 grid-cols-1 md:grid-cols-2">
 
         {/* Original photo */}
         <div className="space-y-3">
@@ -721,47 +720,45 @@ export function PhotoFunnelPanel({ onBack }: Props) {
           )}
         </div>
 
-        {/* Result photo — скрыто в инфографике (редактор имеет свой канвас и кнопку скачать) */}
-        {activeTab !== 'text' && (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Результат</p>
-            <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 w-full aspect-[3/4] max-h-[72vh] flex items-center justify-center">
-              {isGenerating && (
-                <div className="text-center">
-                  <Loader2 className="h-10 w-10 animate-spin text-violet-400 mx-auto mb-3" />
-                  <p className="text-sm text-slate-400">Генерирую...</p>
-                  <p className="text-xs text-slate-600 mt-1">~30–60 секунд</p>
-                </div>
-              )}
-              {!isGenerating && generateError && (
-                <div className="p-6 text-center">
-                  <p className="text-xs text-red-400">{generateError}</p>
-                </div>
-              )}
-              {!isGenerating && !generateError && generatedImage && (
-                <img src={generatedImage} alt="Результат" className="w-full h-full object-contain" />
-              )}
-              {!isGenerating && !generateError && !generatedImage && (
-                <div className="text-center text-slate-700 p-8">
-                  <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">Здесь появится результат</p>
-                  <p className="text-xs mt-1 opacity-60">Нажмите «Анализировать» или выберите идею</p>
-                </div>
-              )}
-            </div>
-            {generatedImage && !isGenerating && (
-              <a
-                href={generatedImage}
-                download="generated.jpg"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center gap-2 w-full rounded-xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 text-xs text-slate-400 hover:text-white transition-all py-2.5"
-              >
-                Скачать
-              </a>
+        {/* Result photo */}
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Результат</p>
+          <div className="relative rounded-2xl overflow-hidden border border-slate-700/50 bg-slate-800/30 w-full aspect-[3/4] max-h-[72vh] flex items-center justify-center">
+            {isGenerating && (
+              <div className="text-center">
+                <Loader2 className="h-10 w-10 animate-spin text-violet-400 mx-auto mb-3" />
+                <p className="text-sm text-slate-400">Генерирую...</p>
+                <p className="text-xs text-slate-600 mt-1">~30–60 секунд</p>
+              </div>
+            )}
+            {!isGenerating && generateError && (
+              <div className="p-6 text-center">
+                <p className="text-xs text-red-400">{generateError}</p>
+              </div>
+            )}
+            {!isGenerating && !generateError && generatedImage && (
+              <img src={generatedImage} alt="Результат" className="w-full h-full object-contain" />
+            )}
+            {!isGenerating && !generateError && !generatedImage && (
+              <div className="text-center text-slate-700 p-8">
+                <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">Здесь появится результат</p>
+                <p className="text-xs mt-1 opacity-60">Нажмите «Анализировать» или выберите идею</p>
+              </div>
             )}
           </div>
-        )}
+          {generatedImage && !isGenerating && (
+            <a
+              href={generatedImage}
+              download="generated.jpg"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 w-full rounded-xl border border-slate-700/50 bg-slate-800/30 hover:bg-slate-800/60 text-xs text-slate-400 hover:text-white transition-all py-2.5"
+            >
+              Скачать
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Row 2: Analyze button */}
