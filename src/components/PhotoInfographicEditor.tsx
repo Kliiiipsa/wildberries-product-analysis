@@ -266,15 +266,23 @@ function drawCard(
   const sg = Math.min(255, Math.round(bgG * (isLight ? 1.04 : 0.76)));
   const sb = Math.min(255, Math.round(bgB * (isLight ? 1.03 : 0.74)));
 
-  // ── 5. Scrim gradient ─────────────────────────────────────────────────────
-  // Floor 0.28 — даже если Qwen рекомендует ниже, текст без минимального скрима нечитаем
-  const saMax      = Math.max(overlayStyle?.scrimOpacity ?? (isLight ? 0.48 : 0.58), 0.28);
-  const solidEnd   = 0.28;
-  const fade1      = 0.46;
-  const fade2      = 0.62;
-  const fadeEnd    = 0.76;
+  // ── 5. pillStyle определяется ДО scrim — чтобы скрим зависел от стиля ──────
+  const pillStyle  = overlayStyle?.pillStyle ?? 'solid';
+  const blurR      = overlayStyle?.blurRadius ?? 10;
 
-  // Gradient direction: derive from overlayStyle.scrimDirection or textZone
+  // Для frosted/outline/minimal скрим минимальный — пилюли сами дают читаемость.
+  // Для solid/gradient — стандартный скрим из JSON или дефолт.
+  const scrimBase  = overlayStyle?.scrimOpacity ?? (isLight ? 0.42 : 0.55);
+  const SCRIM_BY_STYLE: Partial<Record<string, number>> = {
+    frosted: 0.16, outline: 0.10, minimal: 0.13, none: 0.08,
+  };
+  const saMax    = Math.max(SCRIM_BY_STYLE[pillStyle] ?? scrimBase, 0.10);
+  const solidEnd = pillStyle === 'frosted' || pillStyle === 'outline' ? 0.14 : 0.28;
+  const fade1    = solidEnd + 0.18;
+  const fade2    = solidEnd + 0.36;
+  const fadeEnd  = solidEnd + 0.52;
+
+  // Gradient direction
   const scrimDir = overlayStyle?.scrimDirection ?? (isRight ? 'right' : textZone);
   let gx0 = 0, gy0 = 0, gx1 = W, gy1 = 0; // default: left→right
   switch (scrimDir) {
@@ -309,8 +317,9 @@ function drawCard(
     (isLight ? `rgba(255,255,255,${pillOpacity})` : `rgba(14,12,22,${pillOpacity})`);
   const pillIconBg  = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
   const accent      = isLight ? '#7A5830'               : '#C9A96E';
-  const pillStyle   = overlayStyle?.pillStyle ?? 'solid';
-  const blurR       = overlayStyle?.blurRadius ?? 8;
+
+  // Диагностика — что реально применяется к Canvas
+  console.log(`[Canvas] pillStyle="${pillStyle}" scrim=${saMax.toFixed(2)} colorScheme="${colorScheme}" zone="${textZone}" overlayStyle_null=${overlayStyle == null}`);
 
   // ── 7. Typography ─────────────────────────────────────────────────────────
   // Text anchor: left edge for left zones, right edge for right zones
@@ -382,40 +391,54 @@ function drawCard(
     switch (pillStyle) {
 
       case 'frosted': {
-        // Clip to pill shape, redraw blurred photo behind, add light wash
+        // Настоящий frosted glass: blur фото за пилюлей + сильный wash + белая граница
         ctx.save();
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
         ctx.clip();
         ctx.filter = `blur(${blurR}px)`;
         ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
         ctx.filter = 'none';
-        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.42)' : 'rgba(10,8,18,0.42)';
+        // Сильный wash — чтобы frosted был реально заметен даже на bokeh фоне
+        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.52)' : 'rgba(8,6,16,0.52)';
         ctx.fillRect(px, py, PILL_W, PILL_H);
         ctx.restore();
-        // Frosted glass border
+        // Видимая белая граница — характерна для frosted glass
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.60)' : 'rgba(255,255,255,0.14)';
+        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.80)' : 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // Тонкий блик сверху (top highlight)
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(px + PILL_R, py + 1);
+        ctx.lineTo(px + PILL_W - PILL_R, py + 1);
+        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.12)';
         ctx.lineWidth = 1;
         ctx.stroke();
+        ctx.restore();
         break;
       }
 
       case 'outline': {
-        // Transparent fill + accent stroke only
+        // Полностью прозрачный фон — только жирная цветная обводка
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
         ctx.strokeStyle = accent;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.stroke();
+        // Внутри — тонкая подложка для читаемости текста
+        roundRect(ctx, px + 1, py + 1, PILL_W - 2, PILL_H - 2, PILL_R - 1);
+        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
+        ctx.fill();
         break;
       }
 
       case 'gradient': {
-        // Horizontal gradient: solid side → transparent
+        // Сильный градиент: почти непрозрачный → полностью прозрачный
         const gDir = isRight ? ctx.createLinearGradient(px + PILL_W, py, px, py)
                              : ctx.createLinearGradient(px, py, px + PILL_W, py);
-        gDir.addColorStop(0,    isLight ? 'rgba(255,255,255,0.78)' : 'rgba(10,8,18,0.78)');
-        gDir.addColorStop(0.65, isLight ? 'rgba(255,255,255,0.42)' : 'rgba(10,8,18,0.42)');
-        gDir.addColorStop(1,    isLight ? 'rgba(255,255,255,0.06)' : 'rgba(10,8,18,0.06)');
+        gDir.addColorStop(0,    isLight ? 'rgba(255,255,255,0.88)' : 'rgba(8,6,16,0.88)');
+        gDir.addColorStop(0.55, isLight ? 'rgba(255,255,255,0.52)' : 'rgba(8,6,16,0.52)');
+        gDir.addColorStop(1,    isLight ? 'rgba(255,255,255,0.04)' : 'rgba(8,6,16,0.04)');
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
         ctx.fillStyle = gDir;
         ctx.fill();
@@ -423,29 +446,28 @@ function drawCard(
       }
 
       case 'minimal': {
-        // Barely-there fill + hairline accent border
+        // Почти невидимая подложка — текст как будто висит в воздухе
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.15)' : 'rgba(10,8,18,0.15)';
+        ctx.fillStyle = isLight ? 'rgba(255,255,255,0.10)' : 'rgba(8,6,16,0.10)';
         ctx.fill();
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
         ctx.strokeStyle = accent;
         ctx.lineWidth = 0.8;
-        ctx.globalAlpha = 0.32;
+        ctx.globalAlpha = 0.22;
         ctx.stroke();
         ctx.globalAlpha = 1;
         break;
       }
 
       case 'none':
-        // No background — text floats directly on photo
+        // Текст прямо на фото — без подложки
         break;
 
-      default: { // 'solid'
-        // Flat opaque fill with subtle drop shadow
+      default: { // 'solid' — плотная непрозрачная плашка
         ctx.save();
-        ctx.shadowColor = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.22)';
-        ctx.shadowBlur = 8;
-        ctx.shadowOffsetY = 2;
+        ctx.shadowColor = isLight ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0.38)';
+        ctx.shadowBlur = 14;
+        ctx.shadowOffsetY = 3;
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
         ctx.fillStyle = pillBg;
         ctx.fill();
@@ -453,7 +475,7 @@ function drawCard(
         roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
         ctx.strokeStyle = accent;
         ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.18;
+        ctx.globalAlpha = 0.22;
         ctx.stroke();
         ctx.globalAlpha = 1;
         break;
@@ -707,21 +729,30 @@ export default function PhotoInfographicEditor({
       )}
 
       {/* Qwen overlay hints */}
-      {(compositionData?.textZoneReason || overlayStyleData?.pillStyle) && (
+      {overlayStyleData ? (
         <div className="rounded-xl border border-violet-800/30 bg-violet-900/10 px-3 py-2 text-xs text-violet-300 space-y-0.5">
+          <p className="font-medium text-violet-400">✓ Qwen overlay данные получены:</p>
+          <p>
+            <span className="text-violet-500">pillStyle:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.pillStyle ?? '—'}</span>
+            {' · '}
+            <span className="text-violet-500">colorScheme:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.colorScheme ?? '—'}</span>
+            {' · '}
+            <span className="text-violet-500">scrimOpacity:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.scrimOpacity ?? '—'}</span>
+          </p>
           {compositionData?.primaryTextZone && (
             <p>
-              <span className="text-violet-500 font-medium">Зона текста:</span>{' '}
-              {compositionData.primaryTextZone}
+              <span className="text-violet-500">textZone:</span>{' '}
+              <span className="text-white font-mono">{compositionData.primaryTextZone}</span>
               {compositionData.textZoneReason ? ` — ${compositionData.textZoneReason}` : ''}
             </p>
           )}
-          {overlayStyleData?.pillStyle && (
-            <p>
-              <span className="text-violet-500 font-medium">Стиль пилюль:</span>{' '}
-              {overlayStyleData.pillStyle} · {overlayStyleData.colorScheme}
-            </p>
-          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 px-3 py-1.5 text-xs text-zinc-600">
+          ⚠ overlayStyle от Qwen не получен — используются дефолты (solid + auto-detect)
         </div>
       )}
 
