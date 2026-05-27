@@ -1,7 +1,9 @@
 'use client';
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Loader2, Zap, Sparkles, ChevronDown } from 'lucide-react';
+import { Loader2, Sparkles, ChevronDown } from 'lucide-react';
+
+// ── Interfaces ────────────────────────────────────────────────────────────────
 
 interface Characteristic {
   title: string;
@@ -25,20 +27,38 @@ export interface TextVariant {
   bottomText: string;
 }
 
-type TemplateStyle = 'light' | 'dark' | 'beige' | 'black';
-type InfographicMode = 'quick' | 'premium';
+export interface CompositionData {
+  subjectZone?: string;
+  freeZones?: string[];
+  primaryTextZone?: string;
+  textZoneReason?: string;
+  recommendedTextAlignment?: 'vertical' | 'horizontal' | 'two-column';
+}
+
+export interface OverlayStyleData {
+  pillStyle?: 'frosted' | 'solid' | 'minimal' | 'none';
+  pillOpacity?: number;
+  colorScheme?: 'light' | 'dark';
+  pillBgRgba?: string;
+  textColorHex?: string;
+  scrimOpacity?: number;
+  scrimDirection?: string;
+  blurRadius?: number;
+  shadowIntensity?: number;
+}
 
 interface Props {
   imageUrl: string;
   analysis?: { good?: string[]; improve?: string[] } | null;
-  generatePrompt?: string;
   fluxPrompt?: string;
-  initialMode?: InfographicMode;
   textVariants?: TextVariant[];
+  compositionData?: CompositionData | null;
+  overlayStyleData?: OverlayStyleData | null;
   onExport?: (dataUrl: string) => void;
 }
 
-// Approach badge styles
+// ── Approach badge styles ─────────────────────────────────────────────────────
+
 const APPROACH_STYLE: Record<string, { badge: string; ring: string }> = {
   'Выгоды':         { badge: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700/50', ring: 'border-emerald-500/70 bg-emerald-950/30' },
   'Характеристики': { badge: 'bg-blue-900/60 text-blue-300 border border-blue-700/50',          ring: 'border-blue-500/70 bg-blue-950/30' },
@@ -61,48 +81,45 @@ const DEFAULT_DATA: InfographicData = {
   bottomText: 'стиль и качество в каждой детали',
 };
 
-// Accent palette — template controls accent colour only.
-// Overlay colours are auto-derived from the photo (see sampleRegion).
-const ACCENTS: Record<TemplateStyle, { accent: string; stroke: string }> = {
-  light: { accent: '#7A5830', stroke: '#A07840' },
-  dark:  { accent: '#C9A96E', stroke: '#C9A96E' },
-  beige: { accent: '#8B5E30', stroke: '#A07840' },
-  black: { accent: '#D4B86A', stroke: '#D4B86A' },
-};
-
 // ── Canvas helpers ────────────────────────────────────────────────────────────
 
 /**
- * Sample average RGB + luminance from the left background zone of the canvas.
- * We sample three narrow vertical strips in the leftmost 32% to avoid any
- * model bleed-over from the right side, and skip pixels that look saturated
- * (likely clothing or skin) to focus on pure background colour.
- *
- * Called after the photo is drawn — canvas must contain actual pixel data.
+ * Sample average RGB + luminance from the text-zone side of the canvas.
+ * `side` determines which region to sample (left 30% or right 30% or top/bottom 25%).
  */
 function sampleBackground(
   ctx: CanvasRenderingContext2D,
   W: number,
   H: number,
+  side: 'left' | 'right' | 'top' | 'bottom' = 'left',
 ): { r: number; g: number; b: number; luminance: number } {
   try {
-    // Sample leftmost 30% — should be pure background in a proper infographic base
-    const sampleW = Math.max(1, Math.floor(W * 0.30));
-    const data = ctx.getImageData(0, 0, sampleW, H).data;
+    let data: Uint8ClampedArray;
+    if (side === 'left') {
+      const sW = Math.max(1, Math.floor(W * 0.30));
+      data = ctx.getImageData(0, 0, sW, H).data;
+    } else if (side === 'right') {
+      const sW = Math.max(1, Math.floor(W * 0.30));
+      data = ctx.getImageData(W - sW, 0, sW, H).data;
+    } else if (side === 'top') {
+      const sH = Math.max(1, Math.floor(H * 0.25));
+      data = ctx.getImageData(0, 0, W, sH).data;
+    } else {
+      const sH = Math.max(1, Math.floor(H * 0.25));
+      data = ctx.getImageData(0, H - sH, W, sH).data;
+    }
 
     let r = 0, g = 0, b = 0, count = 0;
-    const step = 4 * 20; // every 20th pixel — fast, ~2 700 samples for 900×1200
+    const step = 4 * 20; // every 20th pixel
     for (let i = 0; i < data.length; i += step) {
       const pr = data[i], pg = data[i + 1], pb = data[i + 2];
-      // Skip highly saturated pixels (likely garment or skin bleed)
       const mx = Math.max(pr, pg, pb), mn = Math.min(pr, pg, pb);
       const saturation = mx > 0 ? (mx - mn) / mx : 0;
-      if (saturation > 0.35) continue; // skip vivid coloured pixels
+      if (saturation > 0.35) continue;
       r += pr; g += pg; b += pb; count++;
     }
 
     if (count < 10) {
-      // Fallback: sample without saturation filter (very saturated background)
       let fr = 0, fg = 0, fb = 0, fc = 0;
       for (let i = 0; i < data.length; i += step) {
         fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fc++;
@@ -114,7 +131,6 @@ function sampleBackground(
     const ar = r / count, ag = g / count, ab = b / count;
     return { r: ar, g: ag, b: ab, luminance: 0.299 * ar + 0.587 * ag + 0.114 * ab };
   } catch {
-    // Canvas tainted or other error → fall back to neutral light defaults
     return { r: 240, g: 235, b: 225, luminance: 235 };
   }
 }
@@ -125,6 +141,12 @@ function drawSpaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: n
     ctx.fillText(ch, cx, y);
     cx += ctx.measureText(ch).width + spacing;
   }
+}
+
+function spacedTextWidth(ctx: CanvasRenderingContext2D, text: string, spacing: number): number {
+  let w = 0;
+  for (const ch of text) w += ctx.measureText(ch).width + spacing;
+  return Math.max(0, w - spacing);
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines = 99): string[] {
@@ -211,8 +233,8 @@ function drawCard(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
   data: InfographicData,
-  style: TemplateStyle,
-  mode: InfographicMode = 'quick',
+  composition?: CompositionData | null,
+  overlayStyle?: OverlayStyleData | null,
 ) {
   const W = CARD_W, H = CARD_H;
   const PAD = 58, TEXT_W = 310;
@@ -223,32 +245,46 @@ function drawCard(
   const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
   ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
 
-  // ── 2. Sample left area pixels to detect background colour ────────────────
-  // Reading AFTER photo draw, so we get actual scene colours.
-  // sampleBackground reads the leftmost 30% and skips saturated pixels
-  // (clothing/skin bleed) to isolate pure background colour.
-  const { r: bgR, g: bgG, b: bgB, luminance: lum } =
-    sampleBackground(ctx, W, H);
+  // ── 2. Determine text zone from composition data ───────────────────────────
+  const textZone = composition?.primaryTextZone ?? 'left';
+  const isRight = ['right', 'top-right', 'bottom-right'].includes(textZone);
 
-  const isLight = lum > 130; // bright background → use dark text
+  // ── 3. Sample background at the text zone side ────────────────────────────
+  const sampleSide: 'left' | 'right' | 'top' | 'bottom' =
+    isRight ? 'right' :
+    textZone === 'top' ? 'top' :
+    textZone === 'bottom' ? 'bottom' : 'left';
 
-  // ── 3. Adaptive scrim — colour derived from detected background ────────────
-  // Slightly nudge the sampled colour: brighten for light BG, deepen for dark.
-  // This makes the text panel feel like it BELONGS to the photo, not pasted on.
+  const { r: bgR, g: bgG, b: bgB, luminance: lum } = sampleBackground(ctx, W, H, sampleSide);
+
+  // ── 4. Color scheme — from overlayStyle or auto-detected ──────────────────
+  const colorScheme = overlayStyle?.colorScheme ?? (lum > 130 ? 'light' : 'dark');
+  const isLight = colorScheme === 'light';
+
+  // Slightly nudge sampled colour: brighten for light BG, deepen for dark
   const sr = Math.min(255, Math.round(bgR * (isLight ? 1.06 : 0.80)));
   const sg = Math.min(255, Math.round(bgG * (isLight ? 1.04 : 0.76)));
   const sb = Math.min(255, Math.round(bgB * (isLight ? 1.03 : 0.74)));
 
-  // Premium mode: FLUX already created natural space — light scrim only for text readability.
-  // Quick mode: lighter, narrower to avoid darkening the model.
-  // Values intentionally low: the photo's own background provides contrast.
-  const saMax    = mode === 'premium' ? (isLight ? 0.52 : 0.62) : (isLight ? 0.62 : 0.68);
-  const solidEnd = mode === 'premium' ? 0.28 : 0.26;   // solid panel ends here
-  const fade1    = mode === 'premium' ? 0.46 : 0.42;   // 25% opacity here
-  const fade2    = mode === 'premium' ? 0.62 : 0.56;   // ~2% opacity here
-  const fadeEnd  = mode === 'premium' ? 0.76 : 0.68;   // fully transparent
+  // ── 5. Scrim gradient ─────────────────────────────────────────────────────
+  const saMax      = overlayStyle?.scrimOpacity ?? (isLight ? 0.48 : 0.58);
+  const solidEnd   = 0.28;
+  const fade1      = 0.46;
+  const fade2      = 0.62;
+  const fadeEnd    = 0.76;
 
-  const scrim = ctx.createLinearGradient(0, 0, W, 0);
+  // Gradient direction: derive from overlayStyle.scrimDirection or textZone
+  const scrimDir = overlayStyle?.scrimDirection ?? (isRight ? 'right' : textZone);
+  let gx0 = 0, gy0 = 0, gx1 = W, gy1 = 0; // default: left→right
+  switch (scrimDir) {
+    case 'right':     gx0 = W; gy0 = 0;  gx1 = 0; gy1 = 0;  break;
+    case 'top':       gx0 = 0; gy0 = 0;  gx1 = 0; gy1 = H;  break;
+    case 'bottom':    gx0 = 0; gy0 = H;  gx1 = 0; gy1 = 0;  break;
+    case 'top-left':  gx0 = 0; gy0 = 0;  gx1 = W; gy1 = H;  break;
+    case 'top-right': gx0 = W; gy0 = 0;  gx1 = 0; gy1 = H;  break;
+  }
+
+  const scrim = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
   scrim.addColorStop(0,        `rgba(${sr},${sg},${sb},${saMax})`);
   scrim.addColorStop(solidEnd, `rgba(${sr},${sg},${sb},${saMax})`);
   scrim.addColorStop(fade1,    `rgba(${sr},${sg},${sb},${+(saMax * 0.25).toFixed(3)})`);
@@ -257,65 +293,72 @@ function drawCard(
   ctx.fillStyle = scrim;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle bottom fade for bottom text (left zone only)
+  // Subtle bottom fade for bottom text (text-zone side only)
   const bScrim = ctx.createLinearGradient(0, H - 100, 0, H);
   bScrim.addColorStop(0, `rgba(${sr},${sg},${sb},0)`);
   bScrim.addColorStop(1, `rgba(${sr},${sg},${sb},${+(saMax * 0.40).toFixed(3)})`);
   ctx.fillStyle = bScrim;
-  ctx.fillRect(0, H - 100, W * 0.52, 100);
+  ctx.fillRect(isRight ? W * 0.48 : 0, H - 100, W * 0.52, 100);
 
-  // ── 4. Adaptive text/pill colours ─────────────────────────────────────────
-  const textColor  = isLight ? '#15110A'              : '#F3F0E9';
+  // ── 6. Adaptive text/pill colours ─────────────────────────────────────────
+  const textColor  = overlayStyle?.textColorHex ?? (isLight ? '#15110A' : '#F3F0E9');
   const subColor   = isLight ? 'rgba(21,17,10,0.52)'  : 'rgba(243,240,233,0.52)';
-  const pillBg     = isLight ? 'rgba(255,255,255,0.62)' : 'rgba(14,12,22,0.62)';
+  const pillOpacity = overlayStyle?.pillOpacity ?? 0.62;
+  const pillBg     = overlayStyle?.pillBgRgba ??
+    (isLight ? `rgba(255,255,255,${pillOpacity})` : `rgba(14,12,22,${pillOpacity})`);
   const pillSh     = isLight ? 'rgba(0,0,0,0.06)'     : 'rgba(0,0,0,0.22)';
   const pillIconBg = isLight ? 'rgba(120,84,40,0.10)' : 'rgba(200,165,100,0.12)';
+  const accent     = isLight ? '#7A5830'               : '#C9A96E';
+  const shadowInt  = overlayStyle?.shadowIntensity ?? (isLight ? 0.55 : 0.70);
 
-  // Accent from template (unchanged by auto-detection)
-  const { accent, stroke } = ACCENTS[style];
-
-  // ── 5. Typography ─────────────────────────────────────────────────────────
-  ctx.textAlign = 'left';
+  // ── 7. Typography ─────────────────────────────────────────────────────────
+  // Text anchor: left edge for left zones, right edge for right zones
+  const textX = isRight ? W - PAD : PAD;
   ctx.textBaseline = 'top';
   let y = 88;
 
   // Tagline — small, spaced letters
   ctx.font = '400 11.5px Arial, Helvetica, sans-serif';
   ctx.fillStyle = subColor;
-  drawSpaced(ctx, data.tagline.toUpperCase(), PAD, y, 2.6);
+  ctx.textAlign = 'left';
+  const tagText = data.tagline.toUpperCase();
+  const tagW = spacedTextWidth(ctx, tagText, 2.6);
+  const tagStartX = isRight ? textX - tagW : textX;
+  drawSpaced(ctx, tagText, tagStartX, y, 2.6);
   y += 36;
 
-  // Product name — italic serif, weight 600, auto-sizes
+  // Product name — italic serif
   const rawName = data.productName.toUpperCase();
   const nLen = rawName.replace(/\s/g, '').length;
   const NS = nLen <= 6 ? 64 : nLen <= 10 ? 52 : nLen <= 15 ? 42 : 34;
   ctx.font = `italic 600 ${NS}px Georgia, 'Times New Roman', serif`;
   ctx.fillStyle = textColor;
-  ctx.shadowColor = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.70)';
+  ctx.textAlign = isRight ? 'right' : 'left';
+  ctx.shadowColor = isLight ? `rgba(255,255,255,${shadowInt})` : `rgba(0,0,0,${shadowInt})`;
   ctx.shadowBlur = 14;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 1;
+  ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 1;
   const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
   for (const line of nameLines) {
-    ctx.fillText(line, PAD, y);
+    ctx.fillText(line, textX, y);
     y += Math.ceil(NS * 1.12);
   }
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   y += 14;
 
   // Subtitle — thin italic
   if (data.productSubtitle) {
     ctx.font = 'italic 300 16px Arial, Helvetica, sans-serif';
     ctx.fillStyle = subColor;
-    ctx.fillText(data.productSubtitle, PAD, y);
+    ctx.textAlign = isRight ? 'right' : 'left';
+    ctx.fillText(data.productSubtitle, textX, y);
     y += 44;
   }
 
-  // Short gold rule
+  // Short accent rule
+  const ruleX = isRight ? textX - 50 : textX;
   ctx.beginPath();
-  ctx.moveTo(PAD, y);
-  ctx.lineTo(PAD + 50, y);
+  ctx.moveTo(ruleX, y);
+  ctx.lineTo(ruleX + 50, y);
   ctx.strokeStyle = accent;
   ctx.lineWidth = 1.4;
   ctx.globalAlpha = 0.52;
@@ -323,15 +366,17 @@ function drawCard(
   ctx.globalAlpha = 1;
   y += 28;
 
-  // ── 6. Feature pills ──────────────────────────────────────────────────────
+  // ── 8. Feature pills ──────────────────────────────────────────────────────
   const PILL_H = 66, PILL_W = 318, PILL_R = 33;
   const ICON_CX = 42, ICON_DOT_R = 14, ICON_R = 15;
 
   for (let i = 0; i < data.characteristics.slice(0, 3).length; i++) {
     const ch = data.characteristics[i];
-    const px = PAD, py = y;
+    // Pill X: aligned to PAD from the active edge
+    const px = isRight ? W - PAD - PILL_W : PAD;
+    const py = y;
 
-    // Pill fill with subtle shadow
+    // Shadow + fill
     ctx.save();
     ctx.shadowColor = pillSh;
     ctx.shadowBlur = 8;
@@ -341,51 +386,54 @@ function drawCard(
     ctx.fill();
     ctx.restore();
 
-    // Pill border
+    // Border
     roundRect(ctx, px, py, PILL_W, PILL_H, PILL_R);
-    ctx.strokeStyle = stroke;
+    ctx.strokeStyle = accent;
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.18;
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Icon circle
-    const iconCX = px + ICON_CX, iconCY = py + PILL_H / 2;
+    // Icon circle — always on the inner side of the pill
+    const iconCX = px + ICON_CX;
+    const iconCY = py + PILL_H / 2;
     ctx.beginPath();
     ctx.arc(iconCX, iconCY, ICON_DOT_R, 0, Math.PI * 2);
     ctx.fillStyle = pillIconBg;
     ctx.fill();
     ICON_FNS[i % 3](ctx, iconCX, iconCY, ICON_R * 0.64, accent);
 
-    // Text
-    const textX = iconCX + ICON_DOT_R + 14;
-    const maxTW = px + PILL_W - textX - 16;
+    // Pill text (always left-aligned inside pill)
+    const textXP = iconCX + ICON_DOT_R + 14;
+    const maxTW = px + PILL_W - textXP - 16;
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     if (ch.value) {
       ctx.font = '600 14px Arial, Helvetica, sans-serif';
       ctx.fillStyle = textColor;
-      ctx.fillText(ch.title, textX, iconCY - 10);
+      ctx.fillText(ch.title, textXP, iconCY - 10);
       ctx.font = '400 12px Arial, Helvetica, sans-serif';
       ctx.fillStyle = subColor;
-      ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textX, iconCY + 10);
+      ctx.fillText(wrapText(ctx, ch.value, maxTW, 1)[0] ?? ch.value, textXP, iconCY + 10);
     } else {
       ctx.font = '500 14px Arial, Helvetica, sans-serif';
       ctx.fillStyle = textColor;
-      ctx.fillText(ch.title, textX, iconCY);
+      ctx.fillText(ch.title, textXP, iconCY);
     }
     ctx.textBaseline = 'top';
     y += PILL_H + 14;
   }
 
-  // ── 7. Bottom italic text ─────────────────────────────────────────────────
+  // ── 9. Bottom italic text ─────────────────────────────────────────────────
   if (data.bottomText) {
     const btY = H - 76, btSz = 15;
     ctx.font = `italic 300 ${btSz}px Georgia, 'Times New Roman', serif`;
     ctx.fillStyle = subColor;
+    ctx.textAlign = isRight ? 'right' : 'left';
     ctx.textBaseline = 'top';
     let bty = btY;
     for (const bl of wrapText(ctx, data.bottomText, TEXT_W - 20, 2)) {
-      ctx.fillText(bl, PAD, bty);
+      ctx.fillText(bl, textX, bty);
       bty += btSz + 4;
     }
   }
@@ -412,26 +460,25 @@ export default function PhotoInfographicEditor({
   imageUrl,
   analysis,
   fluxPrompt,
-  initialMode = 'quick',
   textVariants,
+  compositionData,
+  overlayStyleData,
   onExport,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [data, setData] = useState<InfographicData>(DEFAULT_DATA);
-  const [template, setTemplate] = useState<TemplateStyle>('light');
   const [loadingText, setLoadingText] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [renderError, setRenderError] = useState('');
 
-  // ── Premium mode ────────────────────────────────────────────────────────────
-  const [mode, setMode] = useState<InfographicMode>(initialMode);
+  // ── FLUX base generation ────────────────────────────────────────────────────
   const [baseImage, setBaseImage] = useState<string | null>(null);
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumError, setPremiumError] = useState('');
   const autoStartedRef = useRef(false);
 
-  const generatePremiumBase = useCallback(async () => {
+  const generateBase = useCallback(async () => {
     if (!imageUrl || !fluxPrompt) {
       setPremiumError('Нет fluxPrompt — сначала проанализируйте фото');
       return;
@@ -452,20 +499,20 @@ export default function PhotoInfographicEditor({
       setBaseImage(json.imageUrl);
     } catch (e) {
       setPremiumError(String(e));
-      setMode('quick');
     } finally {
       setPremiumLoading(false);
     }
   }, [imageUrl, fluxPrompt]);
 
+  // Auto-start when fluxPrompt becomes available
   useEffect(() => {
-    if (mode === 'premium' && fluxPrompt && !autoStartedRef.current) {
+    if (fluxPrompt && !autoStartedRef.current) {
       autoStartedRef.current = true;
-      generatePremiumBase();
+      generateBase();
     }
-  }, [mode, fluxPrompt, generatePremiumBase]);
+  }, [fluxPrompt, generateBase]);
 
-  // ── AI text generation ──────────────────────────────────────────────────────
+  // ── AI text generation (fallback) ───────────────────────────────────────────
 
   const generateAIText = async () => {
     setLoadingText(true);
@@ -492,10 +539,8 @@ export default function PhotoInfographicEditor({
 
   // ── Canvas render ───────────────────────────────────────────────────────────
 
-  const activeImageUrl = (mode === 'premium' && baseImage) ? baseImage : imageUrl;
+  const activeImageUrl = baseImage ?? imageUrl;
 
-  // renderCard accepts an optional data override so applyVariant can bypass
-  // the async setState delay and render with fresh data immediately.
   const renderCard = useCallback(async (overrideData?: InfographicData): Promise<string> => {
     const canvas = canvasRef.current;
     if (!canvas) throw new Error('no canvas');
@@ -508,13 +553,13 @@ export default function PhotoInfographicEditor({
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        drawCard(ctx, img, d, template, mode);
+        drawCard(ctx, img, d, compositionData, overlayStyleData);
         resolve(canvas.toDataURL('image/jpeg', 0.95));
       };
       img.onerror = () => reject(new Error('image load failed'));
       img.src = imgSrc;
     });
-  }, [activeImageUrl, data, template, mode]);
+  }, [activeImageUrl, data, compositionData, overlayStyleData]);
 
   const handleRender = useCallback(async (overrideData?: InfographicData) => {
     if (!imageUrl) return;
@@ -542,8 +587,6 @@ export default function PhotoInfographicEditor({
       return { ...prev, characteristics: chars };
     });
 
-  // One-click: apply variant text AND immediately render the card.
-  // We pass newData directly to handleRender to bypass async setState delay.
   const applyVariant = useCallback(async (v: TextVariant, idx: number) => {
     setSelectedVariant(idx);
     const newData: InfographicData = {
@@ -557,77 +600,62 @@ export default function PhotoInfographicEditor({
     await handleRender(newData);
   }, [handleRender]);
 
-  const TMPL: [TemplateStyle, string, string][] = [
-    ['light', 'Золото',  'bg-amber-50 text-amber-900 border border-amber-200'],
-    ['dark',  'Бронза',  'bg-zinc-900 text-amber-400 border border-zinc-700'],
-    ['beige', 'Карамель','bg-amber-100 text-amber-950 border border-amber-300'],
-    ['black', 'Роскошь', 'bg-black text-yellow-300 border border-yellow-700'],
-  ];
-
   return (
     <div className="space-y-4">
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* ── Mode switcher ─────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-1 bg-zinc-900/70 rounded-xl p-1">
-          <button
-            onClick={() => { setMode('quick'); setResultUrl(null); }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              mode === 'quick' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Zap className="h-3 w-3" />
-            Быстрый
-          </button>
-          <button
-            onClick={() => {
-              setMode('premium');
-              setResultUrl(null);
-              if (!baseImage && !premiumLoading) {
-                autoStartedRef.current = true;
-                generatePremiumBase();
-              }
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              mode === 'premium'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Sparkles className="h-3 w-3" />
-            Премиум (FLUX)
-          </button>
+      {/* ── FLUX status bar ───────────────────────────────────────────────── */}
+      {(premiumLoading || baseImage || premiumError) && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {premiumLoading && (
+            <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 px-3 py-1.5 rounded-lg">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              FLUX генерирует базу... (~15–25 сек)
+            </div>
+          )}
+          {!premiumLoading && baseImage && (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-700/30 px-3 py-1.5 rounded-lg">
+              <Sparkles className="h-3 w-3" />
+              FLUX база готова
+              <button
+                onClick={() => { autoStartedRef.current = true; generateBase(); }}
+                className="text-zinc-500 hover:text-emerald-300 transition-colors ml-1"
+                title="Перегенерировать"
+              >
+                ↻
+              </button>
+            </div>
+          )}
+          {!premiumLoading && !baseImage && !fluxPrompt && (
+            <span className="text-xs text-amber-500/80">
+              Сначала нажмите «Анализировать» — нужен AI-промпт для FLUX
+            </span>
+          )}
         </div>
-
-        {mode === 'premium' && premiumLoading && (
-          <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 px-3 py-1.5 rounded-lg">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            FLUX генерирует базу... (~15 сек)
-          </div>
-        )}
-        {mode === 'premium' && !premiumLoading && baseImage && (
-          <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-700/30 px-3 py-1.5 rounded-lg">
-            ✓ FLUX база готова
-            <button
-              onClick={() => { autoStartedRef.current = true; generatePremiumBase(); }}
-              className="text-zinc-500 hover:text-emerald-300 transition-colors"
-              title="Перегенерировать"
-            >
-              ↻
-            </button>
-          </div>
-        )}
-        {mode === 'premium' && !premiumLoading && !baseImage && !premiumError && !fluxPrompt && (
-          <span className="text-xs text-amber-500/80">
-            Сначала нажмите «Анализировать» — нужен AI-промпт для FLUX
-          </span>
-        )}
-      </div>
+      )}
 
       {premiumError && (
         <div className="rounded-xl border border-red-800/40 bg-red-900/10 px-3 py-2 text-xs text-red-400">
-          ⚠ {premiumError}{mode === 'quick' ? ' — переключено на быстрый режим' : ''}
+          ⚠ {premiumError}
+        </div>
+      )}
+
+      {/* Qwen overlay hints */}
+      {(compositionData?.textZoneReason || overlayStyleData?.pillStyle) && (
+        <div className="rounded-xl border border-violet-800/30 bg-violet-900/10 px-3 py-2 text-xs text-violet-300 space-y-0.5">
+          {compositionData?.primaryTextZone && (
+            <p>
+              <span className="text-violet-500 font-medium">Зона текста:</span>{' '}
+              {compositionData.primaryTextZone}
+              {compositionData.textZoneReason ? ` — ${compositionData.textZoneReason}` : ''}
+            </p>
+          )}
+          {overlayStyleData?.pillStyle && (
+            <p>
+              <span className="text-violet-500 font-medium">Стиль пилюль:</span>{' '}
+              {overlayStyleData.pillStyle} · {overlayStyleData.colorScheme}
+            </p>
+          )}
         </div>
       )}
 
@@ -636,10 +664,10 @@ export default function PhotoInfographicEditor({
         {/* ── Result preview ─────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0">
 
-          {mode === 'premium' && baseImage && !resultUrl && (
+          {baseImage && !resultUrl && (
             <div className="mb-2 rounded-xl border border-amber-700/30 bg-amber-900/10 px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
               <Sparkles className="h-3 w-3 shrink-0" />
-              FLUX база готова — нажмите «Создать» для рендера с текстом
+              FLUX база готова — выберите текст или нажмите «Сгенерировать инфографику»
             </div>
           )}
 
@@ -678,16 +706,14 @@ export default function PhotoInfographicEditor({
                   <Loader2 className="h-12 w-12 animate-spin text-amber-400 mx-auto" />
                   <Sparkles className="h-5 w-5 text-amber-300 absolute -top-1 right-[calc(50%-28px)]" />
                 </div>
-                <p className="text-sm text-amber-300 font-medium">FLUX создаёт премиум базу...</p>
-                <p className="text-xs text-slate-500 mt-1">обычно 10–20 секунд</p>
+                <p className="text-sm text-amber-300 font-medium">FLUX создаёт базу инфографики...</p>
+                <p className="text-xs text-slate-500 mt-1">обычно 15–25 секунд</p>
               </div>
             ) : (
               <div className="text-center p-8 text-zinc-600">
-                <div className="text-5xl mb-3">{mode === 'premium' ? '✨' : '🖼'}</div>
+                <div className="text-5xl mb-3">✨</div>
                 <p className="text-sm font-medium text-zinc-500">
-                  {mode === 'premium'
-                    ? 'Заполните поля и нажмите «Создать» (FLUX + Canvas)'
-                    : 'Заполните поля и нажмите «Создать»'}
+                  Выберите вариант текста и нажмите «Сгенерировать инфографику»
                 </p>
               </div>
             )}
@@ -702,35 +728,13 @@ export default function PhotoInfographicEditor({
           <button
             onClick={() => handleRender()}
             disabled={!imageUrl || rendering || premiumLoading}
-            className={`mt-3 w-full px-4 py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-all ${
-              mode === 'premium'
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:opacity-90'
-                : 'bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90'
-            }`}
+            className="mt-3 w-full px-4 py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-amber-500 to-yellow-500 hover:opacity-90"
           >
             {rendering
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Создаю...</>
-              : mode === 'premium'
-                ? <><Sparkles className="h-4 w-4" /> Создать премиум карточку</>
-                : '✨ Создать карточку'}
+              : <><Sparkles className="h-4 w-4" /> Сгенерировать инфографику</>
+            }
           </button>
-
-          {/* Accent colour selector */}
-          <div className="mt-2 flex gap-1 flex-wrap">
-            <span className="text-[10px] text-zinc-600 self-center mr-1">Акцент:</span>
-            {TMPL.map(([t, label, cls]) => (
-              <button
-                key={t}
-                onClick={() => { setTemplate(t); setResultUrl(null); }}
-                className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${cls} ${template === t ? 'ring-2 ring-violet-500' : 'opacity-60 hover:opacity-90'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-zinc-700 mt-1">
-            Цвет текста/пилюль подбирается автоматически по фону фото
-          </p>
         </div>
 
         {/* ── Right panel: AI suggestions + manual edit ─────────────────── */}
@@ -740,7 +744,7 @@ export default function PhotoInfographicEditor({
           <div className="flex items-center justify-between sticky top-0 bg-zinc-950/90 backdrop-blur-sm z-10 pb-1">
             <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-violet-400" />
-              Предложения AI
+              Варианты текста
             </span>
             <button
               onClick={generateAIText}
@@ -768,7 +772,6 @@ export default function PhotoInfographicEditor({
                         : 'border-zinc-700/60 bg-zinc-800/50 hover:border-zinc-600 hover:brightness-110'
                     }`}
                   >
-                    {/* Approach badge + rendering indicator */}
                     <div className="flex items-center justify-between mb-2">
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${st.badge}`}>
                         {v.approach}
@@ -778,17 +781,14 @@ export default function PhotoInfographicEditor({
                       )}
                     </div>
 
-                    {/* Product name */}
                     <p className="text-white font-bold text-sm leading-tight mb-1.5 truncate">
                       {v.productName}
                     </p>
 
-                    {/* Subtitle */}
                     {v.subtitle && (
                       <p className="text-zinc-400 text-[11px] italic mb-2 leading-tight">{v.subtitle}</p>
                     )}
 
-                    {/* Bullets */}
                     <ul className="space-y-1 mb-2">
                       {v.characteristics.slice(0, 3).map((ch, ci) => (
                         <li key={ci} className="text-xs text-zinc-400 flex items-start gap-1.5 leading-tight">
@@ -801,7 +801,6 @@ export default function PhotoInfographicEditor({
                       ))}
                     </ul>
 
-                    {/* Bottom text */}
                     {v.bottomText && (
                       <p className="text-[10px] text-zinc-500 italic leading-tight border-t border-zinc-700/50 pt-1.5 mt-1">
                         {v.bottomText}
@@ -811,7 +810,7 @@ export default function PhotoInfographicEditor({
                     {isSelected && (
                       <p className="text-[10px] font-medium mt-1.5 flex items-center gap-1">
                         {rendering
-                          ? <><Loader2 className="h-2.5 w-2.5 animate-spin text-amber-400" /><span className="text-amber-400">Создаю карточку...</span></>
+                          ? <><Loader2 className="h-2.5 w-2.5 animate-spin text-amber-400" /><span className="text-amber-400">Создаю...</span></>
                           : <span className="text-violet-400">✓ Применено</span>
                         }
                       </p>
@@ -855,7 +854,6 @@ export default function PhotoInfographicEditor({
 
             {showManual && (
               <div className="px-3 pb-3 flex flex-col gap-2.5 bg-zinc-900/40">
-                {/* Text fields */}
                 <input
                   value={data.tagline}
                   onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
@@ -875,7 +873,6 @@ export default function PhotoInfographicEditor({
                   className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
                 />
 
-                {/* Characteristics */}
                 <p className="text-[10px] text-zinc-600 uppercase tracking-wide mt-1">Характеристики</p>
                 {data.characteristics.map((ch, i) => (
                   <div key={i} className="flex flex-col gap-1">
@@ -897,7 +894,6 @@ export default function PhotoInfographicEditor({
                   </div>
                 ))}
 
-                {/* Bottom text */}
                 <input
                   value={data.bottomText}
                   onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}

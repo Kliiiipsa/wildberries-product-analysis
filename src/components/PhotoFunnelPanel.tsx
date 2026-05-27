@@ -20,6 +20,26 @@ interface TextVariant {
   bottomText: string;
 }
 
+interface CompositionData {
+  subjectZone?: string;
+  freeZones?: string[];
+  primaryTextZone?: string;
+  textZoneReason?: string;
+  recommendedTextAlignment?: 'vertical' | 'horizontal' | 'two-column';
+}
+
+interface OverlayStyleData {
+  pillStyle?: 'frosted' | 'solid' | 'minimal' | 'none';
+  pillOpacity?: number;
+  colorScheme?: 'light' | 'dark';
+  pillBgRgba?: string;
+  textColorHex?: string;
+  scrimOpacity?: number;
+  scrimDirection?: string;
+  blurRadius?: number;
+  shadowIntensity?: number;
+}
+
 interface PhotoAnalysis {
   good: string[] | string;
   improve: string[] | string;
@@ -37,6 +57,9 @@ interface PhotoAnalysis {
   style?: 'minimal' | 'studio' | 'lifestyle' | 'premium';
   textPosition?: 'left-third' | 'bottom' | 'overlay';
   textVariants?: TextVariant[];
+  composition?: CompositionData;
+  overlayStyle?: OverlayStyleData;
+  fluxExtendNote?: string;
 }
 
 interface FunnelPhoto {
@@ -111,6 +134,8 @@ export function PhotoFunnelPanel({ onBack }: Props) {
   const [textMode, setTextMode] = useState<'infographic' | 'overlay'>('infographic');
   const [fluxPrompt, setFluxPrompt] = useState('');
   const [textVariants, setTextVariants] = useState<TextVariant[]>([]);
+  const [compositionData, setCompositionData] = useState<CompositionData | null>(null);
+  const [overlayStyleData, setOverlayStyleData] = useState<OverlayStyleData | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -237,6 +262,8 @@ export function PhotoFunnelPanel({ onBack }: Props) {
       setAnalysis(parsed);
       if (parsed.fluxPrompt) setFluxPrompt(parsed.fluxPrompt);
       if (parsed.textVariants?.length) setTextVariants(parsed.textVariants);
+      if (parsed.composition) setCompositionData(parsed.composition);
+      if (parsed.overlayStyle) setOverlayStyleData(parsed.overlayStyle);
       if (parsed.generatePrompt) {
         setGeneratePrompt(parsed.generatePrompt);
         // Use Qwen's own Russian description (more reliable than translate API)
@@ -1160,10 +1187,10 @@ export function PhotoFunnelPanel({ onBack }: Props) {
                   <PhotoInfographicEditor
                     imageUrl={imagePreview}
                     analysis={{ good: toArr(analysis?.good ?? []), improve: toArr(analysis?.improve ?? []) }}
-                    generatePrompt={generatePrompt}
                     fluxPrompt={fluxPrompt || undefined}
-                    initialMode="quick"
                     textVariants={textVariants.length ? textVariants : undefined}
+                    compositionData={compositionData}
+                    overlayStyleData={overlayStyleData}
                     onExport={dataUrl => setGeneratedImage(dataUrl)}
                   />
                 ) : (

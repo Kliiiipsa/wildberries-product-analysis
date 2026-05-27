@@ -135,10 +135,29 @@ Photo with already good composition:
 
 ━━━
 Also determine:
+
+PHASE A — COMPOSITION ANALYSIS:
 • textSide: "left" | "right" | "top" | "bottom" — which side has the most natural space for text
 • recommendedLayout: "left" | "right" | "bottom" | "minimal"
 • style: "studio" | "lifestyle" | "minimal" | "premium"
 • textPosition: "left-third" | "right-third" | "bottom" | "overlay"
+• composition.subjectZone: where the main subject/model is — "center" | "left" | "right" | "bottom" | "top"
+• composition.freeZones: all zones with natural negative space — e.g. ["left", "top-left"]
+• composition.primaryTextZone: single best zone for text overlay — "left" | "right" | "top" | "bottom" | "top-left" | "top-right"
+• composition.textZoneReason: 1 sentence explaining why this zone is best for text
+• composition.recommendedTextAlignment: "vertical" | "horizontal" | "two-column" — how text pills should stack
+
+PHASE B — OVERLAY STYLE (analyse primaryTextZone background luminance):
+• overlayStyle.pillStyle: "frosted" (lifestyle/busy BG) | "solid" (cluttered BG) | "minimal" (clean studio) | "none" (very clean zone)
+• overlayStyle.pillOpacity: 0.30 to 0.70 — lower = more transparent
+• overlayStyle.colorScheme: "light" (bright BG → dark text) | "dark" (dark BG → light text)
+• overlayStyle.pillBgRgba: exact rgba string — e.g. "rgba(255,255,255,0.52)" or "rgba(14,12,22,0.55)"
+• overlayStyle.textColorHex: exact hex — e.g. "#1A1205" (dark text on light BG) or "#F3F0E8" (light text on dark BG)
+• overlayStyle.scrimOpacity: 0.15 to 0.45 — gradient overlay strength
+• overlayStyle.scrimDirection: matches primaryTextZone — "left" | "right" | "top" | "bottom" | "top-left" | "top-right"
+• overlayStyle.blurRadius: 4 to 16 — frosted glass blur intensity (use 8 as default)
+• overlayStyle.shadowIntensity: 0.0 to 0.50 — text shadow strength (higher for busy backgrounds)
+• fluxExtendNote: 1 sentence — what FLUX will extend and why
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 6 — INFOGRAPHIC TEXT VARIANTS (textVariants)
@@ -190,6 +209,25 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   "recommendedLayout": "left",
   "style": "lifestyle",
   "textPosition": "left-third",
+  "composition": {
+    "subjectZone": "center",
+    "freeZones": ["left"],
+    "primaryTextZone": "left",
+    "textZoneReason": "...",
+    "recommendedTextAlignment": "vertical"
+  },
+  "overlayStyle": {
+    "pillStyle": "frosted",
+    "pillOpacity": 0.52,
+    "colorScheme": "light",
+    "pillBgRgba": "rgba(255,255,255,0.52)",
+    "textColorHex": "#1A1205",
+    "scrimOpacity": 0.28,
+    "scrimDirection": "left",
+    "blurRadius": 8,
+    "shadowIntensity": 0.20
+  },
+  "fluxExtendNote": "...",
   "textVariants": [
     {"approach": "Выгоды",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
     {"approach": "Характеристики","productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
