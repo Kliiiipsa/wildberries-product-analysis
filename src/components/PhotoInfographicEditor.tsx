@@ -27,21 +27,24 @@ export interface TextVariant {
 
 export interface CompositionData {
   subjectZone?: string;
+  shootType?: string;
   freeZones?: string[];
   primaryTextZone?: string;
   textZoneReason?: string;
-  recommendedTextAlignment?: 'vertical' | 'horizontal' | 'two-column';
 }
 
 export interface OverlayStyleData {
-  /** Editorial layout template (new). Falls back to composition.primaryTextZone if absent. */
-  layoutTemplate?: 'side-left' | 'side-right' | 'bottom-band';
+  layoutTemplate?: 'left-column' | 'right-column' | 'top-bottom' | 'bottom-bar' | 'floating'
+                 | 'side-left' | 'side-right' | 'bottom-band'; // legacy names still accepted
+  titleStyle?: 'premium-serif' | 'modern-bold' | 'mixed';
+  titleSize?: number;
+  floatingZones?: string[];
   colorScheme?: 'light' | 'dark';
   textColorHex?: string;
   scrimOpacity?: number;
   scrimDirection?: string;
   shadowIntensity?: number;
-  /** Legacy fields kept for backwards compat — ignored in new editorial renderer */
+  /** Legacy fields — ignored */
   pillStyle?: string;
   pillOpacity?: number;
   pillBgRgba?: string;
@@ -83,10 +86,6 @@ const DEFAULT_DATA: InfographicData = {
 
 // ── Canvas helpers ────────────────────────────────────────────────────────────
 
-/**
- * Sample average RGB + luminance from the text-zone side of the canvas.
- * `side` determines which region to sample (left 30% or right 30% or top/bottom 25%).
- */
 function sampleBackground(
   ctx: CanvasRenderingContext2D,
   W: number,
@@ -96,40 +95,32 @@ function sampleBackground(
   try {
     let data: Uint8ClampedArray;
     if (side === 'left') {
-      const sW = Math.max(1, Math.floor(W * 0.30));
-      data = ctx.getImageData(0, 0, sW, H).data;
+      data = ctx.getImageData(0, 0, Math.max(1, Math.floor(W * 0.30)), H).data;
     } else if (side === 'right') {
       const sW = Math.max(1, Math.floor(W * 0.30));
       data = ctx.getImageData(W - sW, 0, sW, H).data;
     } else if (side === 'top') {
-      const sH = Math.max(1, Math.floor(H * 0.25));
-      data = ctx.getImageData(0, 0, W, sH).data;
+      data = ctx.getImageData(0, 0, W, Math.max(1, Math.floor(H * 0.25))).data;
     } else {
       const sH = Math.max(1, Math.floor(H * 0.25));
       data = ctx.getImageData(0, H - sH, W, sH).data;
     }
-
     let r = 0, g = 0, b = 0, count = 0;
-    const step = 4 * 20; // every 20th pixel
+    const step = 4 * 20;
     for (let i = 0; i < data.length; i += step) {
       const pr = data[i], pg = data[i + 1], pb = data[i + 2];
       const mx = Math.max(pr, pg, pb), mn = Math.min(pr, pg, pb);
-      const saturation = mx > 0 ? (mx - mn) / mx : 0;
-      if (saturation > 0.35) continue;
+      if (mx > 0 && (mx - mn) / mx > 0.35) continue;
       r += pr; g += pg; b += pb; count++;
     }
-
     if (count < 10) {
       let fr = 0, fg = 0, fb = 0, fc = 0;
-      for (let i = 0; i < data.length; i += step) {
-        fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fc++;
-      }
-      const ar = fc ? fr / fc : 200, ag = fc ? fg / fc : 195, ab = fc ? fb / fc : 185;
-      return { r: ar, g: ag, b: ab, luminance: 0.299 * ar + 0.587 * ag + 0.114 * ab };
+      for (let i = 0; i < data.length; i += step) { fr += data[i]; fg += data[i+1]; fb += data[i+2]; fc++; }
+      const ar = fc ? fr/fc : 200, ag = fc ? fg/fc : 195, ab = fc ? fb/fc : 185;
+      return { r: ar, g: ag, b: ab, luminance: 0.299*ar + 0.587*ag + 0.114*ab };
     }
-
-    const ar = r / count, ag = g / count, ab = b / count;
-    return { r: ar, g: ag, b: ab, luminance: 0.299 * ar + 0.587 * ag + 0.114 * ab };
+    const ar = r/count, ag = g/count, ab = b/count;
+    return { r: ar, g: ag, b: ab, luminance: 0.299*ar + 0.587*ag + 0.114*ab };
   } catch {
     return { r: 240, g: 235, b: 225, luminance: 235 };
   }
@@ -137,10 +128,7 @@ function sampleBackground(
 
 function drawSpaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number) {
   let cx = x;
-  for (const ch of text) {
-    ctx.fillText(ch, cx, y);
-    cx += ctx.measureText(ch).width + spacing;
-  }
+  for (const ch of text) { ctx.fillText(ch, cx, y); cx += ctx.measureText(ch).width + spacing; }
 }
 
 function spacedTextWidth(ctx: CanvasRenderingContext2D, text: string, spacing: number): number {
@@ -164,302 +152,295 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number, max
   return lines;
 }
 
-// ── Editorial Canvas Drawing ───────────────────────────────────────────────────
+// ── Canvas Drawing — 5-Layout System ─────────────────────────────────────────
 
-/**
- * Derive accent color from sampled background.
- * Light + warm BG → warm dark charcoal | Light + cool → cool dark navy
- * Dark + warm BG  → warm gold          | Dark + cool  → silver-blue
- */
 function deriveAccent(r: number, _g: number, b: number, luminance: number): string {
   const isLight = luminance > 140;
   const warmth  = r - b;
-  if (isLight) {
-    return warmth >= 0 ? 'rgba(50,36,18,0.72)' : 'rgba(34,40,56,0.74)';
-  } else {
-    return warmth >= 0 ? 'rgba(212,180,108,0.84)' : 'rgba(174,200,228,0.82)';
-  }
+  if (isLight) return warmth >= 0 ? 'rgba(50,36,18,0.82)' : 'rgba(34,40,56,0.84)';
+  return warmth >= 0 ? 'rgba(212,180,108,0.92)' : 'rgba(174,200,228,0.90)';
 }
 
-/** Pre-calculate total height of the side text block (used for vertical centering). */
-function calcSideBlockHeight(ctx: CanvasRenderingContext2D, data: InfographicData, TEXT_W: number): number {
-  let h = 0;
-  h += 28; // tagline (12px) + gap
-  h += 20; // accent rule + gap
-  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
-  const nLen = rawName.replace(/\s/g, '').length;
-  const NS = nLen <= 7 ? 90 : nLen <= 11 ? 74 : nLen <= 16 ? 60 : 50;
-  ctx.font = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
-  const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
-  h += nameLines.length * Math.ceil(NS * 1.07) + 12;
-  if (data.productSubtitle) h += 44;
-  h += 22; // main separator
-  const chars = data.characteristics.slice(0, 3);
-  for (let i = 0; i < chars.length; i++) {
-    h += 20; // title row
-    h += 24; // value row
-    if (i < chars.length - 1) h += 22; // thin separator
-  }
-  return h;
+function getTitleFont(style: string, size: number): string {
+  if (style === 'premium-serif') return `italic bold ${size}px Georgia, 'Times New Roman', serif`;
+  return `900 ${size}px 'Arial Black', Arial, Helvetica, sans-serif`;
 }
 
-const BOTTOM_VPAD = 40;
-
-/** Pre-calculate top of the bottom band so the scrim can match content height. */
-function calcBottomBandTop(ctx: CanvasRenderingContext2D, data: InfographicData, H: number): number {
-  let h = 0;
-  h += 26; // tagline + gap
-  h += 18; // accent rule + gap
-  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
-  const nLen = rawName.replace(/\s/g, '').length;
-  const NS = nLen <= 7 ? 66 : nLen <= 11 ? 54 : nLen <= 16 ? 44 : 36;
-  ctx.font = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
-  const nameLines = wrapText(ctx, rawName, 640, 2);
-  h += nameLines.length * Math.ceil(NS * 1.07) + 8;
-  if (data.productSubtitle) h += 36;
-  h += 18; // separator
-  h += 54; // 3-col characteristics (title + value)
-  const bandH = h + BOTTOM_VPAD * 2;
-  return Math.max(H - 460, H - bandH);
+function resolveLayout(raw: string): 'left-column' | 'right-column' | 'top-bottom' | 'bottom-bar' | 'floating' {
+  if (raw === 'right-column' || raw === 'side-right' || raw === 'right' || raw === 'top-right' || raw === 'bottom-right') return 'right-column';
+  if (raw === 'top-bottom' || raw === 'bottom-band' || raw === 'top' || raw === 'bottom') return 'top-bottom';
+  if (raw === 'bottom-bar')  return 'bottom-bar';
+  if (raw === 'floating')    return 'floating';
+  return 'left-column';
 }
 
-/** Side layout — text column on left or right, full-height photo. */
-function drawSideLayout(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  data: InfographicData,
-  isRight: boolean,
-  textColor: string,
-  accent: string,
-  shadowAlpha: number,
+function drawScrim(
+  ctx: CanvasRenderingContext2D, W: number, H: number, layout: string,
+  bgR: number, bgG: number, bgB: number, isLight: boolean, scrimMax: number,
 ) {
-  const PAD    = Math.round(W * 0.06);
-  const TEXT_W = Math.round(W * 0.33);
-  const SPC    = 2.8;
-  const textX  = isRight ? W - PAD : PAD;
+  const sr  = Math.min(255, Math.round(bgR * (isLight ? 1.04 : 0.80)));
+  const sg  = Math.min(255, Math.round(bgG * (isLight ? 1.02 : 0.76)));
+  const sb_ = Math.min(255, Math.round(bgB * (isLight ? 1.01 : 0.72)));
+  const rgba = (a: number) => `rgba(${sr},${sg},${sb_},${+a.toFixed(3)})`;
 
-  ctx.textBaseline  = 'top';
-  ctx.shadowBlur    = 0;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-  const blockH = calcSideBlockHeight(ctx, data, TEXT_W);
-  let y = Math.max(PAD, Math.round((H - blockH) / 2));
+  if (layout === 'left-column') {
+    const g = ctx.createLinearGradient(0, 0, W * 0.46, 0);
+    g.addColorStop(0, rgba(scrimMax)); g.addColorStop(0.68, rgba(scrimMax * 0.10)); g.addColorStop(1, rgba(0));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  } else if (layout === 'right-column') {
+    const g = ctx.createLinearGradient(W, 0, W * 0.54, 0);
+    g.addColorStop(0, rgba(scrimMax)); g.addColorStop(0.68, rgba(scrimMax * 0.10)); g.addColorStop(1, rgba(0));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  } else if (layout === 'top-bottom') {
+    const gt = ctx.createLinearGradient(0, 0, 0, H * 0.36);
+    gt.addColorStop(0, rgba(scrimMax)); gt.addColorStop(1, rgba(0));
+    ctx.fillStyle = gt; ctx.fillRect(0, 0, W, H);
+    const gb = ctx.createLinearGradient(0, H * 0.66, 0, H);
+    gb.addColorStop(0, rgba(0)); gb.addColorStop(1, rgba(scrimMax));
+    ctx.fillStyle = gb; ctx.fillRect(0, 0, W, H);
+  } else if (layout === 'bottom-bar') {
+    const g = ctx.createLinearGradient(0, H * 0.56, 0, H);
+    g.addColorStop(0, rgba(0)); g.addColorStop(0.30, rgba(scrimMax * 0.50));
+    g.addColorStop(1, rgba(Math.min(scrimMax * 1.4, 0.65)));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+}
 
-  // ── Tagline ─────────────────────────────────────────────────────────────
-  ctx.font      = "400 12px Arial, Helvetica, sans-serif";
-  ctx.fillStyle = textColor;
-  ctx.globalAlpha = 0.42;
-  const tagText = (data.tagline || '').toUpperCase();
-  const tagW    = spacedTextWidth(ctx, tagText, SPC);
-  drawSpaced(ctx, tagText, isRight ? textX - tagW : textX, y, SPC);
-  ctx.globalAlpha = 1;
-  y += 28;
+/** Layouts 1 & 2: vertical text column on left or right side. */
+function drawColumn(
+  ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
+  titleStyle: string, titleSize: number, textColor: string, accent: string, shadowAlpha: number,
+  isRight: boolean,
+) {
+  const PAD   = Math.round(W * 0.07);
+  const COL_W = Math.round(W * 0.40);
+  const SPC   = 2.5;
+  const x     = isRight ? W - PAD : PAD;
+  const align = (isRight ? 'right' : 'left') as CanvasTextAlign;
 
-  // ── Short accent rule ───────────────────────────────────────────────────
-  const rLen = 36;
-  const rX   = isRight ? textX - rLen : textX;
-  ctx.beginPath();
-  ctx.moveTo(rX, y); ctx.lineTo(rX + rLen, y);
-  ctx.strokeStyle = accent;
-  ctx.lineWidth   = 1.2;
-  ctx.globalAlpha = 0.70;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  y += 20;
+  ctx.textBaseline = 'top'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  let y = Math.round(H * 0.07);
 
-  // ── Product name ────────────────────────────────────────────────────────
+  // Tagline
+  const tagU = (data.tagline || '').toUpperCase();
+  ctx.font = "400 11px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = textColor; ctx.globalAlpha = 0.50; ctx.textAlign = align;
+  if (isRight) { const tw = spacedTextWidth(ctx, tagU, SPC); drawSpaced(ctx, tagU, x - tw, y, SPC); }
+  else { drawSpaced(ctx, tagU, x, y, SPC); }
+  ctx.globalAlpha = 1; y += 22;
+
+  // Product name
   const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
-  const nLen    = rawName.replace(/\s/g, '').length;
-  const NS      = nLen <= 7 ? 90 : nLen <= 11 ? 74 : nLen <= 16 ? 60 : 50;
-  ctx.font        = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
-  ctx.fillStyle   = textColor;
-  ctx.textAlign   = isRight ? 'right' : 'left';
-  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
-  ctx.shadowBlur  = 16;
-  ctx.shadowOffsetY = 2;
-  for (const line of wrapText(ctx, rawName, TEXT_W, 3)) {
-    ctx.fillText(line, textX, y);
-    y += Math.ceil(NS * 1.07);
+  ctx.font = getTitleFont(titleStyle, titleSize);
+  ctx.fillStyle = textColor; ctx.textAlign = align;
+  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2;
+  for (const line of wrapText(ctx, rawName, COL_W, 3)) {
+    ctx.fillText(line, x, y); y += Math.ceil(titleSize * 1.12);
   }
-  ctx.shadowBlur    = 0;
-  ctx.shadowOffsetY = 0;
-  y += 12;
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; y += 10;
 
-  // ── Subtitle ────────────────────────────────────────────────────────────
+  // Subtitle
   if (data.productSubtitle) {
-    ctx.font        = "italic 600 18px Arial, Helvetica, sans-serif";
-    ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.55;
-    ctx.textAlign   = isRight ? 'right' : 'left';
-    ctx.fillText(data.productSubtitle, textX, y);
-    ctx.globalAlpha = 1;
-    y += 44;
+    const subSz = Math.max(14, Math.round(titleSize * 0.28));
+    ctx.font = `400 ${subSz}px Arial, Helvetica, sans-serif`;
+    ctx.fillStyle = textColor; ctx.globalAlpha = 0.62; ctx.textAlign = align;
+    ctx.fillText(data.productSubtitle, x, y); ctx.globalAlpha = 1; y += subSz + 14;
   }
 
-  // ── Main separator ──────────────────────────────────────────────────────
-  const sepX = isRight ? textX - TEXT_W : textX;
-  ctx.beginPath();
-  ctx.moveTo(sepX, y); ctx.lineTo(sepX + TEXT_W, y);
-  ctx.strokeStyle = textColor;
-  ctx.lineWidth   = 1;
-  ctx.globalAlpha = 0.14;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  y += 22;
+  // Separator
+  const sepX = isRight ? x - COL_W : x;
+  ctx.beginPath(); ctx.moveTo(sepX, y); ctx.lineTo(sepX + COL_W, y);
+  ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.14; ctx.stroke();
+  ctx.globalAlpha = 1; y += 20;
 
-  // ── Characteristics ─────────────────────────────────────────────────────
-  const chars = data.characteristics.slice(0, 3);
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
-
-    // Title: spaced uppercase, accent
-    ctx.font        = "700 14px Arial, Helvetica, sans-serif";
-    ctx.fillStyle   = accent;
-    ctx.globalAlpha = 1;
+  // Characteristics
+  for (let i = 0; i < Math.min(3, data.characteristics.length); i++) {
+    const ch = data.characteristics[i];
     const tText = (ch.title || '').toUpperCase();
-    const tW    = spacedTextWidth(ctx, tText, 2.2);
-    drawSpaced(ctx, tText, isRight ? textX - tW : textX, y, 2.2);
-    y += 20;
-
-    // Value
-    ctx.font        = "600 18px Arial, Helvetica, sans-serif";
-    ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.88;
-    ctx.textAlign   = isRight ? 'right' : 'left';
-    ctx.fillText(wrapText(ctx, ch.value || '', TEXT_W, 1)[0] ?? ch.value, textX, y);
-    ctx.globalAlpha = 1;
-    y += 24;
-
-    // Thin separator between items (not after last)
-    if (i < chars.length - 1) {
-      const csX = isRight ? textX - TEXT_W : textX;
-      ctx.beginPath();
-      ctx.moveTo(csX, y + 3); ctx.lineTo(csX + TEXT_W, y + 3);
-      ctx.strokeStyle = textColor;
-      ctx.lineWidth   = 1;
-      ctx.globalAlpha = 0.09;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      y += 22;
+    ctx.font = "700 12px Arial, Helvetica, sans-serif"; ctx.fillStyle = accent; ctx.globalAlpha = 1;
+    if (isRight) { const tw = spacedTextWidth(ctx, tText, 2.0); drawSpaced(ctx, tText, x - tw, y, 2.0); }
+    else { drawSpaced(ctx, tText, x, y, 2.0); }
+    y += 18;
+    ctx.font = "600 17px Arial, Helvetica, sans-serif"; ctx.fillStyle = textColor;
+    ctx.globalAlpha = 0.90; ctx.textAlign = align;
+    ctx.fillText(wrapText(ctx, ch.value || '', COL_W, 1)[0] ?? '', x, y);
+    ctx.globalAlpha = 1; y += 22;
+    if (i < 2) {
+      ctx.beginPath(); ctx.moveTo(sepX, y + 2); ctx.lineTo(sepX + COL_W, y + 2);
+      ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.08; ctx.stroke();
+      ctx.globalAlpha = 1; y += 16;
     }
   }
-
 }
 
-/** Bottom-band layout — photo full-height, editorial text block at the bottom. */
-function drawBottomLayout(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  data: InfographicData,
-  textColor: string,
-  accent: string,
-  shadowAlpha: number,
-  bandTop: number,
+/** Layout 3: title at top center, 3-column characteristics bar at bottom. */
+function drawTopBottom(
+  ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
+  titleStyle: string, titleSize: number, textColor: string, accent: string, shadowAlpha: number,
 ) {
-  const CX       = W / 2;
-  const SPC      = 2.8;
-  const BAND_TOP = bandTop;
+  const CX = W / 2;
+  const SPC = 2.8;
+  ctx.textBaseline = 'top'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  let y = Math.round(H * 0.07);
 
-  ctx.textBaseline  = 'top';
-  ctx.shadowBlur    = 0;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
-  let y = BAND_TOP + 26;
+  // Tagline
+  const tagU = (data.tagline || '').toUpperCase();
+  ctx.font = "400 11px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = textColor; ctx.globalAlpha = 0.50; ctx.textAlign = 'center';
+  drawSpaced(ctx, tagU, CX - spacedTextWidth(ctx, tagU, SPC) / 2, y, SPC);
+  ctx.globalAlpha = 1; y += 22;
 
-  // ── Tagline ─────────────────────────────────────────────────────────────
-  ctx.font        = "400 12px Arial, Helvetica, sans-serif";
-  ctx.fillStyle   = textColor;
-  ctx.globalAlpha = 0.40;
-  const tagText = (data.tagline || '').toUpperCase();
-  const tagW    = spacedTextWidth(ctx, tagText, SPC);
-  drawSpaced(ctx, tagText, CX - tagW / 2, y, SPC);
-  ctx.globalAlpha = 1;
-  y += 26;
-
-  // ── Short accent rule ───────────────────────────────────────────────────
-  const rLen = 36;
-  ctx.beginPath();
-  ctx.moveTo(CX - rLen / 2, y); ctx.lineTo(CX + rLen / 2, y);
-  ctx.strokeStyle = accent;
-  ctx.lineWidth   = 1.2;
-  ctx.globalAlpha = 0.65;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  y += 18;
-
-  // ── Product name ────────────────────────────────────────────────────────
+  // Product name
   const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
-  const nLen    = rawName.replace(/\s/g, '').length;
-  const NS      = nLen <= 7 ? 66 : nLen <= 11 ? 54 : nLen <= 16 ? 44 : 36;
-  ctx.font        = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
-  ctx.fillStyle   = textColor;
-  ctx.textAlign   = 'center';
-  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
-  ctx.shadowBlur  = 14;
-  ctx.shadowOffsetY = 2;
-  for (const line of wrapText(ctx, rawName, 640, 2)) {
-    ctx.fillText(line, CX, y);
-    y += Math.ceil(NS * 1.07);
+  ctx.font = getTitleFont(titleStyle, titleSize);
+  ctx.fillStyle = textColor; ctx.textAlign = 'center';
+  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`; ctx.shadowBlur = 12; ctx.shadowOffsetY = 2;
+  for (const line of wrapText(ctx, rawName, W * 0.78, 2)) {
+    ctx.fillText(line, CX, y); y += Math.ceil(titleSize * 1.12);
   }
-  ctx.shadowBlur    = 0;
-  ctx.shadowOffsetY = 0;
-  y += 8;
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-  // ── Subtitle ────────────────────────────────────────────────────────────
+  // Subtitle
   if (data.productSubtitle) {
-    ctx.font        = "italic 600 16px Arial, Helvetica, sans-serif";
-    ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.55;
-    ctx.textAlign   = 'center';
-    ctx.fillText(data.productSubtitle, CX, y);
-    ctx.globalAlpha = 1;
-    y += 36;
+    y += 8;
+    const subSz = Math.max(14, Math.round(titleSize * 0.28));
+    ctx.font = `400 ${subSz}px Arial, Helvetica, sans-serif`;
+    ctx.fillStyle = textColor; ctx.globalAlpha = 0.60; ctx.textAlign = 'center';
+    ctx.fillText(data.productSubtitle, CX, y); ctx.globalAlpha = 1;
   }
 
-  // ── Separator ───────────────────────────────────────────────────────────
-  ctx.beginPath();
-  ctx.moveTo(CX - 100, y); ctx.lineTo(CX + 100, y);
-  ctx.strokeStyle = textColor;
-  ctx.lineWidth   = 1;
-  ctx.globalAlpha = 0.14;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  y += 18;
-
-  // ── Characteristics — 3 columns ─────────────────────────────────────────
-  const chars  = data.characteristics.slice(0, 3);
-  const colW   = 240;
-  const totalW = colW * chars.length;
-  const startX = CX - totalW / 2;
-
+  // Bottom characteristics bar
+  const BAR_TOP = H - 130;
+  const chars   = data.characteristics.slice(0, 3);
+  const colW    = Math.round(W / chars.length);
   for (let i = 0; i < chars.length; i++) {
-    const ch    = chars[i];
-    const colCX = startX + colW * i + colW / 2;
-
-    // Title
-    ctx.font        = "700 14px Arial, Helvetica, sans-serif";
-    ctx.fillStyle   = accent;
-    ctx.globalAlpha = 1;
-    const tText = (ch.title || '').toUpperCase();
-    const tW    = spacedTextWidth(ctx, tText, 2.2);
-    drawSpaced(ctx, tText, colCX - tW / 2, y, 2.2);
-
-    // Value
-    ctx.font        = "600 17px Arial, Helvetica, sans-serif";
-    ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.85;
-    ctx.textAlign   = 'center';
-    ctx.fillText(
-      wrapText(ctx, ch.value || ch.title || '', colW - 24, 1)[0] ?? '',
-      colCX,
-      y + 18,
-    );
+    const colCX = colW * i + colW / 2;
+    if (i > 0) {
+      ctx.beginPath(); ctx.moveTo(colW * i, BAR_TOP + 22); ctx.lineTo(colW * i, BAR_TOP + 108);
+      ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.10; ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    const tText = (chars[i].title || '').toUpperCase();
+    ctx.font = "700 12px Arial, Helvetica, sans-serif"; ctx.fillStyle = accent;
+    ctx.globalAlpha = 1; ctx.textBaseline = 'top';
+    drawSpaced(ctx, tText, colCX - spacedTextWidth(ctx, tText, 2.0) / 2, BAR_TOP + 26, 2.0);
+    ctx.font = "600 17px Arial, Helvetica, sans-serif"; ctx.fillStyle = textColor;
+    ctx.globalAlpha = 0.90; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(wrapText(ctx, chars[i].value || '', colW - 30, 1)[0] ?? '', colCX, BAR_TOP + 50);
     ctx.globalAlpha = 1;
   }
-  y += 50;
+}
 
+/** Layout 4: all text in bottom band — title left, characteristics right. */
+function drawBottomBar(
+  ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
+  titleStyle: string, titleSize: number, textColor: string, accent: string, shadowAlpha: number,
+) {
+  const PAD = Math.round(W * 0.07);
+  const SPC = 2.5;
+
+  // Dynamic band height
+  ctx.font = getTitleFont(titleStyle, titleSize);
+  const rawName    = (data.productName || 'НАЗВАНИЕ').toUpperCase();
+  const titleLines = wrapText(ctx, rawName, W * 0.50, 2).length;
+  const titleH     = 24 + titleLines * Math.ceil(titleSize * 1.12) + 24;
+  const charsH     = 3 * (18 + 24) + 2 * 14;
+  const BAND_H     = Math.max(titleH, charsH) + Math.round(PAD * 1.2);
+  const BAND_TOP   = H - BAND_H;
+  const VPAD       = Math.round(PAD * 0.65);
+
+  ctx.textBaseline = 'top'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+  // Left: tagline + title + subtitle
+  let ly = BAND_TOP + VPAD;
+  ctx.font = "400 11px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = textColor; ctx.globalAlpha = 0.50; ctx.textAlign = 'left';
+  drawSpaced(ctx, (data.tagline || '').toUpperCase(), PAD, ly, SPC);
+  ctx.globalAlpha = 1; ly += 22;
+
+  ctx.font = getTitleFont(titleStyle, titleSize);
+  ctx.fillStyle = textColor; ctx.textAlign = 'left';
+  ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+  for (const line of wrapText(ctx, rawName, W * 0.50, 2)) {
+    ctx.fillText(line, PAD, ly); ly += Math.ceil(titleSize * 1.12);
+  }
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  if (data.productSubtitle) {
+    const subSz = Math.max(13, Math.round(titleSize * 0.26));
+    ctx.font = `400 ${subSz}px Arial, Helvetica, sans-serif`;
+    ctx.fillStyle = textColor; ctx.globalAlpha = 0.58; ctx.textAlign = 'left';
+    ctx.fillText(data.productSubtitle, PAD, ly); ctx.globalAlpha = 1;
+  }
+
+  // Right: 3 characteristics
+  const charX = Math.round(W * 0.58);
+  const charW = W - charX - PAD;
+  let   ry    = BAND_TOP + VPAD;
+  for (let i = 0; i < Math.min(3, data.characteristics.length); i++) {
+    const ch = data.characteristics[i];
+    ctx.font = "700 12px Arial, Helvetica, sans-serif"; ctx.fillStyle = accent;
+    ctx.globalAlpha = 1; ctx.textAlign = 'left';
+    drawSpaced(ctx, (ch.title || '').toUpperCase(), charX, ry, 2.0); ry += 18;
+    ctx.font = "600 16px Arial, Helvetica, sans-serif"; ctx.fillStyle = textColor;
+    ctx.globalAlpha = 0.88; ctx.textAlign = 'left';
+    ctx.fillText(wrapText(ctx, ch.value || '', charW, 1)[0] ?? '', charX, ry);
+    ctx.globalAlpha = 1; ry += 20;
+    if (i < 2) {
+      ctx.beginPath(); ctx.moveTo(charX, ry + 3); ctx.lineTo(charX + charW, ry + 3);
+      ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.08; ctx.stroke();
+      ctx.globalAlpha = 1; ry += 14;
+    }
+  }
+}
+
+/** Layout 5: small compact badges in 2 free corner zones. */
+function drawFloating(
+  ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
+  titleStyle: string, titleSize: number, _textColor: string, _accent: string, shadowAlpha: number,
+  zones: string[],
+) {
+  const PAD     = Math.round(W * 0.07);
+  const BADGE_W = 260;
+  const BADGE_P = 18;
+  const badges  = [
+    { label: data.tagline || 'товар', value: (data.productName || 'НАЗВАНИЕ').toUpperCase(), isTitle: true },
+    ...data.characteristics.slice(0, 2).map(ch => ({ label: ch.title, value: ch.value, isTitle: false })),
+  ];
+
+  zones.slice(0, Math.min(zones.length, badges.length)).forEach((zone, idx) => {
+    const b      = badges[idx];
+    const fSz    = b.isTitle ? Math.min(titleSize, 52) : 16;
+    const badgeH = BADGE_P * 2 + 13 + 8 + Math.ceil(fSz * 1.15);
+    let   bx     = PAD;
+    let   by     = PAD;
+    if (zone === 'top-right' || zone === 'center-right' || zone === 'bottom-right') bx = W - PAD - BADGE_W;
+    if (zone === 'center-left' || zone === 'center-right') by = Math.round((H - badgeH) / 2);
+    if (zone === 'bottom-left' || zone === 'bottom-right') by = H - PAD - badgeH;
+
+    // Badge background
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    const r = 10;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by); ctx.lineTo(bx + BADGE_W - r, by);
+    ctx.quadraticCurveTo(bx + BADGE_W, by, bx + BADGE_W, by + r);
+    ctx.lineTo(bx + BADGE_W, by + badgeH - r);
+    ctx.quadraticCurveTo(bx + BADGE_W, by + badgeH, bx + BADGE_W - r, by + badgeH);
+    ctx.lineTo(bx + r, by + badgeH); ctx.quadraticCurveTo(bx, by + badgeH, bx, by + badgeH - r);
+    ctx.lineTo(bx, by + r); ctx.quadraticCurveTo(bx, by, bx + r, by);
+    ctx.closePath(); ctx.fill();
+
+    let ty = by + BADGE_P;
+    ctx.font = "400 11px Arial, sans-serif"; ctx.fillStyle = '#CCCCCC';
+    ctx.globalAlpha = 0.80; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(b.label.toUpperCase(), bx + BADGE_P, ty); ctx.globalAlpha = 1; ty += 13 + 8;
+
+    ctx.font = b.isTitle ? getTitleFont(titleStyle, fSz) : `600 ${fSz}px Arial, sans-serif`;
+    ctx.fillStyle = '#FFFFFF'; ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`; ctx.shadowBlur = 6;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    for (const line of wrapText(ctx, b.value, BADGE_W - BADGE_P * 2, 2)) {
+      ctx.fillText(line, bx + BADGE_P, ty); ty += Math.ceil(fSz * 1.15);
+    }
+    ctx.shadowBlur = 0;
+  });
 }
 
 // ── Main draw function ────────────────────────────────────────────────────────
@@ -473,70 +454,43 @@ function drawCard(
 ) {
   const W = CARD_W, H = CARD_H;
 
-  // 1. Photo: full-bleed object-cover
-  const sx = W / img.naturalWidth, sy = H / img.naturalHeight;
-  const sc = Math.max(sx, sy);
-  const dW = img.naturalWidth * sc, dH = img.naturalHeight * sc;
-  ctx.drawImage(img, (W - dW) / 2, (H - dH) / 2, dW, dH);
+  // 1. Photo full-bleed
+  const sc = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+  ctx.drawImage(img, (W - img.naturalWidth * sc) / 2, (H - img.naturalHeight * sc) / 2, img.naturalWidth * sc, img.naturalHeight * sc);
 
-  // 2. Resolve layout — prefer overlayStyle.layoutTemplate, fall back to composition.primaryTextZone
-  const rawZone = overlayStyle?.layoutTemplate ?? composition?.primaryTextZone ?? 'left';
-  const layout: 'side-left' | 'side-right' | 'bottom-band' =
-    rawZone === 'bottom-band' || rawZone === 'bottom' ? 'bottom-band' :
-    rawZone === 'side-right' || rawZone === 'right' ||
-    rawZone === 'top-right'  || rawZone === 'bottom-right' ? 'side-right' :
-    'side-left';
-  const isBottom = layout === 'bottom-band';
-  const isRight  = layout === 'side-right';
+  // 2. Resolve layout (supports new + legacy names)
+  const rawLayout = overlayStyle?.layoutTemplate ?? composition?.primaryTextZone ?? 'left-column';
+  const layout    = resolveLayout(rawLayout as string);
 
-  // 3. Sample background for color detection
+  // 3. Sample background
   const sampleSide: 'left' | 'right' | 'top' | 'bottom' =
-    isRight ? 'right' : isBottom ? 'bottom' : 'left';
+    layout === 'right-column' ? 'right' :
+    layout === 'top-bottom'   ? 'top'   :
+    (layout === 'bottom-bar' || layout === 'floating') ? 'bottom' : 'left';
   const { r: bgR, g: bgG, b: bgB, luminance: lum } = sampleBackground(ctx, W, H, sampleSide);
 
   // 4. Colors
-  const colorScheme = overlayStyle?.colorScheme ?? (lum > 140 ? 'light' : 'dark');
-  const isLight     = colorScheme === 'light';
-  const textColor   = overlayStyle?.textColorHex ?? (isLight ? '#18140D' : '#EDE9E1');
-  const shadowAlpha = overlayStyle?.shadowIntensity ?? 0.28;
-  const accent      = deriveAccent(bgR, bgG, bgB, lum);
+  const isLight   = (overlayStyle?.colorScheme ?? (lum > 140 ? 'light' : 'dark')) === 'light';
+  const textColor = overlayStyle?.textColorHex ?? (isLight ? '#1A1205' : '#F0ECE4');
+  const shadow    = overlayStyle?.shadowIntensity ?? 0.28;
+  const accent    = deriveAccent(bgR, bgG, bgB, lum);
 
-  // Nudge background color for scrim
-  const sr  = Math.min(255, Math.round(bgR * (isLight ? 1.05 : 0.78)));
-  const sg  = Math.min(255, Math.round(bgG * (isLight ? 1.03 : 0.74)));
-  const sb_ = Math.min(255, Math.round(bgB * (isLight ? 1.02 : 0.70)));
+  // 5. Title style + size
+  const titleStyle = overlayStyle?.titleStyle ?? 'modern-bold';
+  const nChars     = (data.productName || '').replace(/\s/g, '').length;
+  const titleSize  = overlayStyle?.titleSize ?? (nChars <= 10 ? 68 : nChars <= 18 ? 52 : 42);
 
-  // 5. Scrim behind text zone for readability — max 0.45
-  const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.32, 0.45);
+  // 6. Scrim
+  const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.38, 0.60);
+  drawScrim(ctx, W, H, layout, bgR, bgG, bgB, isLight, scrimMax);
 
-  // Pre-calculate bottom band position so scrim matches actual content height
-  const bandTop = isBottom ? calcBottomBandTop(ctx, data, H) : 0;
-
-  if (isBottom) {
-    const fadeStart = bandTop - 60;
-    const bScrim = ctx.createLinearGradient(0, fadeStart, 0, H);
-    bScrim.addColorStop(0,    `rgba(${sr},${sg},${sb_},0)`);
-    bScrim.addColorStop(0.40, `rgba(${sr},${sg},${sb_},${+(scrimMax * 0.55).toFixed(3)})`);
-    bScrim.addColorStop(1,    `rgba(${sr},${sg},${sb_},${scrimMax})`);
-    ctx.fillStyle = bScrim;
-    ctx.fillRect(0, fadeStart, W, H - fadeStart);
-  } else {
-    const gx0 = isRight ? W : 0;
-    const gx1 = isRight ? W * 0.55 : W * 0.45;
-    const sideScrim = ctx.createLinearGradient(gx0, 0, gx1, 0);
-    sideScrim.addColorStop(0,    `rgba(${sr},${sg},${sb_},${scrimMax})`);
-    sideScrim.addColorStop(0.60, `rgba(${sr},${sg},${sb_},${+(scrimMax * 0.20).toFixed(3)})`);
-    sideScrim.addColorStop(1,    `rgba(${sr},${sg},${sb_},0)`);
-    ctx.fillStyle = sideScrim;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  // 6. Draw editorial text
-  if (isBottom) {
-    drawBottomLayout(ctx, W, H, data, textColor, accent, shadowAlpha, bandTop);
-  } else {
-    drawSideLayout(ctx, W, H, data, isRight, textColor, accent, shadowAlpha);
-  }
+  // 7. Dispatch to layout renderer
+  const fz = overlayStyle?.floatingZones ?? ['top-left', 'bottom-right'];
+  if      (layout === 'left-column')  drawColumn    (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, false);
+  else if (layout === 'right-column') drawColumn    (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, true);
+  else if (layout === 'top-bottom')   drawTopBottom (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow);
+  else if (layout === 'bottom-bar')   drawBottomBar (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow);
+  else                                drawFloating  (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, fz);
 }
 
 // ── Proxy helper ──────────────────────────────────────────────────────────────
@@ -571,45 +525,30 @@ export default function PhotoInfographicEditor({
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState('');
 
-  // ── FLUX base generation (manual only — called from handleRender or ↻ button) ──
   const [baseImage, setBaseImage] = useState<string | null>(null);
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumError, setPremiumError] = useState('');
 
-  /** Called only from the ↻ re-generate button in the status bar */
   const generateBase = useCallback(async () => {
-    if (!imageUrl || !fluxPrompt) {
-      setPremiumError('Нет fluxPrompt — сначала проанализируйте фото');
-      return;
-    }
-    setPremiumLoading(true);
-    setPremiumError('');
-    setBaseImage(null);
+    if (!imageUrl || !fluxPrompt) { setPremiumError('Нет fluxPrompt — сначала проанализируйте фото'); return; }
+    setPremiumLoading(true); setPremiumError(''); setBaseImage(null);
     try {
       const imgSrc = await toDataUrl(imageUrl);
       const res = await fetch('/api/photo/generate-infographic-base', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
       setBaseImage(json.imageUrl);
-    } catch (e) {
-      setPremiumError(String(e));
-    } finally {
-      setPremiumLoading(false);
-    }
+    } catch (e) { setPremiumError(String(e)); } finally { setPremiumLoading(false); }
   }, [imageUrl, fluxPrompt]);
-
-  // ── AI text generation (fallback) ───────────────────────────────────────────
 
   const generateAIText = async () => {
     setLoadingText(true);
     try {
       const res = await fetch('/api/photo/text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ analysis }),
       });
       const json = await res.json();
@@ -621,28 +560,20 @@ export default function PhotoInfographicEditor({
           characteristics: (json.characteristics ?? DEFAULT_DATA.characteristics).slice(0, 3),
         });
       }
-    } catch { /* ignore */ } finally {
-      setLoadingText(false);
-    }
+    } catch { /* ignore */ } finally { setLoadingText(false); }
   };
-
-  // ── Canvas render ───────────────────────────────────────────────────────────
 
   const renderCard = useCallback(async (overrideData?: InfographicData, activeUrl?: string): Promise<string> => {
     const canvas = canvasRef.current;
     if (!canvas) throw new Error('no canvas');
-    canvas.width = CARD_W;
-    canvas.height = CARD_H;
+    canvas.width = CARD_W; canvas.height = CARD_H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
     const imgSrc = await toDataUrl(activeUrl ?? baseImage ?? imageUrl);
     const d = overrideData ?? data;
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
-        drawCard(ctx, img, d, compositionData, overlayStyleData);
-        resolve(canvas.toDataURL('image/jpeg', 0.95));
-      };
+      img.onload = () => { drawCard(ctx, img, d, compositionData, overlayStyleData); resolve(canvas.toDataURL('image/jpeg', 0.95)); };
       img.onerror = () => reject(new Error('image load failed'));
       img.src = imgSrc;
     });
@@ -650,19 +581,14 @@ export default function PhotoInfographicEditor({
 
   const handleRender = useCallback(async (overrideData?: InfographicData) => {
     if (!imageUrl) return;
-    setRendering(true);
-    setRenderError('');
-
-    // Если есть fluxPrompt, но база ещё не готова — генерируем её прямо сейчас
+    setRendering(true); setRenderError('');
     let resolvedBase = baseImage;
     if (fluxPrompt && !resolvedBase) {
-      setPremiumLoading(true);
-      setPremiumError('');
+      setPremiumLoading(true); setPremiumError('');
       try {
         const imgSrc = await toDataUrl(imageUrl);
         const res = await fetch('/api/photo/generate-infographic-base', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt }),
         });
         const json = await res.json();
@@ -670,42 +596,26 @@ export default function PhotoInfographicEditor({
         resolvedBase = json.imageUrl as string;
         setBaseImage(resolvedBase);
       } catch (e) {
-        setPremiumError(String(e));
-        setRendering(false);
-        setPremiumLoading(false);
-        return;
-      } finally {
-        setPremiumLoading(false);
-      }
+        setPremiumError(String(e)); setRendering(false); setPremiumLoading(false); return;
+      } finally { setPremiumLoading(false); }
     }
-
     try {
       const url = await renderCard(overrideData, resolvedBase ?? undefined);
       onExport?.(url);
-    } catch (e) {
-      setRenderError(String(e));
-    } finally {
-      setRendering(false);
-    }
+    } catch (e) { setRenderError(String(e)); } finally { setRendering(false); }
   }, [imageUrl, baseImage, fluxPrompt, renderCard, onExport]);
 
   const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
   const [showManual, setShowManual] = useState(false);
 
   const updateChar = (i: number, field: 'title' | 'value', val: string) =>
-    setData(prev => {
-      const chars = [...prev.characteristics];
-      chars[i] = { ...chars[i], [field]: val };
-      return { ...prev, characteristics: chars };
-    });
+    setData(prev => { const chars = [...prev.characteristics]; chars[i] = { ...chars[i], [field]: val }; return { ...prev, characteristics: chars }; });
 
   const applyVariant = useCallback(async (v: TextVariant, idx: number) => {
     setSelectedVariant(idx);
     const newData: InfographicData = {
-      productName: v.productName,
-      productSubtitle: v.subtitle,
-      tagline: v.tagline,
-      characteristics: v.characteristics.slice(0, 3),
+      productName: v.productName, productSubtitle: v.subtitle,
+      tagline: v.tagline, characteristics: v.characteristics.slice(0, 3),
     };
     setData(newData);
     await handleRender(newData);
@@ -715,7 +625,7 @@ export default function PhotoInfographicEditor({
     <div className="space-y-4">
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* ── FLUX status bar ───────────────────────────────────────────────── */}
+      {/* FLUX status bar */}
       {(premiumLoading || baseImage || premiumError) && (
         <div className="flex items-center gap-3 flex-wrap">
           {premiumLoading && (
@@ -728,27 +638,17 @@ export default function PhotoInfographicEditor({
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-700/30 px-3 py-1.5 rounded-lg">
               <Sparkles className="h-3 w-3" />
               FLUX база готова
-              <button
-                onClick={() => generateBase()}
-                className="text-zinc-500 hover:text-emerald-300 transition-colors ml-1"
-                title="Перегенерировать"
-              >
-                ↻
-              </button>
+              <button onClick={() => generateBase()} className="text-zinc-500 hover:text-emerald-300 transition-colors ml-1" title="Перегенерировать">↻</button>
             </div>
           )}
           {!premiumLoading && !baseImage && !fluxPrompt && (
-            <span className="text-xs text-amber-500/80">
-              Сначала нажмите «Анализировать» — нужен AI-промпт для FLUX
-            </span>
+            <span className="text-xs text-amber-500/80">Сначала нажмите «Анализировать» — нужен AI-промпт для FLUX</span>
           )}
         </div>
       )}
 
       {premiumError && (
-        <div className="rounded-xl border border-red-800/40 bg-red-900/10 px-3 py-2 text-xs text-red-400">
-          ⚠ {premiumError}
-        </div>
+        <div className="rounded-xl border border-red-800/40 bg-red-900/10 px-3 py-2 text-xs text-red-400">⚠ {premiumError}</div>
       )}
 
       {/* Qwen overlay hints */}
@@ -759,10 +659,17 @@ export default function PhotoInfographicEditor({
             <span className="text-violet-500">layout:</span>{' '}
             <span className="text-white font-mono">{overlayStyleData.layoutTemplate ?? '—'}</span>
             {' · '}
+            <span className="text-violet-500">titleStyle:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.titleStyle ?? '—'}</span>
+            {' · '}
+            <span className="text-violet-500">titleSize:</span>{' '}
+            <span className="text-white font-mono">{overlayStyleData.titleSize ?? '—'}</span>
+          </p>
+          <p>
             <span className="text-violet-500">colorScheme:</span>{' '}
             <span className="text-white font-mono">{overlayStyleData.colorScheme ?? '—'}</span>
             {' · '}
-            <span className="text-violet-500">scrimOpacity:</span>{' '}
+            <span className="text-violet-500">scrim:</span>{' '}
             <span className="text-white font-mono">{overlayStyleData.scrimOpacity ?? '—'}</span>
             {' · '}
             <span className="text-violet-500">shadow:</span>{' '}
@@ -778,62 +685,39 @@ export default function PhotoInfographicEditor({
         </div>
       ) : (
         <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 px-3 py-1.5 text-xs text-zinc-600">
-          ⚠ overlayStyle от Qwen не получен — используются дефолты (editorial auto-detect)
+          ⚠ overlayStyle от Qwen не получен — используются дефолты (auto-detect)
         </div>
       )}
 
-      {/* ── Text variants + manual edit ───────────────────────────────── */}
+      {/* Text variants + manual edit */}
       <div className="flex flex-col gap-3">
-
-        {/* Header */}
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide flex items-center gap-1.5">
             <Sparkles className="h-3 w-3 text-violet-400" />
             Варианты текста
           </span>
-          <button
-            onClick={generateAIText}
-            disabled={loadingText}
-            className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1 transition-colors"
-          >
+          <button onClick={generateAIText} disabled={loadingText}
+            className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-50 flex items-center gap-1 transition-colors">
             {loadingText ? <Loader2 className="h-3 w-3 animate-spin" /> : '↻'} Обновить
           </button>
         </div>
 
-        {/* Variant cards — 2 columns on wide screens */}
         {textVariants && textVariants.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {textVariants.map((v, i) => {
               const st = APPROACH_STYLE[v.approach] ?? APPROACH_STYLE['Минимализм'];
               const isSelected = selectedVariant === i;
               return (
-                <button
-                  key={i}
-                  onClick={() => applyVariant(v, i)}
-                  disabled={rendering || premiumLoading}
+                <button key={i} onClick={() => applyVariant(v, i)} disabled={rendering || premiumLoading}
                   className={`w-full text-left rounded-xl border p-3 transition-all disabled:opacity-60 ${
-                    isSelected
-                      ? `${st.ring} ring-1 ring-inset`
-                      : 'border-zinc-700/60 bg-zinc-800/50 hover:border-zinc-600 hover:brightness-110'
-                  }`}
-                >
+                    isSelected ? `${st.ring} ring-1 ring-inset` : 'border-zinc-700/60 bg-zinc-800/50 hover:border-zinc-600 hover:brightness-110'
+                  }`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${st.badge}`}>
-                      {v.approach}
-                    </span>
-                    {isSelected && rendering && (
-                      <Loader2 className="h-3 w-3 animate-spin text-violet-400 shrink-0" />
-                    )}
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${st.badge}`}>{v.approach}</span>
+                    {isSelected && rendering && <Loader2 className="h-3 w-3 animate-spin text-violet-400 shrink-0" />}
                   </div>
-
-                  <p className="text-white font-bold text-sm leading-tight mb-1.5 truncate">
-                    {v.productName}
-                  </p>
-
-                  {v.subtitle && (
-                    <p className="text-zinc-400 text-[11px] italic mb-2 leading-tight">{v.subtitle}</p>
-                  )}
-
+                  <p className="text-white font-bold text-sm leading-tight mb-1.5 truncate">{v.productName}</p>
+                  {v.subtitle && <p className="text-zinc-400 text-[11px] italic mb-2 leading-tight">{v.subtitle}</p>}
                   <ul className="space-y-1 mb-2">
                     {v.characteristics.slice(0, 3).map((ch, ci) => (
                       <li key={ci} className="text-xs text-zinc-400 flex items-start gap-1.5 leading-tight">
@@ -845,15 +729,11 @@ export default function PhotoInfographicEditor({
                       </li>
                     ))}
                   </ul>
-
-
-
                   {isSelected && (
                     <p className="text-[10px] font-medium mt-1.5 flex items-center gap-1">
                       {rendering
                         ? <><Loader2 className="h-2.5 w-2.5 animate-spin text-amber-400" /><span className="text-amber-400">Создаю...</span></>
-                        : <span className="text-violet-400">✓ Применено</span>
-                      }
+                        : <span className="text-violet-400">✓ Применено</span>}
                     </p>
                   )}
                 </button>
@@ -871,11 +751,8 @@ export default function PhotoInfographicEditor({
               <>
                 <Sparkles className="h-5 w-5 text-zinc-700 mx-auto mb-2" />
                 <p className="text-xs text-zinc-500 mb-2">Нажмите «Анализировать» — AI сгенерирует 4 варианта текста</p>
-                <button
-                  onClick={generateAIText}
-                  disabled={loadingText}
-                  className="text-xs text-violet-400 hover:text-violet-300 border border-violet-700/40 rounded-lg px-3 py-1.5 transition-colors"
-                >
+                <button onClick={generateAIText} disabled={loadingText}
+                  className="text-xs text-violet-400 hover:text-violet-300 border border-violet-700/40 rounded-lg px-3 py-1.5 transition-colors">
                   ✨ Сгенерировать текст
                 </button>
               </>
@@ -883,36 +760,24 @@ export default function PhotoInfographicEditor({
           </div>
         )}
 
-        {/* ── Manual editor (collapsible) ──────────────────────────────── */}
+        {/* Manual editor (collapsible) */}
         <div className="border border-zinc-800 rounded-xl overflow-hidden">
-          <button
-            onClick={() => setShowManual(p => !p)}
-            className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 transition-all"
-          >
+          <button onClick={() => setShowManual(p => !p)}
+            className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 transition-all">
             <span className="font-medium uppercase tracking-wide">Редактировать вручную</span>
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showManual ? 'rotate-180' : ''}`} />
           </button>
-
           {showManual && (
             <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-2.5 bg-zinc-900/40">
-              <input
-                value={data.tagline}
-                onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
+              <input value={data.tagline} onChange={e => setData(p => ({ ...p, tagline: e.target.value }))}
                 placeholder="тег (новинка / хит продаж)"
-                className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-              />
-              <input
-                value={data.productName}
-                onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
+                className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500" />
+              <input value={data.productName} onChange={e => setData(p => ({ ...p, productName: e.target.value }))}
                 placeholder="НАЗВАНИЕ ТОВАРА"
-                className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500"
-              />
-              <input
-                value={data.productSubtitle}
-                onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
+                className="w-full bg-zinc-700 text-white text-sm font-bold px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500" />
+              <input value={data.productSubtitle} onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
                 placeholder="лёгкий и дышащий"
-                className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-              />
+                className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500" />
               <div className="md:col-span-2">
                 <p className="text-[10px] text-zinc-600 uppercase tracking-wide mb-1.5">Характеристики</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -920,19 +785,13 @@ export default function PhotoInfographicEditor({
                     <div key={i} className="flex flex-col gap-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-zinc-600 w-3 shrink-0">{['🌿','✦','◉'][i]}</span>
-                        <input
-                          value={ch.title}
-                          onChange={e => updateChar(i, 'title', e.target.value)}
+                        <input value={ch.title} onChange={e => updateChar(i, 'title', e.target.value)}
                           placeholder="Название"
-                          className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500"
-                        />
+                          className="flex-1 bg-zinc-700 text-white text-xs font-semibold px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500" />
                       </div>
-                      <input
-                        value={ch.value}
-                        onChange={e => updateChar(i, 'value', e.target.value)}
+                      <input value={ch.value} onChange={e => updateChar(i, 'value', e.target.value)}
                         placeholder="уточнение"
-                        className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-4"
-                      />
+                        className="w-full bg-zinc-700/60 text-zinc-300 text-xs px-2 py-1 rounded outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-600 ml-4" />
                     </div>
                   ))}
                 </div>
@@ -942,22 +801,16 @@ export default function PhotoInfographicEditor({
         </div>
       </div>
 
-      {/* ── Generate button ───────────────────────────────────────────────── */}
-      <button
-        onClick={() => handleRender()}
-        disabled={!imageUrl || rendering || premiumLoading}
-        className="w-full px-4 py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-amber-500 to-yellow-500 hover:opacity-90"
-      >
+      {/* Generate button */}
+      <button onClick={() => handleRender()} disabled={!imageUrl || rendering || premiumLoading}
+        className="w-full px-4 py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-amber-500 to-yellow-500 hover:opacity-90">
         {rendering
           ? <><Loader2 className="h-4 w-4 animate-spin" /> Создаю...</>
-          : <><Sparkles className="h-4 w-4" /> Сгенерировать инфографику</>
-        }
+          : <><Sparkles className="h-4 w-4" /> Сгенерировать инфографику</>}
       </button>
 
       {renderError && (
-        <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-3 py-2 text-xs text-red-400">
-          {renderError}
-        </div>
+        <div className="rounded-xl border border-red-800/50 bg-red-900/15 px-3 py-2 text-xs text-red-400">{renderError}</div>
       )}
     </div>
   );

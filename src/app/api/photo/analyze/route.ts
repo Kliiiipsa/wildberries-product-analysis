@@ -138,31 +138,67 @@ Photo with already good composition:
 Also determine:
 
 PHASE A — COMPOSITION ANALYSIS:
-• textSide: "left" | "right" | "bottom" — which side has the most natural space for text
-• composition.subjectZone: where the main subject/model is — "center" | "left" | "right"
-• composition.freeZones: all zones with natural negative space — e.g. ["left", "top-left"]
-• composition.primaryTextZone: single best zone — "left" | "right" | "top" | "bottom" | "top-left" | "top-right"
-• composition.textZoneReason: 1 sentence explaining why this zone is best for text
+• composition.subjectZone: where is the model/subject — "left" | "right" | "center" | "full" (fills almost entire frame)
+• composition.shootType: "full-body" | "half-body" | "flat-lay" | "product-only"
+• composition.freeZones: zones with natural background space — e.g. ["left", "top"]
+• composition.primaryTextZone: best single zone — "left" | "right" | "top" | "bottom"
+• composition.textZoneReason: 1 sentence why
 
-PHASE B — OVERLAY STYLE:
-• overlayStyle.layoutTemplate — choose based on WHERE THE SUBJECT IS in the frame:
-    "side-left"   → subject/model on the RIGHT or right-center of the frame → text goes on the LEFT side column
-    "side-right"  → subject/model on the LEFT or left-center of the frame → text goes on the RIGHT side column
-    "bottom-band" → subject is CENTERED filling most of the height, OR full-body dynamic pose with no clear side space, OR flat-lay / product-only — text goes in a horizontal block at the BOTTOM
+PHASE B — OVERLAY STYLE (5-layout system):
 
-• overlayStyle.colorScheme — analyse the text zone background:
-    "light" → background in text zone is bright/pale → use dark text on it
-    "dark"  → background in text zone is dark/shadowed → use light text on it
+• overlayStyle.layoutTemplate — choose EXACTLY ONE based on photo composition:
 
-• overlayStyle.textColorHex — exact hex for main text:
-    Light scheme → near-black warm e.g. "#18140D" | "#1C1812" | "#221A0E"
-    Dark scheme  → near-white warm e.g. "#EDE9E1" | "#F2EEE6" | "#E8E4DC"
+    "left-column"  → model/subject is on the RIGHT (or center-right) of the frame. Left 40% has background space.
+                     Example: model standing right, clean left zone.
 
-• overlayStyle.scrimOpacity — 0.15 to 0.45. Gradient behind text zone for readability. Clean studio shots: 0.15–0.22. Busy lifestyle/nature shots: 0.30–0.45.
+    "right-column" → model/subject is on the LEFT (or center-left) of the frame. Right 40% has background space.
+                     Example: model standing left, clean right zone.
 
-• overlayStyle.scrimDirection — matches the text zone: "left" | "right" | "bottom"
+    "top-bottom"   → model is CENTERED with air above head AND below feet OR flat-lay.
+                     Title goes at top of frame, characteristics at bottom bar.
 
-• overlayStyle.shadowIntensity — text drop-shadow alpha: 0.15 to 0.35. Clean bright zone → 0.18. Dark or busy zone → 0.30–0.35.
+    "bottom-bar"   → FULL-BODY model fills the upper 2/3 of frame. Space at bottom.
+                     ALL text (title + characteristics) placed in bottom band.
+
+    "floating"     → model fills nearly the ENTIRE frame (90%+). Only small corner zones free.
+                     2 small compact badges placed in the two freest corners.
+                     Also set floatingZones: ["top-left","bottom-right"] etc.
+
+    SELECTION RULES:
+    Model on right side          → "left-column"
+    Model on left side           → "right-column"
+    Model centered, air top+bot  → "top-bottom"
+    Full-body, space at bottom   → "bottom-bar"
+    Model fills almost all frame → "floating"
+    Flat-lay / product only      → "top-bottom"
+
+• overlayStyle.titleStyle — based on PRODUCT CATEGORY:
+    "premium-serif"  → elegant/feminine: dress, suit, silk, linen, evening wear, palazzo, blouse
+    "modern-bold"    → casual/athletic/street: hoodie, joggers, shorts, oversized, sportswear, jeans, t-shirt
+
+• overlayStyle.titleSize — pixel size for product name title:
+    Short name (≤10 non-space chars): 68
+    Medium name (11–18 non-space chars): 52
+    Long name (>18 non-space chars): 42
+
+• overlayStyle.floatingZones — ONLY for "floating" layout. Array of 2 zone names where badges go.
+    Choose zones with most empty background space.
+    Options: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center-left" | "center-right"
+
+• overlayStyle.colorScheme — analyze background in text zone:
+    "light" → background bright/pale → use dark text
+    "dark"  → background dark/shadowed → use light text
+
+• overlayStyle.textColorHex — exact hex:
+    Light scheme → "#1A1205" | "#1C1812" | "#2A2010"
+    Dark scheme  → "#F0ECE4" | "#EEEAE2" | "#F5F1EB"
+
+• overlayStyle.scrimOpacity — 0.20 to 0.55:
+    Clean studio, column layout → 0.20–0.30
+    Busy lifestyle background   → 0.35–0.50
+    Bottom bar                  → 0.45–0.55
+
+• overlayStyle.shadowIntensity — 0.15 to 0.35
 
 • fluxExtendNote: 1 sentence — what FLUX will extend and why
 
@@ -174,9 +210,8 @@ Generate EXACTLY 4 text variants for the infographic canvas. ALL text values in 
 RULES for every variant:
 • productName — 2-3 words MAX, uppercase-friendly, SPECIFIC to THIS exact product (e.g. "ШОРТЫ МУЖСКИЕ", "ПЛАТЬЕ ЛЕТНЕЕ", "РУБАШКА ОВЕРСАЙЗ")
 • subtitle — 3-7 words, feel/fit/feature of the item
-• tagline — 3-5 word lowercase slug for the top of card (e.g. "новинка сезона", "хит продаж")
+• tagline — 3-5 word lowercase slug for top of card (e.g. "новинка сезона", "хит продаж")
 • characteristics — EXACTLY 3 items, each: title 1-3 words + value 2-6 words
-• bottomText — 5-9 words memorable closing line
 
 THE 4 APPROACHES:
 [0] approach "Выгоды" — WHY BUYER SHOULD BUY: comfort, quality, value, convenience. Example: productName "ШОРТЫ МУЖСКИЕ", bullets: {Дышит летом, Мягкий хлопок}, {Не жмёт, Эластичный пояс}, {Носи везде, Универсальный крой}
@@ -223,19 +258,20 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
     "textZoneReason": "..."
   },
   "overlayStyle": {
-    "layoutTemplate": "side-left",
+    "layoutTemplate": "left-column",
+    "titleStyle": "modern-bold",
+    "titleSize": 68,
     "colorScheme": "light",
-    "textColorHex": "#18140D",
+    "textColorHex": "#1A1205",
     "scrimOpacity": 0.32,
-    "scrimDirection": "left",
     "shadowIntensity": 0.26
   },
   "fluxExtendNote": "...",
   "textVariants": [
-    {"approach": "Выгоды",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
-    {"approach": "Характеристики","productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}], "bottomText": "..."},
-    {"approach": "Эмоции",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":""},   {"title":"...","value":""},   {"title":"...","value":""}],   "bottomText": "..."},
-    {"approach": "Минимализм",    "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":""},   {"title":"...","value":""},   {"title":"...","value":""}],   "bottomText": "..."}
+    {"approach": "Выгоды",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}]},
+    {"approach": "Характеристики","productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":"..."},{"title":"...","value":"..."},{"title":"...","value":"..."}]},
+    {"approach": "Эмоции",        "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":""},   {"title":"...","value":""},   {"title":"...","value":""}]},
+    {"approach": "Минимализм",    "productName": "...", "subtitle": "...", "tagline": "...", "characteristics": [{"title":"...","value":""},   {"title":"...","value":""},   {"title":"...","value":""}]}
   ]
 }`;
 
