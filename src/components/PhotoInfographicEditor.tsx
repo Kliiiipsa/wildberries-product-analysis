@@ -374,6 +374,7 @@ function drawTopBottom(
 function drawBottomBar(
   ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
   titleStyle: string, titleSize: number, textColor: string, accent: string, shadowAlpha: number,
+  bgR: number, bgG: number, bgB: number, isLight: boolean,
 ) {
   const PAD = Math.round(W * 0.07);
   const SPC = 2.5;
@@ -383,10 +384,17 @@ function drawBottomBar(
   const rawName    = (data.productName || 'НАЗВАНИЕ').toUpperCase();
   const titleLines = wrapText(ctx, rawName, W * 0.50, 2).length;
   const titleH     = 24 + titleLines * Math.ceil(titleSize * 1.12) + 24;
-  const charsH     = 3 * (18 + 24) + 2 * 14;
+  const charsH     = 3 * (18 + 26) + 2 * 14;
   const BAND_H     = Math.max(titleH, charsH) + Math.round(PAD * 1.2);
   const BAND_TOP   = H - BAND_H;
   const VPAD       = Math.round(PAD * 0.65);
+
+  // Solid panel — guarantees readability on any background (studio or lifestyle)
+  const pr = Math.min(255, Math.round(bgR * (isLight ? 1.03 : 0.55)));
+  const pg = Math.min(255, Math.round(bgG * (isLight ? 1.02 : 0.50)));
+  const pb = Math.min(255, Math.round(bgB * (isLight ? 1.01 : 0.48)));
+  ctx.fillStyle = `rgba(${pr},${pg},${pb},0.86)`;
+  ctx.fillRect(0, BAND_TOP, W, BAND_H);
 
   ctx.textBaseline = 'top'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
 
@@ -417,13 +425,13 @@ function drawBottomBar(
   let   ry    = BAND_TOP + VPAD;
   for (let i = 0; i < Math.min(3, data.characteristics.length); i++) {
     const ch = data.characteristics[i];
-    ctx.font = "700 12px Arial, Helvetica, sans-serif"; ctx.fillStyle = accent;
+    ctx.font = "700 13px Arial, Helvetica, sans-serif"; ctx.fillStyle = accent;
     ctx.globalAlpha = 1; ctx.textAlign = 'left';
-    drawSpaced(ctx, (ch.title || '').toUpperCase(), charX, ry, 2.0); ry += 18;
-    ctx.font = "600 16px Arial, Helvetica, sans-serif"; ctx.fillStyle = textColor;
+    drawSpaced(ctx, (ch.title || '').toUpperCase(), charX, ry, 2.0); ry += 19;
+    ctx.font = "600 18px Arial, Helvetica, sans-serif"; ctx.fillStyle = textColor;
     ctx.globalAlpha = 0.88; ctx.textAlign = 'left';
     ctx.fillText(wrapText(ctx, ch.value || '', charW, 1)[0] ?? '', charX, ry);
-    ctx.globalAlpha = 1; ry += 20;
+    ctx.globalAlpha = 1; ry += 22;
     if (i < 2) {
       ctx.beginPath(); ctx.moveTo(charX, ry + 3); ctx.lineTo(charX + charW, ry + 3);
       ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.08; ctx.stroke();
@@ -510,17 +518,20 @@ function drawCard(
       : 'left-column';
   }
 
-  // Canvas zone validation: verify column zone is actually clear (model not in text area)
+  // Canvas zone validation: check ACTUAL text rendering zones (PAD + COL_W), not just outer edge
   if (layout === 'left-column' || layout === 'right-column') {
-    const zoneH = Math.round(H * 0.65); // check upper 65% — head + torso region
-    const zoneW = Math.round(W * 0.38);
-    const varL  = sampleZoneVariance(ctx, 0, 0, zoneW, zoneH);
-    const varR  = sampleZoneVariance(ctx, W - zoneW, 0, zoneW, zoneH);
-    const BUSY  = 25; // clean studio bg ≈ 5-15, blurred bg ≈ 15-22, model in zone ≈ 30-60
+    const PAD_PX  = Math.round(W * 0.07);
+    const COL_PX  = Math.round(W * 0.40);
+    const CHECK_H = Math.round(H * 0.40); // upper 40%: head + title zone
+    const varL  = sampleZoneVariance(ctx, PAD_PX, 0, COL_PX, CHECK_H);
+    const varR  = sampleZoneVariance(ctx, W - PAD_PX - COL_PX, 0, COL_PX, CHECK_H);
+    // Adaptive threshold: bottom-left corner = pure background reference
+    const bgRef = sampleZoneVariance(ctx, 0, Math.round(H * 0.85), Math.round(W * 0.18), Math.round(H * 0.12));
+    const BUSY  = bgRef + 12; // model adds 12+ std-dev above background level
     if (layout === 'left-column' && varL > BUSY) {
-      layout = varR < varL - 4 ? 'right-column' : 'bottom-bar';
+      layout = varR < varL - 3 ? 'right-column' : 'bottom-bar';
     } else if (layout === 'right-column' && varR > BUSY) {
-      layout = varL < varR - 4 ? 'left-column' : 'bottom-bar';
+      layout = varL < varR - 3 ? 'left-column' : 'bottom-bar';
     }
   }
 
@@ -555,7 +566,7 @@ function drawCard(
   if      (layout === 'left-column')  drawColumn    (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, false);
   else if (layout === 'right-column') drawColumn    (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, true);
   else if (layout === 'top-bottom')   drawTopBottom (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, headFrac ?? undefined);
-  else if (layout === 'bottom-bar')   drawBottomBar (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow);
+  else if (layout === 'bottom-bar')   drawBottomBar (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, bgR, bgG, bgB, isLight);
   else                                drawFloating  (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, fz);
 }
 
