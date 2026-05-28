@@ -32,6 +32,7 @@ export interface CompositionData {
   primaryTextZone?: string;
   textZoneReason?: string;
   modelHeadTopFraction?: number;
+  modelFeetBottomFraction?: number;
 }
 
 export interface OverlayStyleData {
@@ -125,6 +126,28 @@ function sampleBackground(
   } catch {
     return { r: 240, g: 235, b: 225, luminance: 235 };
   }
+}
+
+/** Returns luminance std-dev of a canvas zone. High value (~25+) means complex content (model). */
+function sampleZoneVariance(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+): number {
+  try {
+    const data = ctx.getImageData(
+      Math.round(x), Math.round(y),
+      Math.max(1, Math.round(w)), Math.max(1, Math.round(h)),
+    ).data;
+    let sum = 0, sumSq = 0, n = 0;
+    const step = 4 * 10;
+    for (let i = 0; i < data.length; i += step) {
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      sum += lum; sumSq += lum * lum; n++;
+    }
+    if (n < 2) return 0;
+    const mean = sum / n;
+    return Math.sqrt(sumSq / n - mean * mean);
+  } catch { return 0; }
 }
 
 function drawSpaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number) {
@@ -278,6 +301,7 @@ function drawColumn(
 function drawTopBottom(
   ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
   titleStyle: string, titleSize: number, textColor: string, accent: string, shadowAlpha: number,
+  headFrac?: number,
 ) {
   const CX = W / 2;
   const SPC = 2.8;
@@ -291,13 +315,22 @@ function drawTopBottom(
   drawSpaced(ctx, tagU, CX - spacedTextWidth(ctx, tagU, SPC) / 2, y, SPC);
   ctx.globalAlpha = 1; y += 22;
 
-  // Product name
-  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
+  // Adapt title size to available head-clearance zone
+  const clearMaxY = headFrac != null ? Math.round(H * headFrac * 0.88) : Math.round(H * 0.40);
+  const rawName   = (data.productName || 'НАЗВАНИЕ').toUpperCase();
   ctx.font = getTitleFont(titleStyle, titleSize);
+  const neededH   = wrapText(ctx, rawName, W * 0.78, 2).length * Math.ceil(titleSize * 1.12);
+  const availH    = clearMaxY - y;
+  const tSize     = (neededH > availH && availH > 30)
+    ? Math.max(30, Math.floor(titleSize * availH / neededH))
+    : titleSize;
+
+  // Product name
+  ctx.font = getTitleFont(titleStyle, tSize);
   ctx.fillStyle = textColor; ctx.textAlign = 'center';
   ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`; ctx.shadowBlur = 12; ctx.shadowOffsetY = 2;
   for (const line of wrapText(ctx, rawName, W * 0.78, 2)) {
-    ctx.fillText(line, CX, y); y += Math.ceil(titleSize * 1.12);
+    ctx.fillText(line, CX, y); y += Math.ceil(tSize * 1.12);
   }
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
@@ -477,6 +510,20 @@ function drawCard(
       : 'left-column';
   }
 
+  // Canvas zone validation: verify column zone is actually clear (model not in text area)
+  if (layout === 'left-column' || layout === 'right-column') {
+    const zoneH = Math.round(H * 0.65); // check upper 65% — head + torso region
+    const zoneW = Math.round(W * 0.38);
+    const varL  = sampleZoneVariance(ctx, 0, 0, zoneW, zoneH);
+    const varR  = sampleZoneVariance(ctx, W - zoneW, 0, zoneW, zoneH);
+    const BUSY  = 25; // clean studio bg ≈ 5-15, blurred bg ≈ 15-22, model in zone ≈ 30-60
+    if (layout === 'left-column' && varL > BUSY) {
+      layout = varR < varL - 4 ? 'right-column' : 'bottom-bar';
+    } else if (layout === 'right-column' && varR > BUSY) {
+      layout = varL < varR - 4 ? 'left-column' : 'bottom-bar';
+    }
+  }
+
   // 3. Sample background
   const sampleSide: 'left' | 'right' | 'top' | 'bottom' =
     layout === 'right-column' ? 'right' :
@@ -507,7 +554,7 @@ function drawCard(
   const fz = overlayStyle?.floatingZones ?? ['top-left', 'bottom-right'];
   if      (layout === 'left-column')  drawColumn    (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, false);
   else if (layout === 'right-column') drawColumn    (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, true);
-  else if (layout === 'top-bottom')   drawTopBottom (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow);
+  else if (layout === 'top-bottom')   drawTopBottom (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, headFrac ?? undefined);
   else if (layout === 'bottom-bar')   drawBottomBar (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow);
   else                                drawFloating  (ctx, W, H, data, titleStyle, titleSize, textColor, accent, shadow, fz);
 }

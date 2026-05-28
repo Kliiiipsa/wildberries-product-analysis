@@ -144,16 +144,19 @@ PHASE A — COMPOSITION ANALYSIS:
 • composition.primaryTextZone: best single zone — "left" | "right" | "top" | "bottom"
 • composition.textZoneReason: 1 sentence why
 • composition.modelHeadTopFraction: (only for "full-body" / "half-body") fractional Y of model's head top edge — e.g. 0.08 means head starts 8% from top of frame. Omit for flat-lay / product-only.
+• composition.modelFeetBottomFraction: (only for "full-body") fractional clearance from image bottom to model's feet — e.g. 0.06 means 6% clean space below feet. Omit for half-body / flat-lay / product-only.
 
 PHASE B — OVERLAY STYLE (5-layout system):
 
 • overlayStyle.layoutTemplate — choose EXACTLY ONE based on photo composition:
 
-    "left-column"  → model/subject is on the RIGHT (or center-right) of the frame. Left 40% has background space.
-                     Example: model standing right, clean left zone.
+    "left-column"  → model/subject is on the RIGHT (or center-right) of the frame.
+                     REQUIRED: left 40% zone contains ONLY clean background — no model body, no arms, no clothing.
+                     If model's arms/body extends into the left 40% → DO NOT use this. Use "bottom-bar" instead.
 
-    "right-column" → model/subject is on the LEFT (or center-left) of the frame. Right 40% has background space.
-                     Example: model standing left, clean right zone.
+    "right-column" → model/subject is on the LEFT (or center-left) of the frame.
+                     REQUIRED: right 40% zone contains ONLY clean background — no model body, no arms, no clothing.
+                     If model's arms/body extends into the right 40% → DO NOT use this. Use "bottom-bar" instead.
 
     "top-bottom"   → model is CENTERED with air above head AND below feet OR flat-lay.
                      REQUIRED: modelHeadTopFraction ≥ 0.18 (head at least 18% from top — room for title above).
@@ -263,6 +266,7 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   "composition": {
     "subjectZone": "center",
     "modelHeadTopFraction": 0.12,
+    "modelFeetBottomFraction": 0.06,
     "freeZones": ["left"],
     "primaryTextZone": "left",
     "textZoneReason": "..."
