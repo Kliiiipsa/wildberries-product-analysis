@@ -525,13 +525,20 @@ function drawCard(
     const CHECK_H = Math.round(H * 0.40); // upper 40%: head + title zone
     const varL  = sampleZoneVariance(ctx, PAD_PX, 0, COL_PX, CHECK_H);
     const varR  = sampleZoneVariance(ctx, W - PAD_PX - COL_PX, 0, COL_PX, CHECK_H);
-    // Adaptive threshold: bottom-left corner = pure background reference
-    const bgRef = sampleZoneVariance(ctx, 0, Math.round(H * 0.85), Math.round(W * 0.18), Math.round(H * 0.12));
-    const BUSY  = bgRef + 12; // model adds 12+ std-dev above background level
+    // Background reference: min of 4 corners — most uniform = most background-like
+    const cH = Math.round(H * 0.08), cW = Math.round(W * 0.10);
+    const bgRef = Math.min(
+      sampleZoneVariance(ctx, 0,      0,      cW, cH),
+      sampleZoneVariance(ctx, W - cW, 0,      cW, cH),
+      sampleZoneVariance(ctx, 0,      H - cH, cW, cH),
+      sampleZoneVariance(ctx, W - cW, H - cH, cW, cH),
+    );
+    const BUSY  = bgRef + 12; // zone has model if variance > this
+    const CLEAN = bgRef + 6;  // alternative column only accepted if it's THIS clean
     if (layout === 'left-column' && varL > BUSY) {
-      layout = varR < varL - 3 ? 'right-column' : 'bottom-bar';
+      layout = varR < CLEAN ? 'right-column' : 'bottom-bar';
     } else if (layout === 'right-column' && varR > BUSY) {
-      layout = varL < varR - 3 ? 'left-column' : 'bottom-bar';
+      layout = varL < CLEAN ? 'left-column' : 'bottom-bar';
     }
   }
 
