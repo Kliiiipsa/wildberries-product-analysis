@@ -143,6 +143,7 @@ PHASE A — COMPOSITION ANALYSIS:
 • composition.freeZones: zones with natural background space — e.g. ["left", "top"]
 • composition.primaryTextZone: best single zone — "left" | "right" | "top" | "bottom"
 • composition.textZoneReason: 1 sentence why
+• composition.modelHeadTopFraction: (only for "full-body" / "half-body") fractional Y of model's head top edge — e.g. 0.08 means head starts 8% from top of frame. Omit for flat-lay / product-only.
 
 PHASE B — OVERLAY STYLE (5-layout system):
 
@@ -155,7 +156,10 @@ PHASE B — OVERLAY STYLE (5-layout system):
                      Example: model standing left, clean right zone.
 
     "top-bottom"   → model is CENTERED with air above head AND below feet OR flat-lay.
-                     Title goes at top of frame, characteristics at bottom bar.
+                     REQUIRED: modelHeadTopFraction ≥ 0.18 (head at least 18% from top — room for title above).
+                     If head is closer to top: in fluxPrompt [EXTEND] section extend UPWARD above the model's
+                     head so clearance reaches ≥18% — camera steps back slightly, model shrinks max 12–15%.
+                     Title goes at y=3% from top; bottom bar is 190px (subtitle italic + 3 columns).
 
     "bottom-bar"   → FULL-BODY model fills the upper 2/3 of frame. Space at bottom.
                      ALL text (title + characteristics) placed in bottom band.
@@ -167,7 +171,7 @@ PHASE B — OVERLAY STYLE (5-layout system):
     SELECTION RULES:
     Model on right side          → "left-column"
     Model on left side           → "right-column"
-    Model centered, air top+bot  → "top-bottom"
+    Model centered, air top+bot  → "top-bottom" (only if modelHeadTopFraction ≥ 0.18 or FLUX can extend up)
     Full-body, space at bottom   → "bottom-bar"
     Model fills almost all frame → "floating"
     Flat-lay / product only      → "top-bottom"
@@ -177,9 +181,14 @@ PHASE B — OVERLAY STYLE (5-layout system):
     "modern-bold"    → casual/athletic/street: hoodie, joggers, shorts, oversized, sportswear, jeans, t-shirt
 
 • overlayStyle.titleSize — pixel size for product name title:
-    Short name (≤10 non-space chars): 68
-    Medium name (11–18 non-space chars): 52
-    Long name (>18 non-space chars): 42
+    "top-bottom" layout (title spans full card width ~700px):
+      Short name (≤10 non-space chars): 78
+      Medium name (11–18 non-space chars): 62
+      Long name (>18 non-space chars): 52
+    All other layouts (column width ~360px):
+      Short name (≤10 non-space chars): 68
+      Medium name (11–18 non-space chars): 52
+      Long name (>18 non-space chars): 42
 
 • overlayStyle.floatingZones — ONLY for "floating" layout. Array of 2 zone names where badges go.
     Choose zones with most empty background space.
@@ -253,6 +262,7 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   "textPosition": "left-third",
   "composition": {
     "subjectZone": "center",
+    "modelHeadTopFraction": 0.12,
     "freeZones": ["left"],
     "primaryTextZone": "left",
     "textZoneReason": "..."

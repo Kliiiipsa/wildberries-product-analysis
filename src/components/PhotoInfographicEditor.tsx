@@ -31,6 +31,7 @@ export interface CompositionData {
   freeZones?: string[];
   primaryTextZone?: string;
   textZoneReason?: string;
+  modelHeadTopFraction?: number;
 }
 
 export interface OverlayStyleData {
@@ -273,7 +274,7 @@ function drawColumn(
   }
 }
 
-/** Layout 3: title at top center, 3-column characteristics bar at bottom. */
+/** Layout 3: title at top center, 3-column characteristics bar at bottom (190px). */
 function drawTopBottom(
   ctx: CanvasRenderingContext2D, W: number, H: number, data: InfographicData,
   titleStyle: string, titleSize: number, textColor: string, accent: string, shadowAlpha: number,
@@ -281,7 +282,7 @@ function drawTopBottom(
   const CX = W / 2;
   const SPC = 2.8;
   ctx.textBaseline = 'top'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-  let y = Math.round(H * 0.07);
+  let y = Math.round(H * 0.03);
 
   // Tagline
   const tagU = (data.tagline || '').toUpperCase();
@@ -300,32 +301,38 @@ function drawTopBottom(
   }
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-  // Subtitle
-  if (data.productSubtitle) {
-    y += 8;
-    const subSz = Math.max(14, Math.round(titleSize * 0.28));
-    ctx.font = `400 ${subSz}px Arial, Helvetica, sans-serif`;
-    ctx.fillStyle = textColor; ctx.globalAlpha = 0.60; ctx.textAlign = 'center';
-    ctx.fillText(data.productSubtitle, CX, y); ctx.globalAlpha = 1;
-  }
-
-  // Bottom characteristics bar
-  const BAR_TOP = H - 130;
+  // Bottom bar (190px): subtitle (italic) + thin separator + 3-column characteristics
+  const BAR_TOP = H - 190;
   const chars   = data.characteristics.slice(0, 3);
   const colW    = Math.round(W / chars.length);
+
+  // Subtitle — small italic, centered at top of bar
+  if (data.productSubtitle) {
+    ctx.font = 'italic 400 15px Georgia, serif';
+    ctx.fillStyle = textColor; ctx.globalAlpha = 0.62; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(data.productSubtitle, CX, BAR_TOP + 22);
+    ctx.globalAlpha = 1;
+  }
+
+  // Thin separator between subtitle and columns
+  ctx.beginPath();
+  ctx.moveTo(Math.round(W * 0.10), BAR_TOP + 50); ctx.lineTo(Math.round(W * 0.90), BAR_TOP + 50);
+  ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.10; ctx.stroke(); ctx.globalAlpha = 1;
+
+  // 3-column characteristics
   for (let i = 0; i < chars.length; i++) {
     const colCX = colW * i + colW / 2;
     if (i > 0) {
-      ctx.beginPath(); ctx.moveTo(colW * i, BAR_TOP + 22); ctx.lineTo(colW * i, BAR_TOP + 108);
+      ctx.beginPath(); ctx.moveTo(colW * i, BAR_TOP + 64); ctx.lineTo(colW * i, BAR_TOP + 160);
       ctx.strokeStyle = textColor; ctx.lineWidth = 1; ctx.globalAlpha = 0.10; ctx.stroke(); ctx.globalAlpha = 1;
     }
     const tText = (chars[i].title || '').toUpperCase();
     ctx.font = "700 12px Arial, Helvetica, sans-serif"; ctx.fillStyle = accent;
     ctx.globalAlpha = 1; ctx.textBaseline = 'top';
-    drawSpaced(ctx, tText, colCX - spacedTextWidth(ctx, tText, 2.0) / 2, BAR_TOP + 26, 2.0);
+    drawSpaced(ctx, tText, colCX - spacedTextWidth(ctx, tText, 2.0) / 2, BAR_TOP + 68, 2.0);
     ctx.font = "600 17px Arial, Helvetica, sans-serif"; ctx.fillStyle = textColor;
     ctx.globalAlpha = 0.90; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(wrapText(ctx, chars[i].value || '', colW - 30, 1)[0] ?? '', colCX, BAR_TOP + 50);
+    ctx.fillText(wrapText(ctx, chars[i].value || '', colW - 30, 1)[0] ?? '', colCX, BAR_TOP + 92);
     ctx.globalAlpha = 1;
   }
 }
@@ -460,7 +467,15 @@ function drawCard(
 
   // 2. Resolve layout (supports new + legacy names)
   const rawLayout = overlayStyle?.layoutTemplate ?? composition?.primaryTextZone ?? 'left-column';
-  const layout    = resolveLayout(rawLayout as string);
+  let layout      = resolveLayout(rawLayout as string);
+
+  // Protective fallback: top-bottom without enough head clearance → column layout
+  const headFrac = composition?.modelHeadTopFraction;
+  if (layout === 'top-bottom' && typeof headFrac === 'number' && headFrac < 0.18) {
+    layout = (composition?.subjectZone === 'left' || composition?.subjectZone === 'center-left')
+      ? 'right-column'
+      : 'left-column';
+  }
 
   // 3. Sample background
   const sampleSide: 'left' | 'right' | 'top' | 'bottom' =
@@ -476,9 +491,13 @@ function drawCard(
   const accent    = deriveAccent(bgR, bgG, bgB, lum);
 
   // 5. Title style + size
-  const titleStyle = overlayStyle?.titleStyle ?? 'modern-bold';
-  const nChars     = (data.productName || '').replace(/\s/g, '').length;
-  const titleSize  = overlayStyle?.titleSize ?? (nChars <= 10 ? 68 : nChars <= 18 ? 52 : 42);
+  const titleStyle  = overlayStyle?.titleStyle ?? 'modern-bold';
+  const nChars      = (data.productName || '').replace(/\s/g, '').length;
+  // top-bottom spans full card width (~700px) — can use larger sizes
+  const autoSize    = layout === 'top-bottom'
+    ? (nChars <= 10 ? 78 : nChars <= 18 ? 62 : 52)
+    : (nChars <= 10 ? 68 : nChars <= 18 ? 52 : 42);
+  const titleSize   = overlayStyle?.titleSize ?? autoSize;
 
   // 6. Scrim
   const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.38, 0.60);
