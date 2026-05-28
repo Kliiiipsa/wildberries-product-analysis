@@ -207,14 +207,14 @@ function drawSideLayout(
   let y = 72;
 
   // ── Tagline ─────────────────────────────────────────────────────────────
-  ctx.font      = "400 10.5px Arial, Helvetica, sans-serif";
+  ctx.font      = "400 12px Arial, Helvetica, sans-serif";
   ctx.fillStyle = textColor;
   ctx.globalAlpha = 0.42;
   const tagText = (data.tagline || '').toUpperCase();
   const tagW    = spacedTextWidth(ctx, tagText, SPC);
   drawSpaced(ctx, tagText, isRight ? textX - tagW : textX, y, SPC);
   ctx.globalAlpha = 1;
-  y += 26;
+  y += 28;
 
   // ── Short accent rule ───────────────────────────────────────────────────
   const rLen = 36;
@@ -228,11 +228,11 @@ function drawSideLayout(
   ctx.globalAlpha = 1;
   y += 20;
 
-  // ── Product name — Playfair Display italic bold ─────────────────────────
+  // ── Product name ────────────────────────────────────────────────────────
   const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
   const nLen    = rawName.replace(/\s/g, '').length;
   const NS      = nLen <= 7 ? 90 : nLen <= 11 ? 74 : nLen <= 16 ? 60 : 50;
-  ctx.font        = `italic bold ${NS}px 'Playfair Display', Georgia, 'Times New Roman', serif`;
+  ctx.font        = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
   ctx.fillStyle   = textColor;
   ctx.textAlign   = isRight ? 'right' : 'left';
   ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
@@ -248,13 +248,13 @@ function drawSideLayout(
 
   // ── Subtitle ────────────────────────────────────────────────────────────
   if (data.productSubtitle) {
-    ctx.font        = "italic 400 15.5px Arial, Helvetica, sans-serif";
+    ctx.font        = "italic 400 18px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.50;
+    ctx.globalAlpha = 0.55;
     ctx.textAlign   = isRight ? 'right' : 'left';
     ctx.fillText(data.productSubtitle, textX, y);
     ctx.globalAlpha = 1;
-    y += 40;
+    y += 44;
   }
 
   // ── Main separator ──────────────────────────────────────────────────────
@@ -274,22 +274,22 @@ function drawSideLayout(
     const ch = chars[i];
 
     // Title: spaced uppercase, accent
-    ctx.font        = "700 10px Arial, Helvetica, sans-serif";
+    ctx.font        = "700 13px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = accent;
     ctx.globalAlpha = 1;
     const tText = (ch.title || '').toUpperCase();
     const tW    = spacedTextWidth(ctx, tText, 2.2);
     drawSpaced(ctx, tText, isRight ? textX - tW : textX, y, 2.2);
-    y += 17;
+    y += 20;
 
     // Value
-    ctx.font        = "400 13.5px Arial, Helvetica, sans-serif";
+    ctx.font        = "400 17px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.86;
+    ctx.globalAlpha = 0.88;
     ctx.textAlign   = isRight ? 'right' : 'left';
     ctx.fillText(wrapText(ctx, ch.value || '', TEXT_W, 1)[0] ?? ch.value, textX, y);
     ctx.globalAlpha = 1;
-    y += 20;
+    y += 24;
 
     // Thin separator between items (not after last)
     if (i < chars.length - 1) {
@@ -301,13 +301,13 @@ function drawSideLayout(
       ctx.globalAlpha = 0.09;
       ctx.stroke();
       ctx.globalAlpha = 1;
-      y += 20;
+      y += 22;
     }
   }
 
   // ── Bottom text (bottom-anchored) ────────────────────────────────────────
   if (data.bottomText) {
-    ctx.font        = "italic 400 12.5px 'Playfair Display', Georgia, serif";
+    ctx.font        = "italic 400 14px 'Playfair Display', Georgia, serif";
     ctx.fillStyle   = textColor;
     ctx.globalAlpha = 0.40;
     ctx.textAlign   = isRight ? 'right' : 'left';
@@ -339,14 +339,14 @@ function drawBottomLayout(
   let y = BAND_TOP + 26;
 
   // ── Tagline ─────────────────────────────────────────────────────────────
-  ctx.font        = "400 10.5px Arial, Helvetica, sans-serif";
+  ctx.font        = "400 12px Arial, Helvetica, sans-serif";
   ctx.fillStyle   = textColor;
   ctx.globalAlpha = 0.40;
   const tagText = (data.tagline || '').toUpperCase();
   const tagW    = spacedTextWidth(ctx, tagText, SPC);
   drawSpaced(ctx, tagText, CX - tagW / 2, y, SPC);
   ctx.globalAlpha = 1;
-  y += 24;
+  y += 26;
 
   // ── Short accent rule ───────────────────────────────────────────────────
   const rLen = 36;
@@ -363,7 +363,7 @@ function drawBottomLayout(
   const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
   const nLen    = rawName.replace(/\s/g, '').length;
   const NS      = nLen <= 7 ? 66 : nLen <= 11 ? 54 : nLen <= 16 ? 44 : 36;
-  ctx.font        = `italic bold ${NS}px 'Playfair Display', Georgia, 'Times New Roman', serif`;
+  ctx.font        = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
   ctx.fillStyle   = textColor;
   ctx.textAlign   = 'center';
   ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
@@ -379,13 +379,13 @@ function drawBottomLayout(
 
   // ── Subtitle ────────────────────────────────────────────────────────────
   if (data.productSubtitle) {
-    ctx.font        = "italic 400 14px Arial, Helvetica, sans-serif";
+    ctx.font        = "italic 400 16px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.48;
+    ctx.globalAlpha = 0.55;
     ctx.textAlign   = 'center';
     ctx.fillText(data.productSubtitle, CX, y);
     ctx.globalAlpha = 1;
-    y += 32;
+    y += 36;
   }
 
   // ── Separator ───────────────────────────────────────────────────────────
@@ -409,7 +409,7 @@ function drawBottomLayout(
     const colCX = startX + colW * i + colW / 2;
 
     // Title
-    ctx.font        = "700 10px Arial, Helvetica, sans-serif";
+    ctx.font        = "700 13px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = accent;
     ctx.globalAlpha = 1;
     const tText = (ch.title || '').toUpperCase();
@@ -417,22 +417,22 @@ function drawBottomLayout(
     drawSpaced(ctx, tText, colCX - tW / 2, y, 2.2);
 
     // Value
-    ctx.font        = "400 12.5px Arial, Helvetica, sans-serif";
+    ctx.font        = "400 16px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.82;
+    ctx.globalAlpha = 0.85;
     ctx.textAlign   = 'center';
     ctx.fillText(
       wrapText(ctx, ch.value || ch.title || '', colW - 24, 1)[0] ?? '',
       colCX,
-      y + 16,
+      y + 18,
     );
     ctx.globalAlpha = 1;
   }
-  y += 44;
+  y += 50;
 
   // ── Bottom text ─────────────────────────────────────────────────────────
   if (data.bottomText) {
-    ctx.font        = "italic 400 12px 'Playfair Display', Georgia, serif";
+    ctx.font        = "italic 400 14px 'Playfair Display', Georgia, serif";
     ctx.fillStyle   = textColor;
     ctx.globalAlpha = 0.38;
     ctx.textAlign   = 'center';
@@ -485,8 +485,8 @@ function drawCard(
   const sg  = Math.min(255, Math.round(bgG * (isLight ? 1.03 : 0.74)));
   const sb_ = Math.min(255, Math.round(bgB * (isLight ? 1.02 : 0.70)));
 
-  // 5. Very subtle scrim — max 0.13, nearly invisible, purely for readability
-  const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.09, 0.13);
+  // 5. Scrim behind text zone for readability — max 0.45
+  const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.32, 0.45);
 
   if (isBottom) {
     const bScrim = ctx.createLinearGradient(0, H - 340, 0, H);

@@ -114,6 +114,7 @@ PROMPT FORMAT: [PRESERVE] [EXTEND] [QUALITY]
 - CRITICAL — BRIGHTNESS: the extended zone MUST maintain the original exposure and brightness of the photo. Do NOT darken it. Do NOT add gradients, vignettes, or shadows. The extended area must be naturally light and airy, matching the original illumination exactly.
 - If space already exists: "Composition already provides natural breathing room on the [side] — no changes needed, preserve as-is"
 - NEVER create: artificial empty zones, solid-colour panels, darkened areas, gradient overlays
+- NEVER add foreground elements (branches, leaves, bokeh objects) that could cover the subject — extension is BACKGROUND DEPTH ONLY
 - NEVER change: pose, lighting character, colour grade, atmosphere, environment type
 
 [QUALITY] Genuine photograph. Pose unchanged. No new objects. No lighting changes. No style changes. Real film grain. No AI artifacts.
@@ -157,7 +158,7 @@ PHASE B — OVERLAY STYLE:
     Light scheme → near-black warm e.g. "#18140D" | "#1C1812" | "#221A0E"
     Dark scheme  → near-white warm e.g. "#EDE9E1" | "#F2EEE6" | "#E8E4DC"
 
-• overlayStyle.scrimOpacity — 0.05 to 0.13 ONLY. This is a nearly invisible gradient behind the text zone, purely for readability. NEVER exceed 0.13. On clean studio shots use 0.05–0.07. On busy lifestyle shots use 0.09–0.13.
+• overlayStyle.scrimOpacity — 0.15 to 0.45. Gradient behind text zone for readability. Clean studio shots: 0.15–0.22. Busy lifestyle/nature shots: 0.30–0.45.
 
 • overlayStyle.scrimDirection — matches the text zone: "left" | "right" | "bottom"
 
@@ -210,7 +211,7 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
   ],
   "generatePrompt": "[PRESERVE]...[CHANGE]...[SCENE]...[QUALITY] Genuine photograph, Canon EOS R5, 50mm f/1.8, natural light, real film grain, no AI artifacts.",
   "generatePromptRu": "Краткое описание на русском (2-3 предложения): что именно изменится (фон, поза, обрезка и т.д.) и почему это улучшит конверсию карточки. Например: «Заменить загромождённый фон на однотонную тёмно-серую стену — это создаст сильный контраст с жёлтым комплектом и улучшит кликабельность в ленте Wildberries.»",
-  "fluxPrompt": "[PRESERVE] Keep unchanged: [exact clothing colour, cut, fabric, every visible detail], model's exact pose — pixel-perfect identical, do not change pose. [lighting character, colour grade, atmosphere, environment type]. Real film grain, depth of field. [If no face: do NOT add face.] [EXTEND] [name the specific background element] on the [direction] side gently expands further — same depth-of-field, identical colour temperature, identical texture, just more of what already exists. No new objects, no new colours, no style changes. [QUALITY] Genuine photograph. Pose unchanged. No new objects. No lighting changes. Real film grain. No AI artifacts.",
+  "fluxPrompt": "[PRESERVE] Keep unchanged: [exact clothing colour, cut, fabric, every visible detail], model's exact pose — pixel-perfect identical, do not change pose. [lighting character, colour grade, atmosphere, environment type]. Real film grain, depth of field. [If no face: do NOT add face.] [EXTEND] [name the specific background element] on the [direction] side gently expands further — same depth-of-field, identical colour temperature, identical texture, just more of what already exists. No foreground objects, no branches or leaves in front of subject. Background depth only. [QUALITY] Genuine photograph. Pose unchanged. No new objects. No foreground elements added. No lighting changes. Real film grain. No AI artifacts.",
   "textSide": "left",
   "recommendedLayout": "left",
   "style": "lifestyle",
@@ -225,7 +226,7 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
     "layoutTemplate": "side-left",
     "colorScheme": "light",
     "textColorHex": "#18140D",
-    "scrimOpacity": 0.08,
+    "scrimOpacity": 0.32,
     "scrimDirection": "left",
     "shadowIntensity": 0.26
   },
