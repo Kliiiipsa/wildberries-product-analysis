@@ -15,7 +15,6 @@ interface InfographicData {
   productSubtitle: string;
   tagline: string;
   characteristics: Characteristic[];
-  bottomText: string;
 }
 
 export interface TextVariant {
@@ -24,7 +23,6 @@ export interface TextVariant {
   subtitle: string;
   tagline: string;
   characteristics: Array<{ title: string; value: string }>;
-  bottomText: string;
 }
 
 export interface CompositionData {
@@ -81,7 +79,6 @@ const DEFAULT_DATA: InfographicData = {
     { title: 'Комфорт', value: 'удобная посадка' },
     { title: 'Стиль', value: 'актуальный дизайн' },
   ],
-  bottomText: 'стиль и качество в каждой детали',
 };
 
 // ── Canvas helpers ────────────────────────────────────────────────────────────
@@ -184,6 +181,48 @@ function deriveAccent(r: number, _g: number, b: number, luminance: number): stri
   }
 }
 
+/** Pre-calculate total height of the side text block (used for vertical centering). */
+function calcSideBlockHeight(ctx: CanvasRenderingContext2D, data: InfographicData, TEXT_W: number): number {
+  let h = 0;
+  h += 28; // tagline (12px) + gap
+  h += 20; // accent rule + gap
+  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
+  const nLen = rawName.replace(/\s/g, '').length;
+  const NS = nLen <= 7 ? 90 : nLen <= 11 ? 74 : nLen <= 16 ? 60 : 50;
+  ctx.font = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
+  const nameLines = wrapText(ctx, rawName, TEXT_W, 3);
+  h += nameLines.length * Math.ceil(NS * 1.07) + 12;
+  if (data.productSubtitle) h += 44;
+  h += 22; // main separator
+  const chars = data.characteristics.slice(0, 3);
+  for (let i = 0; i < chars.length; i++) {
+    h += 20; // title row
+    h += 24; // value row
+    if (i < chars.length - 1) h += 22; // thin separator
+  }
+  return h;
+}
+
+const BOTTOM_VPAD = 40;
+
+/** Pre-calculate top of the bottom band so the scrim can match content height. */
+function calcBottomBandTop(ctx: CanvasRenderingContext2D, data: InfographicData, H: number): number {
+  let h = 0;
+  h += 26; // tagline + gap
+  h += 18; // accent rule + gap
+  const rawName = (data.productName || 'НАЗВАНИЕ').toUpperCase();
+  const nLen = rawName.replace(/\s/g, '').length;
+  const NS = nLen <= 7 ? 66 : nLen <= 11 ? 54 : nLen <= 16 ? 44 : 36;
+  ctx.font = `bold ${NS}px 'Helvetica Neue', Arial, Helvetica, sans-serif`;
+  const nameLines = wrapText(ctx, rawName, 640, 2);
+  h += nameLines.length * Math.ceil(NS * 1.07) + 8;
+  if (data.productSubtitle) h += 36;
+  h += 18; // separator
+  h += 54; // 3-col characteristics (title + value)
+  const bandH = h + BOTTOM_VPAD * 2;
+  return Math.max(H - 460, H - bandH);
+}
+
 /** Side layout — text column on left or right, full-height photo. */
 function drawSideLayout(
   ctx: CanvasRenderingContext2D,
@@ -195,16 +234,17 @@ function drawSideLayout(
   accent: string,
   shadowAlpha: number,
 ) {
-  const PAD    = 54;
-  const TEXT_W = 296;
-  const SPC    = 2.8;       // letter-spacing for small-caps
+  const PAD    = Math.round(W * 0.06);
+  const TEXT_W = Math.round(W * 0.33);
+  const SPC    = 2.8;
   const textX  = isRight ? W - PAD : PAD;
 
   ctx.textBaseline  = 'top';
   ctx.shadowBlur    = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  let y = 72;
+  const blockH = calcSideBlockHeight(ctx, data, TEXT_W);
+  let y = Math.max(PAD, Math.round((H - blockH) / 2));
 
   // ── Tagline ─────────────────────────────────────────────────────────────
   ctx.font      = "400 12px Arial, Helvetica, sans-serif";
@@ -248,7 +288,7 @@ function drawSideLayout(
 
   // ── Subtitle ────────────────────────────────────────────────────────────
   if (data.productSubtitle) {
-    ctx.font        = "italic 400 18px Arial, Helvetica, sans-serif";
+    ctx.font        = "italic 600 18px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
     ctx.globalAlpha = 0.55;
     ctx.textAlign   = isRight ? 'right' : 'left';
@@ -274,7 +314,7 @@ function drawSideLayout(
     const ch = chars[i];
 
     // Title: spaced uppercase, accent
-    ctx.font        = "700 13px Arial, Helvetica, sans-serif";
+    ctx.font        = "700 14px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = accent;
     ctx.globalAlpha = 1;
     const tText = (ch.title || '').toUpperCase();
@@ -283,7 +323,7 @@ function drawSideLayout(
     y += 20;
 
     // Value
-    ctx.font        = "400 17px Arial, Helvetica, sans-serif";
+    ctx.font        = "600 18px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
     ctx.globalAlpha = 0.88;
     ctx.textAlign   = isRight ? 'right' : 'left';
@@ -305,17 +345,6 @@ function drawSideLayout(
     }
   }
 
-  // ── Bottom text (bottom-anchored) ────────────────────────────────────────
-  if (data.bottomText) {
-    ctx.font        = "italic 400 14px 'Playfair Display', Georgia, serif";
-    ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.40;
-    ctx.textAlign   = isRight ? 'right' : 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(data.bottomText, textX, H - 66);
-    ctx.globalAlpha  = 1;
-    ctx.textBaseline = 'top';
-  }
 }
 
 /** Bottom-band layout — photo full-height, editorial text block at the bottom. */
@@ -327,10 +356,11 @@ function drawBottomLayout(
   textColor: string,
   accent: string,
   shadowAlpha: number,
+  bandTop: number,
 ) {
   const CX       = W / 2;
   const SPC      = 2.8;
-  const BAND_TOP = H - 312;
+  const BAND_TOP = bandTop;
 
   ctx.textBaseline  = 'top';
   ctx.shadowBlur    = 0;
@@ -379,7 +409,7 @@ function drawBottomLayout(
 
   // ── Subtitle ────────────────────────────────────────────────────────────
   if (data.productSubtitle) {
-    ctx.font        = "italic 400 16px Arial, Helvetica, sans-serif";
+    ctx.font        = "italic 600 16px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
     ctx.globalAlpha = 0.55;
     ctx.textAlign   = 'center';
@@ -409,7 +439,7 @@ function drawBottomLayout(
     const colCX = startX + colW * i + colW / 2;
 
     // Title
-    ctx.font        = "700 13px Arial, Helvetica, sans-serif";
+    ctx.font        = "700 14px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = accent;
     ctx.globalAlpha = 1;
     const tText = (ch.title || '').toUpperCase();
@@ -417,7 +447,7 @@ function drawBottomLayout(
     drawSpaced(ctx, tText, colCX - tW / 2, y, 2.2);
 
     // Value
-    ctx.font        = "400 16px Arial, Helvetica, sans-serif";
+    ctx.font        = "600 17px Arial, Helvetica, sans-serif";
     ctx.fillStyle   = textColor;
     ctx.globalAlpha = 0.85;
     ctx.textAlign   = 'center';
@@ -430,15 +460,6 @@ function drawBottomLayout(
   }
   y += 50;
 
-  // ── Bottom text ─────────────────────────────────────────────────────────
-  if (data.bottomText) {
-    ctx.font        = "italic 400 14px 'Playfair Display', Georgia, serif";
-    ctx.fillStyle   = textColor;
-    ctx.globalAlpha = 0.38;
-    ctx.textAlign   = 'center';
-    ctx.fillText(data.bottomText, CX, y);
-    ctx.globalAlpha = 1;
-  }
 }
 
 // ── Main draw function ────────────────────────────────────────────────────────
@@ -488,13 +509,17 @@ function drawCard(
   // 5. Scrim behind text zone for readability — max 0.45
   const scrimMax = Math.min(overlayStyle?.scrimOpacity ?? 0.32, 0.45);
 
+  // Pre-calculate bottom band position so scrim matches actual content height
+  const bandTop = isBottom ? calcBottomBandTop(ctx, data, H) : 0;
+
   if (isBottom) {
-    const bScrim = ctx.createLinearGradient(0, H - 340, 0, H);
+    const fadeStart = bandTop - 60;
+    const bScrim = ctx.createLinearGradient(0, fadeStart, 0, H);
     bScrim.addColorStop(0,    `rgba(${sr},${sg},${sb_},0)`);
-    bScrim.addColorStop(0.45, `rgba(${sr},${sg},${sb_},${+(scrimMax * 0.50).toFixed(3)})`);
+    bScrim.addColorStop(0.40, `rgba(${sr},${sg},${sb_},${+(scrimMax * 0.55).toFixed(3)})`);
     bScrim.addColorStop(1,    `rgba(${sr},${sg},${sb_},${scrimMax})`);
     ctx.fillStyle = bScrim;
-    ctx.fillRect(0, H - 340, W, 340);
+    ctx.fillRect(0, fadeStart, W, H - fadeStart);
   } else {
     const gx0 = isRight ? W : 0;
     const gx1 = isRight ? W * 0.55 : W * 0.45;
@@ -508,7 +533,7 @@ function drawCard(
 
   // 6. Draw editorial text
   if (isBottom) {
-    drawBottomLayout(ctx, W, H, data, textColor, accent, shadowAlpha);
+    drawBottomLayout(ctx, W, H, data, textColor, accent, shadowAlpha, bandTop);
   } else {
     drawSideLayout(ctx, W, H, data, isRight, textColor, accent, shadowAlpha);
   }
@@ -594,7 +619,6 @@ export default function PhotoInfographicEditor({
           productSubtitle: json.productSubtitle ?? DEFAULT_DATA.productSubtitle,
           tagline: json.tagline ?? DEFAULT_DATA.tagline,
           characteristics: (json.characteristics ?? DEFAULT_DATA.characteristics).slice(0, 3),
-          bottomText: json.bottomText ?? DEFAULT_DATA.bottomText,
         });
       }
     } catch { /* ignore */ } finally {
@@ -611,13 +635,6 @@ export default function PhotoInfographicEditor({
     canvas.height = CARD_H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
-    // Ensure Playfair Display (Google Fonts) is loaded before drawing
-    if (typeof document !== 'undefined') {
-      await Promise.all([
-        document.fonts.load("italic bold 90px 'Playfair Display'"),
-        document.fonts.load("italic 400 14px 'Playfair Display'"),
-      ]).catch(() => {});
-    }
     const imgSrc = await toDataUrl(activeUrl ?? baseImage ?? imageUrl);
     const d = overrideData ?? data;
     return new Promise<string>((resolve, reject) => {
@@ -689,7 +706,6 @@ export default function PhotoInfographicEditor({
       productSubtitle: v.subtitle,
       tagline: v.tagline,
       characteristics: v.characteristics.slice(0, 3),
-      bottomText: v.bottomText,
     };
     setData(newData);
     await handleRender(newData);
@@ -830,11 +846,7 @@ export default function PhotoInfographicEditor({
                     ))}
                   </ul>
 
-                  {v.bottomText && (
-                    <p className="text-[10px] text-zinc-500 italic leading-tight border-t border-zinc-700/50 pt-1.5 mt-1">
-                      {v.bottomText}
-                    </p>
-                  )}
+
 
                   {isSelected && (
                     <p className="text-[10px] font-medium mt-1.5 flex items-center gap-1">
@@ -900,12 +912,6 @@ export default function PhotoInfographicEditor({
                 onChange={e => setData(p => ({ ...p, productSubtitle: e.target.value }))}
                 placeholder="лёгкий и дышащий"
                 className="w-full bg-zinc-700 text-white text-xs italic px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
-              />
-              <input
-                value={data.bottomText}
-                onChange={e => setData(p => ({ ...p, bottomText: e.target.value }))}
-                placeholder="стиль и качество"
-                className="w-full bg-zinc-700 text-white text-xs px-2 py-1.5 rounded-lg outline-none focus:ring-1 focus:ring-violet-500 placeholder:text-zinc-500"
               />
               <div className="md:col-span-2">
                 <p className="text-[10px] text-zinc-600 uppercase tracking-wide mb-1.5">Характеристики</p>
