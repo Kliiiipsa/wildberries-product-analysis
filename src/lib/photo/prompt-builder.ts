@@ -189,11 +189,18 @@ export function buildFluxBasePrompt(
  */
 export function parseQwenBriefResponse(raw: string): InfographicBrief | null {
   try {
-    // Strip markdown fences if present
-    const stripped = raw.replace(/```(?:json)?\n?/g, '').replace(/```\n?/g, '').trim();
+    // Strip markdown fences and Qwen3 thinking blocks
+    const stripped = raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/\/nothink\b/g, '')
+      .replace(/```(?:json)?\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
 
-    const jsonStart = stripped.indexOf('{');
-    const jsonEnd   = stripped.lastIndexOf('}');
+    // Prefer `{"` to skip non-JSON {…} patterns from thinking text
+    let jsonStart = stripped.indexOf('{"');
+    if (jsonStart === -1) jsonStart = stripped.indexOf('{');
+    const jsonEnd = stripped.lastIndexOf('}');
     if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) return null;
 
     const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1)) as

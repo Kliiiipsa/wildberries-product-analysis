@@ -290,6 +290,27 @@ All field values in Russian EXCEPT all promptEn/fluxPrompt fields (English only,
 }`;
 
 
+/**
+ * Strips <think>…</think> reasoning blocks and /nothink tokens that Qwen3
+ * sometimes injects before the actual JSON response.
+ * Then locates the outermost JSON object, preferring `{"` as the start
+ * so that non-JSON `{…}` patterns in thinking text are skipped.
+ * Returns null when no valid JSON span is found.
+ */
+function extractJson(raw: string): string | null {
+  const cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/\/nothink\b/g, '')
+    .trim();
+
+  // Prefer `{"` — real JSON objects start this way; skips {key:val} JS-objects in thinking
+  let start = cleaned.indexOf('{"');
+  if (start === -1) start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  return cleaned.slice(start, end + 1);
+}
+
 function repairTruncatedJson(s: string): string {
   let inString = false, escaped = false;
   let openBraces = 0, openBrackets = 0;
@@ -388,10 +409,8 @@ export async function POST(req: NextRequest) {
 
     let analysis;
     try {
-      const jsonStart = content.indexOf('{');
-      const jsonEnd = content.lastIndexOf('}');
-      if (jsonStart === -1 || jsonEnd === -1) throw new Error('no JSON object found');
-      let jsonStr = content.slice(jsonStart, jsonEnd + 1);
+      const jsonStr = extractJson(content);
+      if (!jsonStr) throw new Error('no JSON object found');
       try {
         analysis = JSON.parse(jsonStr);
       } catch {
