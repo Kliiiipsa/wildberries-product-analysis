@@ -10,10 +10,11 @@ import {
   requestInfographicBriefPipeline,
   type PipelineInput,
 } from '@/lib/photo/infographic-pipeline-client';
+import { drawTemplateCard } from '@/lib/photo/template-canvas-renderer';
 
-// Experimental pipeline flag — true only in development builds.
-// In production this constant is false and the feature is completely bypassed.
-const USE_INFOGRAPHIC_PIPELINE = process.env.NODE_ENV === 'development';
+// Experimental flags — true only in development builds, false in production.
+const USE_INFOGRAPHIC_PIPELINE    = process.env.NODE_ENV === 'development';
+const USE_TEMPLATE_CANVAS_RENDERER = process.env.NODE_ENV === 'development';
 
 // Re-export shared types so existing importers (e.g. PhotoFunnelPanel) don't break
 export type { TextVariant, CompositionData, OverlayStyleData } from '@/types/photo-pipeline';
@@ -38,19 +39,19 @@ function buildPipelineInput(
 }
 
 /**
- * Calls /api/photo/infographic-brief and returns the fluxPrompt.
- * Returns null on any failure so the caller can fall back to the old prompt.
+ * Calls /api/photo/infographic-brief and returns { fluxPrompt, templateId }.
+ * Never throws — on any failure returns the original fallbackPrompt and templateId=null.
  */
-async function tryGetPipelineFluxPrompt(
+async function tryRunPipeline(
   input: PipelineInput,
   fallbackPrompt: string,
-): Promise<string> {
-  if (!USE_INFOGRAPHIC_PIPELINE) return fallbackPrompt;
+): Promise<{ fluxPrompt: string; templateId: string | null }> {
+  if (!USE_INFOGRAPHIC_PIPELINE) return { fluxPrompt: fallbackPrompt, templateId: null };
   try {
     const result = await requestInfographicBriefPipeline(input);
     if (!result) {
       console.warn('[infographic-pipeline] no result — using fallback fluxPrompt');
-      return fallbackPrompt;
+      return { fluxPrompt: fallbackPrompt, templateId: null };
     }
     if (process.env.NODE_ENV === 'development') {
       console.groupCollapsed('[infographic-pipeline] pipeline result');
@@ -60,10 +61,10 @@ async function tryGetPipelineFluxPrompt(
       console.log('fluxPrompt (first 300):', result.fluxPrompt.slice(0, 300));
       console.groupEnd();
     }
-    return result.fluxPrompt;
+    return { fluxPrompt: result.fluxPrompt, templateId: result.template.id };
   } catch (e) {
     console.warn('[infographic-pipeline] error, using fallback:', e);
-    return fallbackPrompt;
+    return { fluxPrompt: fallbackPrompt, templateId: null };
   }
 }
 
@@ -99,19 +100,21 @@ export default function PhotoInfographicEditor({
   const [baseImage, setBaseImage] = useState<string | null>(null);
   const [premiumLoading, setPremiumLoading] = useState(false);
   const [premiumError, setPremiumError] = useState('');
+  const [pipelineTemplateId, setPipelineTemplateId] = useState<string | null>(null);
 
   const generateBase = useCallback(async () => {
     if (!imageUrl || !fluxPrompt) { setPremiumError('Нет fluxPrompt — сначала проанализируйте фото'); return; }
     setPremiumLoading(true); setPremiumError(''); setBaseImage(null);
     try {
       const imgSrc = await toDataUrl(imageUrl);
-      const activePrompt = await tryGetPipelineFluxPrompt(
+      const pipe = await tryRunPipeline(
         buildPipelineInput(textVariants, analysis, overlayStyleData),
         fluxPrompt,
       );
+      setPipelineTemplateId(pipe.templateId);
       const res = await fetch('/api/photo/generate-infographic-base', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt: activePrompt }),
+        body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt: pipe.fluxPrompt }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
@@ -138,7 +141,11 @@ export default function PhotoInfographicEditor({
     } catch { /* ignore */ } finally { setLoadingText(false); }
   };
 
-  const renderCard = useCallback(async (overrideData?: InfographicData, activeUrl?: string): Promise<string> => {
+  const renderCard = useCallback(async (
+    overrideData?: InfographicData,
+    activeUrl?: string,
+    templateId?: string | null,
+  ): Promise<string> => {
     const canvas = canvasRef.current;
     if (!canvas) throw new Error('no canvas');
     canvas.width = CARD_W; canvas.height = CARD_H;
@@ -148,7 +155,27 @@ export default function PhotoInfographicEditor({
     const d = overrideData ?? data;
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
-      img.onload = () => { drawCard(ctx, img, d, compositionData, overlayStyleData); resolve(canvas.toDataURL('image/jpeg', 0.95)); };
+      img.onload = () => {
+        let rendererUsed = 'legacy';
+        if (USE_TEMPLATE_CANVAS_RENDERER && templateId) {
+          const handled = drawTemplateCard(ctx, img, d, {
+            templateId,
+            overlayStyle: overlayStyleData,
+            composition: compositionData,
+          });
+          if (handled) {
+            rendererUsed = `template-${templateId}`;
+          } else {
+            drawCard(ctx, img, d, compositionData, overlayStyleData);
+          }
+        } else {
+          drawCard(ctx, img, d, compositionData, overlayStyleData);
+        }
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[canvas-renderer] renderer=${rendererUsed} blocks=${d.characteristics.length}`);
+        }
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
       img.onerror = () => reject(new Error('image load failed'));
       img.src = imgSrc;
     });
@@ -158,17 +185,21 @@ export default function PhotoInfographicEditor({
     if (!imageUrl) return;
     setRendering(true); setRenderError('');
     let resolvedBase = baseImage;
+    // Capture current pipelineTemplateId (set by a prior generateBase call, if any)
+    let activeTemplateId: string | null = pipelineTemplateId;
     if (fluxPrompt && !resolvedBase) {
       setPremiumLoading(true); setPremiumError('');
       try {
         const imgSrc = await toDataUrl(imageUrl);
-        const activePrompt = await tryGetPipelineFluxPrompt(
+        const pipe = await tryRunPipeline(
           buildPipelineInput(textVariants, analysis, overlayStyleData),
           fluxPrompt,
         );
+        activeTemplateId = pipe.templateId;
+        setPipelineTemplateId(pipe.templateId);
         const res = await fetch('/api/photo/generate-infographic-base', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt: activePrompt }),
+          body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt: pipe.fluxPrompt }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
@@ -179,10 +210,10 @@ export default function PhotoInfographicEditor({
       } finally { setPremiumLoading(false); }
     }
     try {
-      const url = await renderCard(overrideData, resolvedBase ?? undefined);
+      const url = await renderCard(overrideData, resolvedBase ?? undefined, activeTemplateId);
       onExport?.(url);
     } catch (e) { setRenderError(String(e)); } finally { setRendering(false); }
-  }, [imageUrl, baseImage, fluxPrompt, textVariants, analysis, overlayStyleData, renderCard, onExport]);
+  }, [imageUrl, baseImage, fluxPrompt, pipelineTemplateId, textVariants, analysis, overlayStyleData, renderCard, onExport]);
 
   const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
   const [showManual, setShowManual] = useState(false);
