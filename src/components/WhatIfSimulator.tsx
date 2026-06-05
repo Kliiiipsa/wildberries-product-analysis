@@ -16,18 +16,21 @@ import type { WhatIfBaseData, WhatIfParams, WhatIfForecast } from '@/types';
 const PRICE_ELASTICITY = -1.5; // 1% снижения цены → +1.5% заказов
 
 // Стоимость клика по умолчанию и конверсия по типу рекламы
-const AD_DEFAULT_CPC: Record<string, number>  = { ARK_AUTO: 28, ARK_MANUAL: 38, CPC: 25, PRK: 12 };
-const AD_CONVERSION:  Record<string, number>  = { ARK_AUTO: 0.045, ARK_MANUAL: 0.055, CPC: 0.065, PRK: 0.030 };
+const AD_DEFAULT_CPC: Record<string, number> = { ARK_AUTO: 28, ARK_MANUAL: 38, CPC: 25, PRK: 12, SEARCH_SHELVES: 30, HOURLY: 22 };
+const AD_CONVERSION:  Record<string, number> = { ARK_AUTO: 0.045, ARK_MANUAL: 0.055, CPC: 0.065, PRK: 0.030, SEARCH_SHELVES: 0.058, HOURLY: 0.062 };
 
 // Множитель % выкупа для рекламного трафика vs органического
-// CPC = лучший качественный трафик (1.0x), ARK_AUTO = худший (0.82x)
-const AD_BUYOUT_MULT: Record<string, number>  = { ARK_AUTO: 0.82, ARK_MANUAL: 0.90, CPC: 1.0, PRK: 0.87 };
+// CPC/HOURLY = качественный трафик (1.0x/0.96x), ARK_AUTO = самый грязный (0.82x)
+const AD_BUYOUT_MULT: Record<string, number> = { ARK_AUTO: 0.82, ARK_MANUAL: 0.90, CPC: 1.0, PRK: 0.87, SEARCH_SHELVES: 0.93, HOURLY: 0.96 };
 
+// Названия стратегий для UI — пользователь должен понимать о чём речь
 const AD_LABELS: Record<string, string> = {
-  CPC:       'Поиск (CPC)',
-  ARK_MANUAL:'АРК ручная ставка',
-  ARK_AUTO:  'АРК единая / авто',
-  PRK:       'Каталог (ПРК)',
+  SEARCH_SHELVES: '📌 Стратегия 1: Поиск + Полки — универсальная',
+  ARK_MANUAL:     '🎯 Стратегия 2: Только Поиск — АРК ручная',
+  ARK_AUTO:       '🔄 Стратегия 2: Только Поиск — АРК единая/авто',
+  CPC:            '💰 Стратегия 3: CPC Поиск ± Полки — снижение ДРР',
+  HOURLY:         '⏰ Стратегия 5: По часам — оптимизация бюджета',
+  PRK:            '📦 Каталог ПРК — полки по категории',
 };
 
 // ─── Расчётная модель ────────────────────────────────────────────────────────

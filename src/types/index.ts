@@ -288,7 +288,7 @@ export interface WhatIfParams {
   newPrice: number;
   dailyAdBudget: number;
   cpcBid: number;
-  adType: 'ARK_AUTO' | 'ARK_MANUAL' | 'CPC' | 'PRK';
+  adType: 'ARK_AUTO' | 'ARK_MANUAL' | 'CPC' | 'PRK' | 'SEARCH_SHELVES' | 'HOURLY';
   newStock: number;
   seasonCoeff: number; // коэффициент сезонности, 0.5–2.0, по умолчанию 1.0
 }
