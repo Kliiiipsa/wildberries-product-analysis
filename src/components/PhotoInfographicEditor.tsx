@@ -6,9 +6,66 @@ import { Loader2, Sparkles, ChevronDown } from 'lucide-react';
 import type { InfographicData, TextVariant, CompositionData, OverlayStyleData } from '@/types/photo-pipeline';
 import { CARD_W, CARD_H, DEFAULT_DATA, APPROACH_STYLE } from '@/lib/photo/design-system';
 import { drawCard, toDataUrl } from '@/lib/photo/canvas-renderer';
+import {
+  requestInfographicBriefPipeline,
+  type PipelineInput,
+} from '@/lib/photo/infographic-pipeline-client';
+
+// Experimental pipeline flag — true only in development builds.
+// In production this constant is false and the feature is completely bypassed.
+const USE_INFOGRAPHIC_PIPELINE = process.env.NODE_ENV === 'development';
 
 // Re-export shared types so existing importers (e.g. PhotoFunnelPanel) don't break
 export type { TextVariant, CompositionData, OverlayStyleData } from '@/types/photo-pipeline';
+
+// ── Pipeline helpers ──────────────────────────────────────────────────────────
+
+/** Assemble PipelineInput from the data available in the component. */
+function buildPipelineInput(
+  textVariants: TextVariant[] | undefined,
+  analysis: { good?: string[]; improve?: string[] } | null | undefined,
+  overlayStyleData: OverlayStyleData | null | undefined,
+): PipelineInput {
+  const v = textVariants?.[0];
+  return {
+    productType: v?.productName,
+    benefits: v?.characteristics?.slice(0, 5).map(c =>
+      c.value ? `${c.title}: ${c.value}` : c.title,
+    ),
+    description: analysis?.good?.slice(0, 3).join('; ') || undefined,
+    style: overlayStyleData?.titleStyle,
+  };
+}
+
+/**
+ * Calls /api/photo/infographic-brief and returns the fluxPrompt.
+ * Returns null on any failure so the caller can fall back to the old prompt.
+ */
+async function tryGetPipelineFluxPrompt(
+  input: PipelineInput,
+  fallbackPrompt: string,
+): Promise<string> {
+  if (!USE_INFOGRAPHIC_PIPELINE) return fallbackPrompt;
+  try {
+    const result = await requestInfographicBriefPipeline(input);
+    if (!result) {
+      console.warn('[infographic-pipeline] no result — using fallback fluxPrompt');
+      return fallbackPrompt;
+    }
+    if (process.env.NODE_ENV === 'development') {
+      console.groupCollapsed('[infographic-pipeline] pipeline result');
+      console.log('source:', result.source);
+      console.log('template:', result.template.id, '—', result.template.title);
+      console.log('warnings:', result.warnings);
+      console.log('fluxPrompt (first 300):', result.fluxPrompt.slice(0, 300));
+      console.groupEnd();
+    }
+    return result.fluxPrompt;
+  } catch (e) {
+    console.warn('[infographic-pipeline] error, using fallback:', e);
+    return fallbackPrompt;
+  }
+}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -48,15 +105,19 @@ export default function PhotoInfographicEditor({
     setPremiumLoading(true); setPremiumError(''); setBaseImage(null);
     try {
       const imgSrc = await toDataUrl(imageUrl);
+      const activePrompt = await tryGetPipelineFluxPrompt(
+        buildPipelineInput(textVariants, analysis, overlayStyleData),
+        fluxPrompt,
+      );
       const res = await fetch('/api/photo/generate-infographic-base', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt }),
+        body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt: activePrompt }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
       setBaseImage(json.imageUrl);
     } catch (e) { setPremiumError(String(e)); } finally { setPremiumLoading(false); }
-  }, [imageUrl, fluxPrompt]);
+  }, [imageUrl, fluxPrompt, textVariants, analysis, overlayStyleData]);
 
   const generateAIText = async () => {
     setLoadingText(true);
@@ -101,9 +162,13 @@ export default function PhotoInfographicEditor({
       setPremiumLoading(true); setPremiumError('');
       try {
         const imgSrc = await toDataUrl(imageUrl);
+        const activePrompt = await tryGetPipelineFluxPrompt(
+          buildPipelineInput(textVariants, analysis, overlayStyleData),
+          fluxPrompt,
+        );
         const res = await fetch('/api/photo/generate-infographic-base', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt }),
+          body: JSON.stringify({ imageUrl: imgSrc, fluxPrompt: activePrompt }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Ошибка FLUX');
@@ -117,7 +182,7 @@ export default function PhotoInfographicEditor({
       const url = await renderCard(overrideData, resolvedBase ?? undefined);
       onExport?.(url);
     } catch (e) { setRenderError(String(e)); } finally { setRendering(false); }
-  }, [imageUrl, baseImage, fluxPrompt, renderCard, onExport]);
+  }, [imageUrl, baseImage, fluxPrompt, textVariants, analysis, overlayStyleData, renderCard, onExport]);
 
   const [selectedVariant, setSelectedVariant] = useState<number | null>(null);
   const [showManual, setShowManual] = useState(false);
