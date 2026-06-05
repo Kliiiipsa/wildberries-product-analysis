@@ -12,9 +12,9 @@ import {
 } from '@/lib/photo/infographic-pipeline-client';
 import { drawTemplateCard } from '@/lib/photo/template-canvas-renderer';
 
-// Experimental flags — true only in development builds, false in production.
-const USE_INFOGRAPHIC_PIPELINE    = process.env.NODE_ENV === 'development';
-const USE_TEMPLATE_CANVAS_RENDERER = process.env.NODE_ENV === 'development';
+// Experimental flags — enabled globally for preview testing.
+const USE_INFOGRAPHIC_PIPELINE     = true;
+const USE_TEMPLATE_CANVAS_RENDERER = true;
 
 // Re-export shared types so existing importers (e.g. PhotoFunnelPanel) don't break
 export type { TextVariant, CompositionData, OverlayStyleData } from '@/types/photo-pipeline';
