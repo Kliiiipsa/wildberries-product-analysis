@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { buildQwenBriefPrompt }       from '@/lib/photo/prompt-builder';
-import { parseQwenBriefResponse }      from '@/lib/photo/prompt-builder';
-import { buildFluxBasePrompt }         from '@/lib/photo/prompt-builder';
-import { buildInfographicBriefFromInput } from '@/lib/photo/brief-builder';
+import { buildQwenBriefPrompt, parseQwenBriefResponse, buildFluxBasePrompt } from '@/lib/photo/prompt-builder';
+import { buildInfographicBriefFromInput, normalizePhotoGoal } from '@/lib/photo/brief-builder';
 import { selectInfographicTemplate, validateInfographicBrief } from '@/lib/photo/infographic-templates';
+
+const IS_DEV = process.env.NODE_ENV === 'development';
 
 export const maxDuration = 30;
 
@@ -51,10 +51,16 @@ export async function POST(req: NextRequest) {
   let rawQwenResponse: string | null = null;
   let source: 'qwen' | 'fallback' = 'fallback';
 
+  // Dev-only: skip Qwen and force fallback path (for testing)
+  const forceFallback = IS_DEV && body._testFallback === true;
+
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 25_000);
 
-  try {
+  if (forceFallback) {
+    clearTimeout(timer);
+    warnings.push('_testFallback=true — Qwen skipped (dev only)');
+  } else try {
     const resp = await fetch('https://ai.api.cloud.yandex.net/v1/chat/completions', {
       method: 'POST',
       signal: ac.signal,
@@ -117,12 +123,24 @@ export async function POST(req: NextRequest) {
   const fluxPrompt = buildFluxBasePrompt(brief, template);
 
   // ── 7. Return result ───────────────────────────────────────────────────────
-  return Response.json({
+  const response: Record<string, unknown> = {
     ok:         true,
     brief,
     template,
     fluxPrompt,
     source,
     warnings,
-  });
+  };
+
+  if (IS_DEV) {
+    response._debug = {
+      normalizedPhotoGoal: brief.photoGoal
+        ?? (typeof photoGoal === 'string' ? (normalizePhotoGoal(photoGoal) ?? `unknown: "${photoGoal}"`) : null),
+      selectedTemplateId:   template.id,
+      validationErrors:     validation.errors,
+      validationWarnings:   validation.warnings,
+    };
+  }
+
+  return Response.json(response);
 }
