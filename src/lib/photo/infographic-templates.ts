@@ -122,7 +122,7 @@ export const INFOGRAPHIC_TEMPLATES: Record<InfographicTemplateType, InfographicT
       zone('benefit-1',  'Преимущество 1', 0.53, 0.22, 0.44, 0.13, 'left', 'top'),
       zone('benefit-2',  'Преимущество 2', 0.53, 0.38, 0.44, 0.13, 'left', 'top'),
       zone('benefit-3',  'Преимущество 3', 0.53, 0.54, 0.44, 0.13, 'left', 'top'),
-      zone('cta',        'Призыв',         0.53, 0.80, 0.44, 0.12, 'left', 'bottom'),
+      { ...zone('cta', 'Призыв (необязательно)', 0.53, 0.80, 0.44, 0.12, 'left', 'bottom'), optional: true },
     ],
     recommendedTextBlocks: [
       { id: 'headline',  role: 'headline', zoneId: 'headline',  maxLength: 24, required: true,  exampleText: 'ДЖОГГЕРЫ МУЖСКИЕ' },
@@ -265,9 +265,11 @@ export function selectInfographicTemplate(brief: InfographicBrief): InfographicT
 
 // ── Brief validation ─────────────────────────────────────────────────────────
 
-const MAX_BENEFIT_LENGTH  = 80;
+const MAX_BENEFIT_LENGTH    = 80;
 const MAX_TEXT_BLOCK_LENGTH = 120;
-const MAX_TEXT_BLOCKS      = 4;
+// Limit applies to semantic content blocks (headline + benefits/labels).
+// Optional zones (e.g. cta) are NOT counted — they are additive and off by default.
+const MAX_TEXT_BLOCKS = 4;
 
 /**
  * Validates a brief before template rendering.

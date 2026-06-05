@@ -86,6 +86,8 @@ export interface TemplateRenderZone {
   heightFraction: number;
   alignment: 'left' | 'center' | 'right';
   verticalAlign: 'top' | 'middle' | 'bottom';
+  /** Optional zones are not counted toward the 4-block limit and are not used by default. */
+  optional?: boolean;
 }
 
 /** A single text element within a template. */
