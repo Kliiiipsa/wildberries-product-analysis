@@ -27,8 +27,9 @@ export interface QwenBriefJsonResponse {
   style: string;
   /** Visual constraints Qwen detected for this specific product
    *  (e.g. "don't change fabric colour", "avoid high-contrast background for this pastel item").
-   *  NOT generic rules — only product-specific observations. */
-  forbidden: string[];
+   *  NOT generic rules — only product-specific observations.
+   *  Backward compat: field was previously named 'forbidden'. Both are accepted in parseQwenBriefResponse. */
+  visualConstraints: string[];
 }
 
 // ── Qwen brief prompt ─────────────────────────────────────────────────────────
@@ -70,14 +71,14 @@ export function buildQwenBriefPrompt(input: BriefPromptInput): string {
   "mainOffer": "главное торговое предложение — одна фраза до 60 символов, конкретная выгода",
   "benefits": ["преимущество 1 до 40 симв.", "преимущество 2", "преимущество 3"],
   "style": "визуальный стиль — 2–3 слова (напр. «premium casual», «minimalist clean»)",
-  "forbidden": ["конкретное ограничение для ЭТОГО товара (напр. «не менять цвет ткани»)"]
+  "visualConstraints": ["конкретное ограничение для ЭТОГО товара (напр. «не менять цвет ткани», «не добавлять яркий фон к пастельному товару»)"]
 }
 
 Правила:
 - photoGoal и templateType должны логически совпадать
 - benefits: ровно 3–5 пунктов, каждый до 40 символов, конкретные факты
 - mainOffer: не маркетинговый штамп ("высокое качество"), а реальная выгода ("не мнётся после стирки")
-- forbidden: только наблюдения об этом конкретном товаре, не общие правила
+- visualConstraints: только наблюдения об этом конкретном товаре, не общие правила
 - ТОЛЬКО JSON — никакого текста вокруг`;
 }
 
@@ -195,7 +196,13 @@ export function parseQwenBriefResponse(raw: string): InfographicBrief | null {
     const jsonEnd   = stripped.lastIndexOf('}');
     if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) return null;
 
-    const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1)) as Partial<QwenBriefJsonResponse>;
+    const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1)) as
+      Partial<QwenBriefJsonResponse> & { forbidden?: string[] };
+
+    // Backward compat: map old 'forbidden' field → 'visualConstraints'
+    if (!parsed.visualConstraints && Array.isArray(parsed.forbidden)) {
+      parsed.visualConstraints = parsed.forbidden;
+    }
 
     // Map Qwen fields → BriefBuilderInput → InfographicBrief
     const brief = buildInfographicBriefFromInput({
