@@ -307,7 +307,7 @@ export interface WhatIfForecast {
 // ── Decision Engine ──────────────────────────────────────────────────────────
 
 export type Confidence = 'high' | 'medium' | 'low';
-export type ActionType = 'price' | 'ads' | 'stock' | 'stopLoss' | 'doNothing' | 'test';
+export type ActionType = 'price' | 'ads' | 'stock' | 'stopLoss' | 'doNothing' | 'test' | 'combined' | 'clearance';
 
 export interface DiagnosticMetric {
   name: string;
@@ -336,6 +336,8 @@ export interface DecisionScenario {
   recommendation: string;
   /** Delta ₽/нед vs baseline (positive = better than now). null if uncalculable. */
   expectedValueRub: number | null;
+  /** Absolute P&L after this scenario ₽/нед (not delta). undefined = not computed. */
+  scenarioProfitRub?: number | null;
   optimisticRub: number | null;
   neutralRub: number | null;
   pessimisticRub: number | null;
@@ -376,4 +378,29 @@ export interface DecisionEngineResult {
   minSafePriceRub: number | null;
   /** Рекомендуемая цена = breakevenPrice × 1.15, округлено вверх до 50 */
   recommendedPriceRub: number | null;
+
+  // ── Seasonal window ──────────────────────────────────────────────────────────
+  /** Коэффициент сезонности текущего месяца */
+  seasonNow: number | null;
+  /** Коэффициент сезонности следующего месяца */
+  seasonNextMonth: number | null;
+  /** Коэффициент сезонности через 2 месяца */
+  seasonIn2Months: number | null;
+  /** Падение сезона: (seasonNow − seasonNextMonth) / seasonNow × 100 */
+  seasonDropPercent: number | null;
+  /** Недель до смены месяца (до начала следующего сезонного периода) */
+  weeksUntilSeasonDrop: number | null;
+  /** Недель запаса при текущей скорости выкупов */
+  sellThroughWeeks: number | null;
+  /** Риск выхода из сезона с большим остатком */
+  seasonalExitRisk: 'high' | 'medium' | 'low' | null;
+
+  // ── Price reason ─────────────────────────────────────────────────────────────
+  /** Возможная причина, почему цена ниже безубыточности */
+  priceReason: 'unitEconomicsError' | 'seasonalClearance' | 'competitivePressure' | 'unknown' | null;
+  priceReasonText: string | null;
+
+  // ── Clearance ────────────────────────────────────────────────────────────────
+  /** Цена контролируемой распродажи (stop-loss). null если режим распродажи неактуален */
+  clearancePriceRub: number | null;
 }

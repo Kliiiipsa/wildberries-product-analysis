@@ -399,6 +399,107 @@ function buildRisks(
   return risks;
 }
 
+// ─── Seasonal window ─────────────────────────────────────────────────────────
+
+interface SeasonalWindow {
+  seasonNow: number | null;
+  seasonNextMonth: number | null;
+  seasonIn2Months: number | null;
+  seasonDropPercent: number | null;
+  weeksUntilSeasonDrop: number;
+  sellThroughWeeks: number | null;
+  seasonalExitRisk: 'high' | 'medium' | 'low' | null;
+}
+
+function computeSeasonalWindow(data: AnalysisData, weeklyBuyouts: number): SeasonalWindow {
+  const seasonality = data.seasonalityData?.seasonality ?? null;
+  const stock = data.product?.totalStock ?? null;
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1; // 1–12
+  const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+  const monthAfterNext = nextMonth === 12 ? 1 : nextMonth + 1;
+
+  // Weeks until start of next month (when seasonal coefficient changes)
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const msUntilNextMonth = nextMonthStart.getTime() - now.getTime();
+  const weeksUntilSeasonDrop = msUntilNextMonth / (1000 * 60 * 60 * 24 * 7);
+
+  const seasonNow = seasonality ? (seasonality[String(currentMonth)] ?? null) : null;
+  const seasonNextMonth = seasonality ? (seasonality[String(nextMonth)] ?? null) : null;
+  const seasonIn2Months = seasonality ? (seasonality[String(monthAfterNext)] ?? null) : null;
+
+  const seasonDropPercent =
+    seasonNow !== null && seasonNextMonth !== null && seasonNow > 0
+      ? ((seasonNow - seasonNextMonth) / seasonNow) * 100
+      : null;
+
+  const sellThroughWeeks =
+    stock !== null && weeklyBuyouts > 0 ? stock / weeklyBuyouts : null;
+
+  let seasonalExitRisk: 'high' | 'medium' | 'low' | null = null;
+  if (seasonDropPercent !== null && sellThroughWeeks !== null) {
+    if (seasonDropPercent > 25 && sellThroughWeeks > 4) {
+      seasonalExitRisk = 'high';
+    } else if (seasonDropPercent > 15 && sellThroughWeeks > 3) {
+      seasonalExitRisk = 'medium';
+    } else {
+      seasonalExitRisk = 'low';
+    }
+  } else if (seasonDropPercent !== null || sellThroughWeeks !== null) {
+    seasonalExitRisk = 'low';
+  }
+
+  return {
+    seasonNow, seasonNextMonth, seasonIn2Months,
+    seasonDropPercent, weeksUntilSeasonDrop,
+    sellThroughWeeks, seasonalExitRisk,
+  };
+}
+
+// ─── Price reason classification ──────────────────────────────────────────────
+
+type PriceReason = 'unitEconomicsError' | 'seasonalClearance' | 'competitivePressure' | 'unknown';
+
+function classifyPriceReason(
+  ue: ComputedUE | null,
+  sw: SeasonalWindow,
+  data: AnalysisData,
+): { priceReason: PriceReason | null; priceReasonText: string | null } {
+  if (!ue || ue.marginPerUnit >= 0) return { priceReason: null, priceReasonText: null };
+
+  const { seasonDropPercent, sellThroughWeeks } = sw;
+  const mpComp = data.mpstatsData?.competitors ?? [];
+  const priceSale = data.product?.priceSale ?? 0;
+
+  let competitorMedian: number | null = null;
+  if (mpComp.length >= 2) {
+    const prices = mpComp.map((c) => c.price).sort((a, b) => a - b);
+    competitorMedian = prices[Math.floor(prices.length / 2)];
+  }
+
+  const isSeasonExiting = seasonDropPercent !== null && seasonDropPercent > 25;
+  const hasHighStock = sellThroughWeeks !== null && sellThroughWeeks > 4;
+  const isBelowCompetitors = competitorMedian !== null && priceSale < competitorMedian * 0.85;
+
+  if (isSeasonExiting && hasHighStock) {
+    return {
+      priceReason: 'seasonalClearance',
+      priceReasonText: 'Низкая цена может быть осознанной распродажей перед спадом сезона',
+    };
+  }
+  if (isBelowCompetitors) {
+    return {
+      priceReason: 'competitivePressure',
+      priceReasonText: 'Цена ниже медианы конкурентов — возможно конкурентное давление или распродажа',
+    };
+  }
+  return {
+    priceReason: 'unitEconomicsError',
+    priceReasonText: 'Цена ниже точки безубыточности — ошибка unit-экономики или намеренное снижение',
+  };
+}
+
 // ─── Scenario helpers ─────────────────────────────────────────────────────────
 
 function noDataScenario(id: string, title: string, actionType: DecisionScenario['actionType'], missing: string[]): DecisionScenario {
@@ -954,28 +1055,205 @@ function scenarioTest(
   };
 }
 
+// ─── Scenario: Combined (raise price + stop ads) ─────────────────────────────
+
+function scenarioCombined(
+  data: AnalysisData,
+  ue: ComputedUE | null,
+  bo: BuyoutInfo | null,
+  baseWeeklyProfit: number | null,
+  estimatedAdBuyouts: number | null,
+): DecisionScenario | null {
+  if (!ue || ue.marginPerUnit >= 0) return null;
+  const adSpend = data.advertising?.totalSpend ?? 0;
+  if (adSpend <= 0) return null;
+
+  const buyouts = bo?.effectiveBuyouts ?? data.stats?.buyoutsCount ?? 0;
+  const priceSale = data.product?.priceSale ?? 0;
+  const breakevenPrice = ue.breakevenPrice;
+  const recommendedPrice = Math.ceil(breakevenPrice * 1.15 / 50) * 50;
+  const newMargin = ue.marginAtPrice(recommendedPrice);
+
+  // Organic buyouts after stopping ads
+  const estAdBuyouts = estimatedAdBuyouts ?? Math.round(buyouts * 0.30);
+  const estimatedOrganicBuyouts = Math.max(0, buyouts - estAdBuyouts);
+
+  // 3 outcomes — volumeMultiplier applies to organic buyouts after price increase
+  const vOpt = 0.90;
+  const vNeu = 0.80;
+  const vPes = 0.60;
+
+  const scenarioProfitOpt = estimatedOrganicBuyouts * vOpt * newMargin;
+  const scenarioProfitNeu = estimatedOrganicBuyouts * vNeu * newMargin;
+  const scenarioProfitPes = estimatedOrganicBuyouts * vPes * newMargin;
+
+  const rOpt = scenarioProfitOpt - (baseWeeklyProfit ?? 0);
+  const rNeu = scenarioProfitNeu - (baseWeeklyProfit ?? 0);
+  const rPes = scenarioProfitPes - (baseWeeklyProfit ?? 0);
+
+  const pPos = 0.30;
+  const pNeu = 0.45;
+  const pNeg = 0.25;
+  const ev = pPos * rOpt + pNeu * rNeu + pNeg * rPes;
+
+  return {
+    id: 'combined',
+    title: `Поднять цену до ${fmtRub(recommendedPrice)} и остановить рекламу`,
+    actionType: 'combined',
+    isActionable: true,
+    recommendation:
+      `Остановить ВСЮ рекламу (−${fmtRub(adSpend)}/нед) + поднять цену с ${fmtRub(priceSale)} до ${fmtRub(recommendedPrice)}.` +
+      ` Убирает убыточный рекламный расход и отрицательную маржу одновременно`,
+    expectedValueRub: ev,
+    scenarioProfitRub: scenarioProfitNeu,
+    optimisticRub: rOpt,
+    neutralRub: rNeu,
+    pessimisticRub: rPes,
+    probabilityPositive: pPos,
+    probabilityNeutral: pNeu,
+    probabilityNegative: pNeg,
+    confidence: 'high',
+    confidenceReason: 'маржа ≤0 + активная реклама — двойной эффект: убираем рекламный убыток и исправляем маржу',
+    calculation:
+      `Новая маржа при ${fmtRub(recommendedPrice)}: ${fmtRub(newMargin)}/шт.\n` +
+      `  Оценочные органические выкупы: ~${estimatedOrganicBuyouts} шт (${buyouts} − рекл. ~${estAdBuyouts})\n` +
+      `  Оптим. (орг.×${vOpt}, P=${pPos * 100}%): P&L после сценария ${fmtRub(scenarioProfitOpt)}, delta ${fmtRub(rOpt)}/нед\n` +
+      `  Нейтр. (орг.×${vNeu}, P=${pNeu * 100}%): P&L после сценария ${fmtRub(scenarioProfitNeu)}, delta ${fmtRub(rNeu)}/нед\n` +
+      `  Пессим. (орг.×${vPes}, P=${pNeg * 100}%): P&L после сценария ${fmtRub(scenarioProfitPes)}, delta ${fmtRub(rPes)}/нед\n` +
+      `  EV = ${fmtRub(ev)}/нед`,
+    whyThisMatters:
+      'Одновременно убирает рекламный расход и исправляет отрицательную маржу.' +
+      ' При отдельной остановке рекламы маржа остаётся отрицательной; при отдельном повышении цены расход рекламы продолжает лить в убыток.',
+    missingData: [],
+  };
+}
+
+// ─── Scenario: Clearance (controlled sell-off before season drop) ─────────────
+
+function scenarioClearance(
+  data: AnalysisData,
+  ue: ComputedUE | null,
+  bo: BuyoutInfo | null,
+  sw: SeasonalWindow,
+  baseWeeklyProfit: number | null,
+): DecisionScenario | null {
+  if (sw.seasonalExitRisk !== 'high') return null;
+  if (!sw.sellThroughWeeks || sw.sellThroughWeeks <= 4) return null;
+  if (!sw.seasonDropPercent || sw.seasonDropPercent <= 25) return null;
+
+  const product = data.product;
+  const stock = product?.totalStock ?? 0;
+  const priceSale = product?.priceSale ?? 0;
+  const buyouts = bo?.effectiveBuyouts ?? data.stats?.buyoutsCount ?? 0;
+
+  // Clearance price = current price (already a stop-loss, below breakeven)
+  const clearancePriceRub = priceSale;
+
+  const weeksUntilDrop = sw.weeksUntilSeasonDrop;
+
+  // Units sold at current speed before season drop
+  const expectedSoldUnitsBeforeDrop = Math.min(
+    Math.round(buyouts * weeksUntilDrop),
+    stock,
+  );
+  const expectedUnsoldUnitsAfterDrop = Math.max(0, stock - expectedSoldUnitsBeforeDrop);
+
+  const zakupka = ue?.parsed.zakupka ?? 0;
+  const hraneniePerDay = ue?.parsed.hraneniePerDay ?? 0;
+  const hranenieKnown = hraneniePerDay > 0;
+  const hranenieForCalc = hranenieKnown ? hraneniePerDay : 3;
+
+  const frozenCapitalRub = expectedUnsoldUnitsAfterDrop * zakupka;
+  const storageRiskRub = expectedUnsoldUnitsAfterDrop * hranenieForCalc * 60; // 2 months
+  const cashRecoveryRub = expectedSoldUnitsBeforeDrop * clearancePriceRub;
+
+  // P&L of clearance: sell at current (negative) margin, no ad spend (ads stopped)
+  const marginAtClearance = ue ? ue.marginAtPrice(clearancePriceRub) : 0;
+  const scenarioProfitRub = expectedSoldUnitsBeforeDrop * marginAtClearance;
+
+  const seasonDropStr = sw.seasonDropPercent !== null
+    ? `−${sw.seasonDropPercent.toFixed(0)}%`
+    : '?';
+
+  const calc =
+    `Текущая скорость: ${buyouts} выкупов/нед. Недель до спада сезона: ~${weeksUntilDrop.toFixed(1)}\n` +
+    `  Продаж до спада (×${weeksUntilDrop.toFixed(1)} нед): ~${expectedSoldUnitsBeforeDrop} шт из ${stock} шт\n` +
+    `  Непроданный остаток после спада: ~${expectedUnsoldUnitsAfterDrop} шт\n` +
+    `  Маржа при текущей цене ${fmtRub(clearancePriceRub)}: ${fmtRub(marginAtClearance)}/шт (убыток = stop-loss)\n` +
+    `  P&L от продаж до спада: ~${expectedSoldUnitsBeforeDrop} × ${fmtRub(marginAtClearance)} = ${fmtRub(scenarioProfitRub)}\n` +
+    `  Замороженный капитал (непроданный остаток): ~${fmtRub(frozenCapitalRub)}${zakupka > 0 ? ` (${expectedUnsoldUnitsAfterDrop} шт × ${fmtRub(zakupka)} себест.)` : ' (нет данных закупки)'}\n` +
+    `  Риск хранения 2 мес: ~${fmtRub(storageRiskRub)} ${hranenieKnown ? '(из unit-экономики)' : '(оценка 3₽/день/шт)'}\n` +
+    `  Возврат денег от продаж: ~${fmtRub(cashRecoveryRub)}\n` +
+    `  Сезонность: ×${sw.seasonNow?.toFixed(2) ?? '?'} → ×${sw.seasonNextMonth?.toFixed(2) ?? '?'} (${seasonDropStr} через ~${weeksUntilDrop.toFixed(1)} нед)`;
+
+  const missing: string[] = [];
+  if (!hranenieKnown) missing.push('стоимость хранения (unit-экономика — используется оценка 3₽/день/шт)');
+  if (!zakupka) missing.push('себестоимость/закупка (unit-экономика)');
+
+  return {
+    id: 'clearance',
+    title: 'Контролируемая распродажа перед спадом сезона',
+    actionType: 'clearance',
+    isActionable: true,
+    recommendation:
+      `STOP-LOSS: продавать при текущей цене ${fmtRub(clearancePriceRub)}, остановить рекламу.` +
+      ` Цель — вернуть оборотные средства до спада сезона (${seasonDropStr} через ~${weeksUntilDrop.toFixed(1)} нед).` +
+      ` Это НЕ прибыльная стратегия — маржа отрицательная, каждая продажа в убыток.`,
+    expectedValueRub: null, // разная цель — нельзя сравнивать с другими сценариями
+    scenarioProfitRub,
+    optimisticRub: null,
+    neutralRub: null,
+    pessimisticRub: null,
+    probabilityPositive: null,
+    probabilityNeutral: null,
+    probabilityNegative: null,
+    confidence: sw.seasonNow !== null && sw.seasonNextMonth !== null ? 'medium' : 'low',
+    confidenceReason: `сезонность: ×${sw.seasonNow?.toFixed(2) ?? '?'} → ×${sw.seasonNextMonth?.toFixed(2) ?? '?'} (${seasonDropStr}), запас ${sw.sellThroughWeeks?.toFixed(1) ?? '?'} нед`,
+    calculation: calc,
+    whyThisMatters:
+      `Цель — вернуть ~${fmtRub(cashRecoveryRub)} до падения спроса.` +
+      ` Альтернатива — поднять цену (сценарий Combined), но тогда скорость продаж падёт и риск замороженного остатка растёт.`,
+    missingData: missing,
+  };
+}
+
 // ─── selectBestAction ─────────────────────────────────────────────────────────
 
 function selectBestAction(
   scenarios: DecisionScenario[],
   ue: ComputedUE | null,
+  seasonalExitRisk: 'high' | 'medium' | 'low' | null,
 ): DecisionScenario | null {
-  // Only consider truly actionable scenarios (excludes doNothing, stock-normal, ads-normal)
+  // clearance = alternate goal, not ranked against profit scenarios
   const actionable = scenarios.filter(
-    (s) => s.isActionable && s.actionType !== 'doNothing' && s.actionType !== 'test',
+    (s) =>
+      s.isActionable &&
+      s.actionType !== 'doNothing' &&
+      s.actionType !== 'test' &&
+      s.actionType !== 'clearance',
   );
 
   if (actionable.length === 0) {
-    // Fall back to test
     return scenarios.find((s) => s.actionType === 'test') ?? null;
   }
 
   const confScore = (c: Confidence) => (c === 'high' ? 2 : c === 'medium' ? 1 : 0);
 
-  // When margin is negative, price fix is highest priority regardless of EV ranking
   if (ue && ue.marginPerUnit <= 0) {
-    const priceScenario = actionable.find((s) => s.actionType === 'price');
-    if (priceScenario) return priceScenario;
+    const combinedScen = actionable.find((s) => s.actionType === 'combined');
+    const priceScen = actionable.find((s) => s.actionType === 'price');
+    const adsScen = actionable.find((s) => s.actionType === 'ads');
+
+    // Prefer combined: it simultaneously fixes margin AND removes ad spend (double effect)
+    if (combinedScen && combinedScen.expectedValueRub !== null) {
+      const priceEV = priceScen?.expectedValueRub ?? -Infinity;
+      const adsEV = adsScen?.expectedValueRub ?? -Infinity;
+      if (combinedScen.expectedValueRub >= Math.max(priceEV, adsEV)) {
+        return combinedScen;
+      }
+    }
+    if (priceScen) return priceScen;
+    if (adsScen) return adsScen;
   }
 
   return [...actionable].sort((a, b) => {
@@ -1059,6 +1337,12 @@ export function runDecisionEngine(data: AnalysisData): DecisionEngineResult {
   const minSafePriceRub = ue ? Math.ceil(ue.breakevenPrice * 1.05 / 50) * 50 : null;
   const recommendedPriceRub = ue ? Math.ceil(ue.breakevenPrice * 1.15 / 50) * 50 : null;
 
+  // Seasonal window analysis
+  const seasonalWindow = computeSeasonalWindow(data, weeklyBuyouts);
+
+  // Price reason classification (only when margin is negative)
+  const pr = classifyPriceReason(ue, seasonalWindow, data);
+
   const diagnostics = buildDiagnostics(data, ue, bo);
   const risks = buildRisks(data, ue, bo, stockWeeks);
   const dataQuality = buildDataQuality(data);
@@ -1071,7 +1355,23 @@ export function runDecisionEngine(data: AnalysisData): DecisionEngineResult {
   ];
   scenarios.push(scenarioTest(data, ue, bo));
 
-  const bestAction = selectBestAction(scenarios, ue);
+  // Combined: raise price + stop ads (when margin negative + ads running)
+  const combinedScen = scenarioCombined(data, ue, bo, baseWeeklyProfitRub, estimatedAdBuyouts);
+  if (combinedScen) scenarios.push(combinedScen);
+
+  // Clearance: controlled sell-off before season drop
+  const clearanceScen = scenarioClearance(data, ue, bo, seasonalWindow, baseWeeklyProfitRub);
+  if (clearanceScen) scenarios.push(clearanceScen);
+
+  const bestAction = selectBestAction(scenarios, ue, seasonalWindow.seasonalExitRisk);
+
+  // Clearance price: current price when seasonal exit risk is high + margin negative
+  const clearancePriceRub =
+    seasonalWindow.seasonalExitRisk === 'high' &&
+    ue !== null && ue.marginPerUnit < 0 &&
+    data.product !== null
+      ? data.product.priceSale
+      : null;
 
   return {
     diagnostics,
@@ -1094,6 +1394,16 @@ export function runDecisionEngine(data: AnalysisData): DecisionEngineResult {
     adBuyoutIsEstimated,
     minSafePriceRub,
     recommendedPriceRub,
+    seasonNow: seasonalWindow.seasonNow,
+    seasonNextMonth: seasonalWindow.seasonNextMonth,
+    seasonIn2Months: seasonalWindow.seasonIn2Months,
+    seasonDropPercent: seasonalWindow.seasonDropPercent,
+    weeksUntilSeasonDrop: seasonalWindow.weeksUntilSeasonDrop,
+    sellThroughWeeks: seasonalWindow.sellThroughWeeks,
+    seasonalExitRisk: seasonalWindow.seasonalExitRisk,
+    priceReason: pr.priceReason,
+    priceReasonText: pr.priceReasonText,
+    clearancePriceRub,
   };
 }
 
@@ -1150,6 +1460,43 @@ export function formatDecisionEngineForPrompt(result: DecisionEngineResult): str
     L.push('');
   }
 
+  // Seasonal window block
+  if (result.seasonNow !== null || result.seasonalExitRisk !== null) {
+    L.push('СЕЗОННОСТЬ И РИСК ЗАМОРОЗКИ:');
+    if (result.seasonNow !== null)
+      L.push(`  Текущий коэффициент:   ×${result.seasonNow.toFixed(2)}`);
+    if (result.seasonNextMonth !== null)
+      L.push(`  Следующий месяц:       ×${result.seasonNextMonth.toFixed(2)}`);
+    if (result.seasonIn2Months !== null)
+      L.push(`  Через 2 месяца:        ×${result.seasonIn2Months.toFixed(2)}`);
+    if (result.seasonDropPercent !== null) {
+      const sign = result.seasonDropPercent > 0 ? '↓' : '↑';
+      L.push(`  Падение к след. месяцу: ${sign}${Math.abs(result.seasonDropPercent).toFixed(0)}%`);
+    }
+    if (result.weeksUntilSeasonDrop !== null)
+      L.push(`  Недель до смены сезона: ~${result.weeksUntilSeasonDrop.toFixed(1)} нед`);
+    if (result.sellThroughWeeks !== null)
+      L.push(`  Запас при текущей скорости: ${result.sellThroughWeeks.toFixed(1)} нед`);
+
+    const riskLabel =
+      result.seasonalExitRisk === 'high' ? '🔴 ВЫСОКИЙ'
+      : result.seasonalExitRisk === 'medium' ? '🟠 средний'
+      : result.seasonalExitRisk === 'low' ? '🟢 низкий'
+      : '—';
+    L.push(`  Риск выхода из сезона:  ${riskLabel}`);
+
+    if (result.priceReason) {
+      L.push(`  Возможная причина низкой цены: ${result.priceReasonText ?? result.priceReason}`);
+    }
+    if (result.clearancePriceRub !== null) {
+      L.push(`  Цена распродажи (stop-loss): ${fmtRub(result.clearancePriceRub)} (текущая цена, уже ниже breakeven)`);
+    }
+    if (result.seasonalExitRisk === 'high') {
+      L.push(`  ⚠️ seasonalExitRisk = high → ДАТЬ ВЫБОР по цели, а не один приказ "поднять цену"`);
+    }
+    L.push('');
+  }
+
   // Diagnostics
   L.push('ДИАГНОСТИКА:');
   for (const d of result.diagnostics) {
@@ -1160,16 +1507,29 @@ export function formatDecisionEngineForPrompt(result: DecisionEngineResult): str
 
   // Scenarios
   L.push(`БАЗОВЫЙ P&L: ${result.baseWeeklyProfitRub !== null ? `${fmtRub(result.baseWeeklyProfitRub)}/нед` : 'неизвестен (нет unit-экономики)'}`);
+  L.push('ПРАВИЛО: "эффект" = только expectedDeltaRub. "P&L после сценария" = scenarioProfitRub. НЕ путай и НЕ пересчитывай.');
   L.push('СЦЕНАРИИ (delta ₽/нед vs базового P&L):');
   for (const s of result.scenarios) {
-    const ev = s.expectedValueRub !== null
-      ? (s.actionType === 'doNothing' ? 'delta = 0 (потери продолжаются)'
-         : `delta = ${s.expectedValueRub >= 0 ? '+' : ''}${fmtRub(s.expectedValueRub)}/нед`)
-      : 'delta = нет данных';
+    let evLine: string;
+    if (s.actionType === 'doNothing') {
+      evLine = 'delta = 0 (базовая линия, потери продолжаются)';
+    } else if (s.actionType === 'clearance') {
+      evLine = 'цель = возврат оборотных средств (stop-loss, не прибыль — delta несравнима)';
+    } else if (s.expectedValueRub !== null) {
+      evLine = `expectedDeltaRub = ${s.expectedValueRub >= 0 ? '+' : ''}${fmtRub(s.expectedValueRub)}/нед`;
+    } else {
+      evLine = 'expectedDeltaRub = нет данных';
+    }
+
+    // Add scenarioProfitRub when available
+    const plLine = s.scenarioProfitRub !== undefined && s.scenarioProfitRub !== null
+      ? `P&L после сценария: ${fmtRub(s.scenarioProfitRub)}/нед | ${evLine}`
+      : evLine;
+
     const conf = s.confidence === 'high' ? 'высокая' : s.confidence === 'medium' ? 'средняя' : 'низкая';
     const flag = s.isActionable ? '' : ' [не является действием]';
     L.push(`  ${s.title}${flag}`);
-    L.push(`    ${ev} [уверенность: ${conf}]`);
+    L.push(`    ${plLine} [уверенность: ${conf}]`);
     L.push(`    Расчёт: ${s.calculation.split('\n').join('\n      ')}`);
     if (s.missingData.length > 0) L.push(`    Не хватает: ${s.missingData.join(', ')}`);
     L.push('');
