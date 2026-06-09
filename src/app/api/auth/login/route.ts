@@ -10,26 +10,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Неверный формат запроса' }, { status: 400 });
   }
 
-  // Accept both new `accessKey` and legacy `password` field
   const rawKey = String(body.accessKey ?? body.password ?? '').trim();
   if (!rawKey) {
     return NextResponse.json({ error: 'Ключ доступа не может быть пустым' }, { status: 400 });
   }
 
   const adminKey = (process.env.ADMIN_ACCESS_KEY ?? '').trim();
-
-  // Legacy keys kept for backward compat during migration (remove after all managers re-created)
-  const legacyKeys = [
-    (process.env.SITE_PASSWORD ?? '').trim(),
-    (process.env.SESSION_SECRET ?? '').trim(),
-    (process.env.ILYA_SESSION_KEY ?? '').trim(),
-  ].filter(Boolean);
+  if (!adminKey) {
+    return NextResponse.json({ error: 'Сервер не настроен: ADMIN_ACCESS_KEY не задан' }, { status: 500 });
+  }
 
   let sessionToken: string;
   let label: string;
 
-  if ((adminKey && rawKey === adminKey) || legacyKeys.includes(rawKey)) {
-    // Admin login
+  if (rawKey === adminKey) {
     sessionToken = await signSession({
       uid: 'admin',
       role: 'admin',
@@ -38,12 +32,10 @@ export async function POST(request: Request) {
     });
     label = 'Администратор';
   } else if (rawKey.startsWith('wbm_')) {
-    // Manager login — key lookup (never log rawKey)
     const manager = await findManagerByAccessKey(rawKey);
     if (!manager) {
       return NextResponse.json({ error: 'Неверный ключ доступа' }, { status: 401 });
     }
-    // Fire-and-forget — don't block on this
     touchLastUsedAt(manager.id).catch(() => {});
     sessionToken = await signSession({
       uid: manager.id,
@@ -61,7 +53,7 @@ export async function POST(request: Request) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    maxAge: 60 * 60 * 24 * 30,
     path: '/',
   });
   return res;
