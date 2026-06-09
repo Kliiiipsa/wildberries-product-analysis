@@ -4,6 +4,7 @@ import { fetchUnitData } from '@/lib/google-sheets';
 import { fetchMpstatsData, fetchSeasonalityData } from '@/lib/mpstats';
 import { assemblePrompt } from '@/lib/data-assembler';
 import { analyzeWithGroqStream } from '@/lib/groq-client';
+import { runDecisionEngine } from '@/lib/decision-engine';
 import { verifySession } from '@/lib/auth';
 import { canAccessArticle } from '@/lib/access-control';
 import type { AnalysisData, StreamEvent } from '@/types';
@@ -153,9 +154,13 @@ export async function POST(req: NextRequest) {
 
         send({ type: 'data', payload: analysisData });
 
-        // Step 6: Groq AI analysis
+        // Step 6: Decision Engine — расчёт сценариев и матожидания
+        send({ type: 'status', message: '⚙️ Считаю сценарии и матожидание...' });
+        const decisionResult = runDecisionEngine(analysisData);
+
+        // Step 7: Groq AI analysis
         send({ type: 'status', message: '🤖 Анализирую с помощью Groq AI...' });
-        const prompt = assemblePrompt(analysisData);
+        const prompt = assemblePrompt(analysisData, decisionResult);
         send({ type: 'prompt', prompt });
 
         try {

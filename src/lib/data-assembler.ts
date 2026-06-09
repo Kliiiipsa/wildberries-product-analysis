@@ -1,8 +1,14 @@
-import type { AnalysisData } from '@/types';
+import type { AnalysisData, DecisionEngineResult } from '@/types';
 import { formatRub, formatPercent } from '@/lib/utils';
+import { formatDecisionEngineForPrompt } from '@/lib/decision-engine';
 
-export function assemblePrompt(data: AnalysisData): string {
+export function assemblePrompt(data: AnalysisData, decisionResult?: DecisionEngineResult | null): string {
   const blocks: string[] = [];
+
+  // === DECISION ENGINE BLOCK (PRIORITY 1) ===
+  if (decisionResult) {
+    blocks.push(formatDecisionEngineForPrompt(decisionResult));
+  }
 
   // === АРТИКУЛ ===
   blocks.push(`=== АРТИКУЛ ===\n${data.article}`);
@@ -81,10 +87,8 @@ export function assemblePrompt(data: AnalysisData): string {
   if (data.advertising) {
     const a = data.advertising;
 
-    // Выручка с рекламы — берётся из основной (одной) активной кампании
+    // Выручка с рекламы — берётся из кампаний для расчёта реклама/выкуп
     const adRevenue = a.campaigns.reduce((s, c) => s + c.sum_price, 0);
-    // ROMI = (Выручка − Расход) / Расход × 100%
-    const romi = a.totalSpend > 0 ? ((adRevenue - a.totalSpend) / a.totalSpend) * 100 : 0;
     // Реклама на единицу выкупа (для расчёта маржи с рекламой в unit-экономике)
     const adPerBuyout = data.stats && data.stats.buyoutsCount > 0
       ? a.totalSpend / data.stats.buyoutsCount

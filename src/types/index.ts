@@ -303,3 +303,56 @@ export interface WhatIfForecast {
   adSpend: number;
   roi: number;
 }
+
+// ── Decision Engine ──────────────────────────────────────────────────────────
+
+export type Confidence = 'high' | 'medium' | 'low';
+export type ActionType = 'price' | 'ads' | 'stock' | 'stopLoss' | 'doNothing' | 'test';
+
+export interface DiagnosticMetric {
+  name: string;
+  value: string;
+  status: 'good' | 'warn' | 'bad' | 'unknown';
+  comment: string;
+}
+
+export interface RiskSignal {
+  description: string;
+  estimatedLossRubPerWeek?: number;
+  severity: 'critical' | 'high' | 'medium';
+}
+
+export interface DataQualitySignal {
+  field: string;
+  available: boolean;
+  note?: string;
+}
+
+export interface DecisionScenario {
+  id: string;
+  title: string;
+  actionType: ActionType;
+  recommendation: string;
+  expectedValueRub: number | null;
+  optimisticRub: number | null;
+  neutralRub: number | null;
+  pessimisticRub: number | null;
+  probabilityPositive: number | null;
+  probabilityNeutral: number | null;
+  probabilityNegative: number | null;
+  confidence: Confidence;
+  confidenceReason: string;
+  calculation: string;
+  whyThisMatters: string;
+  missingData: string[];
+}
+
+export interface DecisionEngineResult {
+  diagnostics: DiagnosticMetric[];
+  scenarios: DecisionScenario[];
+  bestAction: DecisionScenario | null;
+  risks: RiskSignal[];
+  dataQuality: DataQualitySignal[];
+  hasMarginData: boolean;
+  marginPerUnit: number | null;
+}
