@@ -75,12 +75,15 @@ async function redisSet(managers: Manager[]): Promise<void> {
 
 // ── Local file adapter (dev only) ─────────────────────────────────────────────
 
-const DATA_FILE = '.data/access-keys.local.json';
+function getDataFile(): string {
+  // Vercel и другие serverless-платформы: используем /tmp (эфемерно, только dev-fallback)
+  return process.env.VERCEL ? '/tmp/wb-access-keys.json' : '.data/access-keys.local.json';
+}
 
 async function localGet(): Promise<Manager[]> {
   const { readFile } = await import('fs/promises');
   try {
-    return JSON.parse(await readFile(DATA_FILE, 'utf8')) as Manager[];
+    return JSON.parse(await readFile(getDataFile(), 'utf8')) as Manager[];
   } catch {
     return [];
   }
@@ -88,8 +91,11 @@ async function localGet(): Promise<Manager[]> {
 
 async function localSet(managers: Manager[]): Promise<void> {
   const { writeFile, mkdir } = await import('fs/promises');
-  await mkdir('.data', { recursive: true });
-  await writeFile(DATA_FILE, JSON.stringify(managers, null, 2), 'utf8');
+  const file = getDataFile();
+  if (!file.startsWith('/tmp')) {
+    await mkdir('.data', { recursive: true });
+  }
+  await writeFile(file, JSON.stringify(managers, null, 2), 'utf8');
 }
 
 function useRedis(): boolean {
