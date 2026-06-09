@@ -237,7 +237,6 @@ function buildDiagnostics(
   {
     const subj = (product?.subjectName ?? '').toLowerCase();
     const isChild = /детск|ребён/.test(subj);
-    const isClothing = /одежд|обувь|платье|куртк|брюк|костюм|джинс|футболк/.test(subj);
     const good = isChild ? 55 : 50;
     const norm = isChild ? 45 : 38;
     const status: DiagnosticMetric['status'] = buyoutPct >= good ? 'good' : buyoutPct >= norm ? 'warn' : 'bad';
@@ -266,12 +265,17 @@ function buildDiagnostics(
       status: c2c >= 10 ? 'good' : c2c >= 7 ? 'warn' : 'bad',
       comment: c2c >= 10 ? 'хорошо (≥10%)' : c2c >= 7 ? `норма 7–10%` : `плохо (<7%)`,
     });
+    const negativeMargineNote = ue && ue.marginPerUnit < 0
+      ? ' — при отрицательной марже рост конверсии = рост убытков'
+      : '';
     diag.push({
       name: 'Корзина → Заказ',
       value: fmtPct(c2o),
       status: c2o >= 70 ? 'good' : c2o >= 45 ? 'warn' : 'bad',
       comment:
-        c2o >= 70 ? 'хорошо (>70%)' : c2o >= 45 ? `норма 45–70%` : `плохо (<45%) — масштабировать рекламу нельзя`,
+        c2o >= 70 ? `хорошо (>70%)${negativeMargineNote}`
+        : c2o >= 45 ? `норма 45–70%${negativeMargineNote}`
+        : `плохо (<45%) — масштабировать рекламу нельзя${negativeMargineNote}`,
     });
   }
 
@@ -668,11 +672,19 @@ function scenarioAds(
 
   // ── Case 1: Negative margin → stop ads ──────────────────────────────────────
   if (ue && ue.marginPerUnit <= 0) {
-    // Stopping ads saves adSpend, reduces volume but each unit was losing money
-    const organicFraction = 0.40; // assume 40% of orders come without ads
-    const estimatedAdBuyouts = buyouts * (1 - organicFraction);
-    // After stopping: lose estimatedAdBuyouts sales (but each was -margin)
-    const profitAfterStop = (buyouts * organicFraction) * ue.marginPerUnit; // organic only, no ads
+    // Use actual ad orders × factual buyout rate (NOT ad orders as ad buyouts)
+    const adOrders = adv.totalOrders;
+    const factualBuyoutRate = bo && bo.orders > 0
+      ? bo.buyouts / bo.orders
+      : stats.buyoutPercent / 100;
+    const estimatedAdBuyouts = adOrders > 0 && factualBuyoutRate > 0
+      ? Math.round(adOrders * factualBuyoutRate)
+      : Math.round(buyouts * 0.30); // fallback
+    const isEstimated = adOrders > 0 && bo && bo.orders > 0;
+
+    const estimatedOrganicBuyouts = Math.max(0, buyouts - estimatedAdBuyouts);
+    // After stopping ads: only organic sales remain (still losing per unit, but no ad spend)
+    const profitAfterStop = estimatedOrganicBuyouts * ue.marginPerUnit;
     const delta = profitAfterStop - (baseWeeklyProfit ?? 0);
 
     return {
@@ -682,19 +694,22 @@ function scenarioAds(
       isActionable: true,
       recommendation: `Остановить ВСЮ рекламу (расход ${fmtRub(adSpend)}/нед). При отрицательной марже реклама наращивает убытки`,
       expectedValueRub: delta,
-      optimisticRub: delta * 1.2,
+      optimisticRub: delta + Math.abs(delta) * 0.20,
       neutralRub: delta,
-      pessimisticRub: delta * 0.7,
+      pessimisticRub: delta - Math.abs(delta) * 0.30,
       probabilityPositive: 0.60,
       probabilityNeutral: 0.30,
       probabilityNegative: 0.10,
       confidence: 'high',
       confidenceReason: 'маржа ≤0 → реклама убыточна при любом ДРР',
       calculation:
-        `Маржа ${fmtRub(ue.marginPerUnit)}/шт ≤ 0. При остановке:\n` +
-        `  Сохраняем ${fmtRub(adSpend)}/нед рекламных расходов\n` +
-        `  Теряем ~${estimatedAdBuyouts.toFixed(0)} рекламных выкупов, но каждый был убыточен\n` +
-        `  delta ≈ ${fmtRub(delta)}/нед`,
+        `Маржа ${fmtRub(ue.marginPerUnit)}/шт ≤ 0.\n` +
+        `  Рекламные заказы (API): ${adOrders}\n` +
+        `  Факт. buyout rate: ${fmtPct(factualBuyoutRate * 100)}\n` +
+        `  Оценочные рекламные выкупы: ~${estimatedAdBuyouts} шт${isEstimated ? ' (оценка = adOrders × factBuyoutRate)' : ' (оценка)'}\n` +
+        `  Органических выкупов: ~${estimatedOrganicBuyouts} шт\n` +
+        `  P&L после остановки: ${estimatedOrganicBuyouts} × ${fmtRub(ue.marginPerUnit)} = ${fmtRub(profitAfterStop)}\n` +
+        `  delta = ${fmtRub(profitAfterStop)} − (${fmtRub(baseWeeklyProfit ?? 0)}) = ${fmtRub(delta)}/нед`,
       whyThisMatters: 'ДРР считается от выручки, а не от маржи. При марже ≤0 хороший ДРР — иллюзия',
       missingData: missing,
     };
@@ -1031,6 +1046,19 @@ export function runDecisionEngine(data: AnalysisData): DecisionEngineResult {
       ? weeklyBuyouts * marginPerUnit! - (data.advertising?.totalSpend ?? 0)
       : null;
 
+  // Ad orders vs estimated ad buyouts
+  const factualBuyoutRate = bo && bo.orders > 0 ? bo.buyouts / bo.orders : null;
+  const adOrdersCount = data.advertising?.totalOrders ?? null;
+  const estimatedAdBuyouts =
+    adOrdersCount !== null && factualBuyoutRate !== null
+      ? Math.round(adOrdersCount * factualBuyoutRate)
+      : null;
+  const adBuyoutIsEstimated = adOrdersCount !== null && factualBuyoutRate !== null;
+
+  // Safe price bounds (only relevant when margin < 0)
+  const minSafePriceRub = ue ? Math.ceil(ue.breakevenPrice * 1.05 / 50) * 50 : null;
+  const recommendedPriceRub = ue ? Math.ceil(ue.breakevenPrice * 1.15 / 50) * 50 : null;
+
   const diagnostics = buildDiagnostics(data, ue, bo);
   const risks = buildRisks(data, ue, bo, stockWeeks);
   const dataQuality = buildDataQuality(data);
@@ -1060,6 +1088,12 @@ export function runDecisionEngine(data: AnalysisData): DecisionEngineResult {
     marginAfterAdsRub,
     computedBuyoutPercent: bo?.computedPct ?? null,
     buyoutConflict: bo?.conflict ?? false,
+    adOrdersCount,
+    estimatedAdBuyouts,
+    factualBuyoutRate,
+    adBuyoutIsEstimated,
+    minSafePriceRub,
+    recommendedPriceRub,
   };
 }
 
@@ -1075,15 +1109,36 @@ export function formatDecisionEngineForPrompt(result: DecisionEngineResult): str
   // Unit economics summary
   if (result.hasMarginData) {
     L.push('UNIT-ЭКОНОМИКА:');
-    const ue = result;
-    L.push(`  Маржа/шт до рекламы:    ${ue.marginPerUnit !== null ? fmtRub(ue.marginPerUnit) : '—'}`);
-    if (ue.adCostPerBuyoutRub !== null)
-      L.push(`  Реклама на выкуп:       ${fmtRub(ue.adCostPerBuyoutRub)}`);
-    if (ue.marginAfterAdsRub !== null)
-      L.push(`  Маржа/шт после рекламы: ${fmtRub(ue.marginAfterAdsRub)}`);
-    if (ue.baseWeeklyProfitRub !== null) {
-      const sign = ue.baseWeeklyProfitRub >= 0 ? '(прибыль)' : '(УБЫТОК)';
-      L.push(`  Базовый P&L:            ${fmtRub(ue.baseWeeklyProfitRub)}/нед ${sign}`);
+    L.push(`  Маржа/шт до рекламы:    ${result.marginPerUnit !== null ? fmtRub(result.marginPerUnit) : '—'}`);
+    if (result.adCostPerBuyoutRub !== null)
+      L.push(`  Реклама на выкуп:       ${fmtRub(result.adCostPerBuyoutRub)}`);
+    if (result.marginAfterAdsRub !== null)
+      L.push(`  Маржа/шт после рекламы: ${fmtRub(result.marginAfterAdsRub)}`);
+    if (result.baseWeeklyProfitRub !== null) {
+      const sign = result.baseWeeklyProfitRub >= 0 ? '(прибыль)' : '(УБЫТОК)';
+      L.push(`  Базовый P&L:            ${fmtRub(result.baseWeeklyProfitRub)}/нед ${sign}`);
+    }
+    // Price bounds (only when margin is negative)
+    if (result.marginPerUnit !== null && result.marginPerUnit < 0) {
+      if (result.minSafePriceRub !== null)
+        L.push(`  Мин. безопасная цена:   ${fmtRub(result.minSafePriceRub)} (breakeven × 1.05)`);
+      if (result.recommendedPriceRub !== null)
+        L.push(`  Рекомендуемая цена:     ${fmtRub(result.recommendedPriceRub)} (breakeven × 1.15)`);
+      L.push(`  ⚠️ Откат к текущей цене ЗАПРЕЩЁН — она ниже точки безубыточности`);
+    }
+    L.push('');
+  }
+
+  // Ad orders vs estimated ad buyouts
+  if (result.adOrdersCount !== null) {
+    L.push('РЕКЛАМА — ЗАКАЗЫ VS ВЫКУПЫ:');
+    L.push(`  Рекламные заказы (API):          ${result.adOrdersCount}`);
+    if (result.factualBuyoutRate !== null)
+      L.push(`  Факт. buyout rate:               ${fmtPct(result.factualBuyoutRate * 100)} (buyouts ÷ orders)`);
+    if (result.estimatedAdBuyouts !== null) {
+      const est = result.adBuyoutIsEstimated ? ' (ОЦЕНКА = adOrders × factBuyoutRate)' : ' (оценка)';
+      L.push(`  Оценочные рекламные выкупы:      ~${result.estimatedAdBuyouts} шт${est}`);
+      L.push(`  ⚠️ Прямых рекламных выкупов в API нет — используй только это число, не adOrders`);
     }
     L.push('');
   }

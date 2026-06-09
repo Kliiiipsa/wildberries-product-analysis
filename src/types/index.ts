@@ -364,4 +364,16 @@ export interface DecisionEngineResult {
   marginAfterAdsRub: number | null;
   computedBuyoutPercent: number | null;
   buyoutConflict: boolean;
+  /** Рекламные заказы из API (totalOrders) */
+  adOrdersCount: number | null;
+  /** Оценочные рекламные выкупы = adOrders × factualBuyoutRate */
+  estimatedAdBuyouts: number | null;
+  /** Фактический buyout rate = buyouts / orders (не reported%) */
+  factualBuyoutRate: number | null;
+  /** true — прямых рекламных выкупов нет, использована оценка */
+  adBuyoutIsEstimated: boolean;
+  /** Минимальная безопасная цена = breakevenPrice × 1.05 */
+  minSafePriceRub: number | null;
+  /** Рекомендуемая цена = breakevenPrice × 1.15, округлено вверх до 50 */
+  recommendedPriceRub: number | null;
 }
