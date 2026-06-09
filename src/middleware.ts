@@ -1,28 +1,38 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { verifySession } from '@/lib/auth';
 
-const PUBLIC = ['/login', '/api/auth/login'];
+const PUBLIC_PREFIXES = ['/login', '/api/auth/login', '/api/auth/logout'];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC.some(p => pathname.startsWith(p))) {
+  if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  const session = request.cookies.get('session')?.value || '';
-  const validSessions = [
-    process.env.SESSION_SECRET || '',
-    process.env.ILYA_SESSION_KEY || '346bkmz421',
-  ].filter(Boolean);
+  const session = request.cookies.get('session')?.value ?? '';
+  const user = await verifySession(session);
 
-  if (!validSessions.includes(session)) {
+  if (!user) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
+  }
+
+  // Admin-only paths
+  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+    if (user.role !== 'admin') {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
   }
 
   const res = NextResponse.next();

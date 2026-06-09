@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { fetchWBProduct, fetchWBStats } from '@/lib/wildberries';
 import { fetchUnitCosts } from '@/lib/google-sheets';
 import { fetchMpstatsData, fetchSeasonalityData } from '@/lib/mpstats';
+import { verifySession } from '@/lib/auth';
+import { canAccessArticle } from '@/lib/access-control';
 import type { WhatIfBaseData, WhatIfUnitCost } from '@/types';
 
 export const runtime = 'edge';
@@ -65,11 +67,24 @@ function cap<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 }
 
 export async function GET(req: NextRequest) {
+  const user = await verifySession(req.cookies.get('session')?.value ?? '');
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Требуется авторизация' }), {
+      status: 401, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const nmIdStr = req.nextUrl.searchParams.get('nmId') || '';
 
   if (!nmIdStr || !/^\d{6,12}$/.test(nmIdStr)) {
     return new Response(JSON.stringify({ error: 'Укажите корректный артикул (nmId)' }), {
       status: 400, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (user.role === 'manager' && !(await canAccessArticle(user, nmIdStr))) {
+    return new Response(JSON.stringify({ error: 'Артикул не входит в ваш WB-тег. Обратитесь к администратору.' }), {
+      status: 403, headers: { 'Content-Type': 'application/json' },
     });
   }
 

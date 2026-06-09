@@ -4,12 +4,22 @@ import { fetchUnitData } from '@/lib/google-sheets';
 import { fetchMpstatsData, fetchSeasonalityData } from '@/lib/mpstats';
 import { assemblePrompt } from '@/lib/data-assembler';
 import { analyzeWithGroqStream } from '@/lib/groq-client';
+import { verifySession } from '@/lib/auth';
+import { canAccessArticle } from '@/lib/access-control';
 import type { AnalysisData, StreamEvent } from '@/types';
 
 export const runtime = 'edge';
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const user = await verifySession(req.cookies.get('session')?.value ?? '');
+  if (!user) {
+    return new Response(
+      JSON.stringify({ error: 'Требуется авторизация' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   const { article } = await req.json();
 
   if (!article || !/^\d{6,12}$/.test(article.trim())) {
@@ -20,6 +30,13 @@ export async function POST(req: NextRequest) {
   }
 
   const articleStr = article.trim();
+
+  if (user.role === 'manager' && !(await canAccessArticle(user, articleStr))) {
+    return new Response(
+      JSON.stringify({ error: 'Артикул не входит в ваш WB-тег. Обратитесь к администратору.' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
   const wbToken = process.env.WB_API_TOKEN || '';
   const mpToken = process.env.MPSTATS_API_KEY || '';
 

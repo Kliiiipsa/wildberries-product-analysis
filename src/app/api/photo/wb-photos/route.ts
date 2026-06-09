@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { verifySession } from '@/lib/auth';
+import { canAccessArticle } from '@/lib/access-control';
 
 export const maxDuration = 30;
 
@@ -29,11 +31,18 @@ function getWbBasket(vol: number): string {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await verifySession(req.cookies.get('session')?.value ?? '');
+  if (!user) return Response.json({ error: 'Требуется авторизация' }, { status: 401 });
+
   const body = await req.json().catch(() => null);
   const nmId = parseInt(body?.nmId ?? '');
 
   if (!nmId || isNaN(nmId)) {
     return Response.json({ error: 'Некорректный артикул' }, { status: 400 });
+  }
+
+  if (user.role === 'manager' && !(await canAccessArticle(user, String(nmId)))) {
+    return Response.json({ error: 'Артикул не входит в ваш WB-тег.' }, { status: 403 });
   }
 
   const token = (process.env.WB_API_TOKEN ?? '').trim();

@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { DashboardProduct, DashboardData } from '@/types';
+import { verifySession } from '@/lib/auth';
 
 export const runtime = 'edge';
 export const maxDuration = 30;
-
-function sellerLabelFromSession(session: string): string {
-  const ilyaKey = process.env.ILYA_SESSION_KEY || '346bkmz421';
-  if (session === ilyaKey) return process.env.ILYA_WB_TAG || 'илья';
-  return process.env.SELLER_LABEL || 'Кирилл';
-}
 
 function delay(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -37,7 +32,9 @@ export async function GET(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'WB_API_TOKEN не настроен' }, { status: 500 });
 
   const sessionCookie = req.cookies.get('session')?.value || '';
-  const SELLER_LABEL = sellerLabelFromSession(sessionCookie);
+  const user = await verifySession(sessionCookie);
+  if (!user) return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+  const SELLER_LABEL = user.role === 'manager' ? user.tagName : (process.env.SELLER_LABEL ?? '');
 
   const encoder = new TextEncoder();
 

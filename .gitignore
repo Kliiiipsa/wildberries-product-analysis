@@ -14,6 +14,9 @@ node_modules/
 # claude code session data
 .claude/
 
+# local manager keys storage (dev fallback, never commit)
+.data/
+
 # OS
 .DS_Store
 Thumbs.db

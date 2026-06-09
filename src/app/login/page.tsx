@@ -80,7 +80,7 @@ function FakeBackground() {
 }
 
 export default function LoginPage() {
-  const [password, setPassword] = useState('');
+  const [accessKey, setAccessKey] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -93,7 +93,7 @@ export default function LoginPage() {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ accessKey }),
     });
 
     if (res.ok) {
@@ -131,7 +131,7 @@ export default function LoginPage() {
 
             {/* Title */}
             <h1 className="text-white text-center text-lg font-semibold mb-1">
-              Введите универсальный ключ для входа
+              Введите ключ доступа
             </h1>
             <p className="text-slate-500 text-center text-sm mb-6">WB Analyzer · Закрытый доступ</p>
 
@@ -139,8 +139,8 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  value={accessKey}
+                  onChange={e => setAccessKey(e.target.value)}
                   placeholder="••••••••"
                   className="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-600 outline-none focus:border-blue-500/60 focus:bg-slate-800 transition-all text-center tracking-widest text-lg"
                   autoFocus
@@ -158,7 +158,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading || !password}
+                disabled={loading || !accessKey}
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-all shadow-lg shadow-blue-600/20"
               >
                 {loading ? (

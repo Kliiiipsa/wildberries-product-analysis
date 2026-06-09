@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifySession } from '@/lib/auth';
+import { canAccessArticle } from '@/lib/access-control';
 import type { CompetitorStats, ComparisonData } from '@/types';
 
 export const maxDuration = 30;
@@ -76,6 +78,9 @@ async function fetchOneItem(
 }
 
 export async function POST(req: NextRequest) {
+  const user = await verifySession(req.cookies.get('session')?.value ?? '');
+  if (!user) return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+
   const token = process.env.MPSTATS_API_KEY || '';
   if (!token) return NextResponse.json({ error: 'MPSTATS_API_KEY не настроен' }, { status: 500 });
 
@@ -86,6 +91,10 @@ export async function POST(req: NextRequest) {
   const nmIds: number[] = Array.isArray(body?.nmIds) ? body.nmIds.map(Number).filter(Boolean) : [];
   const myNmId: number  = Number(body?.myNmId ?? 0);
   if (nmIds.length === 0) return NextResponse.json({ error: 'nmIds обязателен' }, { status: 400 });
+
+  if (user.role === 'manager' && myNmId && !(await canAccessArticle(user, String(myNmId)))) {
+    return NextResponse.json({ error: 'Артикул не входит в ваш WB-тег.' }, { status: 403 });
+  }
 
   const { from, to } = getLast7Days();
 

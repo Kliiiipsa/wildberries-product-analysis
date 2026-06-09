@@ -3,7 +3,7 @@ import { SellerBadge } from '@/components/SellerBadge';
 import { TrendingUp, Zap, Database, Bot } from 'lucide-react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { findAccountBySession } from '@/lib/accounts';
+import { verifySession } from '@/lib/auth';
 import Link from 'next/link';
 
 const TAGS = [
@@ -15,14 +15,13 @@ const TAGS = [
 
 export default async function HomePage() {
   const cookieStore = await cookies();
-  const session = cookieStore.get('session')?.value || '';
-  const account = findAccountBySession(session);
-  if (!account) redirect('/login');
-  const sellerLabel = account.label;
+  const session = cookieStore.get('session')?.value ?? '';
+  const user = await verifySession(session);
+  if (!user) redirect('/login');
 
   return (
     <main className="min-h-screen bg-background overflow-x-hidden">
-      <SellerBadge label={sellerLabel} />
+      <SellerBadge label={user.label} role={user.role} />
 
       {/* Subtle background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
