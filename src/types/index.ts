@@ -332,7 +332,9 @@ export interface DecisionScenario {
   id: string;
   title: string;
   actionType: ActionType;
+  isActionable: boolean;
   recommendation: string;
+  /** Delta ₽/нед vs baseline (positive = better than now). null if uncalculable. */
   expectedValueRub: number | null;
   optimisticRub: number | null;
   neutralRub: number | null;
@@ -353,6 +355,13 @@ export interface DecisionEngineResult {
   bestAction: DecisionScenario | null;
   risks: RiskSignal[];
   dataQuality: DataQualitySignal[];
+  dataConflicts: string[];
   hasMarginData: boolean;
   marginPerUnit: number | null;
+  unitCostRub: number | null;
+  baseWeeklyProfitRub: number | null;
+  adCostPerBuyoutRub: number | null;
+  marginAfterAdsRub: number | null;
+  computedBuyoutPercent: number | null;
+  buyoutConflict: boolean;
 }
