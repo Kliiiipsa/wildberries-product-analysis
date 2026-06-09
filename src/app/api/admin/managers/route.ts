@@ -36,11 +36,14 @@ export async function POST(req: NextRequest) {
   if (!label) return NextResponse.json({ error: 'Имя менеджера обязательно' }, { status: 400 });
   if (!wbTagName) return NextResponse.json({ error: 'WB-тег обязателен' }, { status: 400 });
 
-  const { manager, rawKey } = await createManager({
-    label,
-    wbTagName,
-    notes: String(body.notes ?? '').trim(),
-  });
-
-  return NextResponse.json({ manager: strip(manager), rawKey }, { status: 201 });
+  try {
+    const { manager, rawKey } = await createManager({
+      label,
+      wbTagName,
+      notes: String(body.notes ?? '').trim(),
+    });
+    return NextResponse.json({ manager: strip(manager), rawKey }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
