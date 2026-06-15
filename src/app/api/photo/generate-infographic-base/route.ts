@@ -1,10 +1,31 @@
 import { NextRequest } from 'next/server';
+import { fal } from '@fal-ai/client';
 
 export const maxDuration = 60;
 
 /**
+ * fal.ai image-editing model used to generate the clean text-free base.
+ * Default: fal-ai/flux-pro/kontext (~$0.04/image).
+ * NOT the /max variant (~$0.08/image) — too expensive for constant generation.
+ * Override with FAL_IMAGE_MODEL only if you know what you're doing.
+ */
+const FAL_MODEL = (process.env.FAL_IMAGE_MODEL ?? 'fal-ai/flux-pro/kontext').trim();
+
+/**
+ * Output aspect ratio for the kontext model.
+ * Default 3:4 — matches the 900×1200 WB card exactly, so the base isn't cropped
+ * by the canvas cover-fit. A square (1:1) would crop full-body clothing shots and
+ * change the product framing, violating the "do not change the product" rule.
+ * Set FAL_ASPECT_RATIO=auto (or none/input) to omit the field and preserve the
+ * input photo's own aspect ratio instead.
+ */
+const FAL_ASPECT_RATIO = (process.env.FAL_ASPECT_RATIO ?? '3:4').trim();
+const ASPECT_OFF = new Set(['auto', 'none', 'input', 'off']);
+const VALID_ASPECT = new Set(['21:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16', '9:21']);
+
+/**
  * Converts a URL or data: URL to a base64 data URL.
- * Downloads server-side to avoid CORS issues with SiliconFlow CDN.
+ * Downloads server-side to avoid CORS issues with the image CDN (fal.media).
  */
 async function toBase64DataUrl(url: string): Promise<string> {
   const res = await fetch(url);
@@ -42,16 +63,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const apiKey = (process.env.SILICONFLOW_API_KEY ?? '').trim();
-  if (!apiKey) {
-    return Response.json({ error: 'SILICONFLOW_API_KEY не задан' }, { status: 500 });
+  const falKey = (process.env.FAL_KEY ?? '').trim();
+  if (!falKey) {
+    return Response.json(
+      { error: 'FAL_KEY не задан — добавьте ключ fal.ai в .env.local (см. .env.local.example)' },
+      { status: 500 },
+    );
   }
-
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 55_000);
+  fal.config({ credentials: falKey });
 
   try {
-    // Convert image to base64 (accepts existing data: URL or remote URL)
+    // Convert image to base64 (accepts existing data: URL or remote URL).
+    // fal accepts a data URI directly as image_url.
     const imageData = imageUrl.startsWith('data:')
       ? imageUrl
       : await toBase64DataUrl(imageUrl);
@@ -59,53 +82,51 @@ export async function POST(req: NextRequest) {
     // Append minimal safety suffix (pose + no-text reinforcement)
     const fullPrompt = fluxPrompt + INFOGRAPHIC_SUFFIX;
 
-    console.log(`[infographic-base] FLUX prompt_len=${fullPrompt.length}`);
+    console.log(`[infographic-base] fal model=${FAL_MODEL} prompt_len=${fullPrompt.length}`);
 
-    const resp = await fetch('https://api.siliconflow.com/v1/images/generations', {
-      method: 'POST',
-      signal: ac.signal,
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'black-forest-labs/FLUX.1-Kontext-pro',
-        prompt: fullPrompt,
-        input_image: imageData,
-        output_format: 'jpeg',
-      }),
-    });
-    clearTimeout(timer);
+    // Build input strictly from fields the kontext model actually supports
+    // (FluxKontextInput). Note: this model has NO `raw` field — only
+    // flux-pro/v1.1-ultra does — so we don't pass it. `enhance_prompt` IS
+    // supported and we disable it to keep the prompt verbatim.
+    const input: Record<string, unknown> = {
+      prompt: fullPrompt,
+      image_url: imageData,
+      output_format: 'jpeg',
+      enhance_prompt: false,
+    };
+    if (!ASPECT_OFF.has(FAL_ASPECT_RATIO) && VALID_ASPECT.has(FAL_ASPECT_RATIO)) {
+      input.aspect_ratio = FAL_ASPECT_RATIO;
+    }
 
-    const respText = await resp.text();
-    let parsed: Record<string, unknown> = {};
-    try { parsed = JSON.parse(respText); } catch { /* ok */ }
+    const t0 = Date.now();
+    const result = await fal.subscribe(FAL_MODEL, { input });
+    const inferenceMs = Date.now() - t0;
 
-    const inference = String((parsed?.timings as Record<string, unknown>)?.inference ?? '?');
-    console.log(`[infographic-base] FLUX status=${resp.status} inference=${inference}s`);
+    const data = result?.data as { images?: Array<{ url?: string }> } | undefined;
+    const url = data?.images?.[0]?.url ?? null;
+    console.log(
+      `[infographic-base] fal done req=${result?.requestId ?? '?'} ` +
+      `inference=${(inferenceMs / 1000).toFixed(1)}s url_present=${!!url}`,
+    );
 
-    if (!resp.ok) {
-      console.log(`[infographic-base] error body: ${respText.slice(0, 400)}`);
+    if (!url) {
       return Response.json(
-        { error: `FLUX ${resp.status}: ${respText.slice(0, 200)}` },
+        { error: `fal.ai не вернул URL: ${JSON.stringify(result?.data).slice(0, 200)}` },
         { status: 500 },
       );
     }
 
-    const url = (parsed?.images as Array<{ url: string }>)?.[0]?.url ?? null;
-    if (!url) {
-      return Response.json({ error: `FLUX не вернул URL: ${respText.slice(0, 200)}` }, { status: 500 });
-    }
-
-    // Download result server-side → return data URL (avoids client CORS 403)
-    const dataUrl = await toBase64DataUrl(url).catch(() => null);
+    // fal returns a remote fal.media URL (or a data: URI if sync_mode is on).
+    // Download result server-side → return data URL (avoids client CORS 403).
+    const dataUrl = url.startsWith('data:')
+      ? url
+      : await toBase64DataUrl(url).catch(() => null);
     console.log(`[infographic-base] done, dataUrl present=${!!dataUrl}`);
 
     return Response.json({ imageUrl: dataUrl ?? url });
   } catch (e) {
-    clearTimeout(timer);
-    const msg = String(e);
+    const msg = e instanceof Error ? e.message : String(e);
     console.log(`[infographic-base] caught: ${msg}`);
-    return Response.json({ error: msg }, { status: 500 });
+    return Response.json({ error: `fal.ai: ${msg}` }, { status: 500 });
   }
 }

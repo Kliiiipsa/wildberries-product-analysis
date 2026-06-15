@@ -157,6 +157,7 @@ export default function PhotoInfographicEditor({
       const img = new Image();
       img.onload = () => {
         let rendererUsed = 'legacy';
+        let usedFallback = false;
         if (USE_TEMPLATE_CANVAS_RENDERER && templateId) {
           const handled = drawTemplateCard(ctx, img, d, {
             templateId,
@@ -166,13 +167,17 @@ export default function PhotoInfographicEditor({
           if (handled) {
             rendererUsed = `template-${templateId}`;
           } else {
+            usedFallback = true;
             drawCard(ctx, img, d, compositionData, overlayStyleData);
           }
         } else {
           drawCard(ctx, img, d, compositionData, overlayStyleData);
         }
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[canvas-renderer] renderer=${rendererUsed} blocks=${d.characteristics.length}`);
+          console.log(
+            `[canvas-renderer] renderer=${rendererUsed} templateId=${templateId ?? 'none'} ` +
+            `blocks=${d.characteristics.length} fallback=${usedFallback}`,
+          );
         }
         resolve(canvas.toDataURL('image/jpeg', 0.95));
       };
