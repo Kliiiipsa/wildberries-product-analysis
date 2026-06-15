@@ -156,16 +156,20 @@ export default function PhotoInfographicEditor({
     return new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
+        // The template renderer is composition-aware and may override the pipeline
+        // hint (the effective template + layout is logged inside the renderer).
+        // We still try the template renderer even without a pipeline hint, so the
+        // local heuristic can choose a fitting template from the composition/data.
         let rendererUsed = 'legacy';
         let usedFallback = false;
-        if (USE_TEMPLATE_CANVAS_RENDERER && templateId) {
+        if (USE_TEMPLATE_CANVAS_RENDERER) {
           const handled = drawTemplateCard(ctx, img, d, {
-            templateId,
+            templateId: templateId ?? '',
             overlayStyle: overlayStyleData,
             composition: compositionData,
           });
           if (handled) {
-            rendererUsed = `template-${templateId}`;
+            rendererUsed = 'template';
           } else {
             usedFallback = true;
             drawCard(ctx, img, d, compositionData, overlayStyleData);
@@ -175,7 +179,7 @@ export default function PhotoInfographicEditor({
         }
         if (process.env.NODE_ENV === 'development') {
           console.log(
-            `[canvas-renderer] renderer=${rendererUsed} templateId=${templateId ?? 'none'} ` +
+            `[canvas-renderer] renderer=${rendererUsed} hint=${templateId ?? 'none'} ` +
             `blocks=${d.characteristics.length} fallback=${usedFallback}`,
           );
         }
